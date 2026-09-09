@@ -150,7 +150,7 @@ CDT_AUTOCAD_COM_TIMEOUT         COM deadline in seconds; default 60
 rather than starting AutoCAD. `attach_or_start` must be chosen explicitly.
 
 Primary live certification targets **AutoCAD 2027 full / Windows x64**. Its versioned ProgID is
-`AutoCAD.Application.26.0`; normal runtime remains unversioned by default. Other releases require an
+`AutoCAD.Application.26`; normal runtime remains unversioned by default. Other releases require an
 explicit native compatibility matrix before they are called certified. See `docs/LIVE_ACCEPTANCE.md`.
 
 The `com` optional dependency installs pywin32 plus Pillow; Pillow is used by native-window PNG

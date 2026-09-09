@@ -1,5 +1,5 @@
 """A3.2 advanced-dimension backend parity and fail-closed validation tests.
-Wing: code | Topic: autocad-a3-dimensions | Updated: 2026-09-09 20:38
+Wing: code | Topic: autocad-a3-dimensions | Updated: 2026-09-09 22:36
 """
 
 from __future__ import annotations
@@ -199,4 +199,4 @@ async def test_live_autocad_a3_2_advanced_dimensions(settings):
                 await backend._run(lambda: backend._app().ActiveDocument.Close(False))
             except Exception:
                 pass
-        backend.close()
+        backend.shutdown()

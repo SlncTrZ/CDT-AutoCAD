@@ -1,5 +1,5 @@
 """A2 COM backend regression and live-lane tests.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 19:01
+Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 23:06
 """
 
 from __future__ import annotations
@@ -49,6 +49,222 @@ def test_application_metadata_is_best_effort_when_optional_com_property_fails():
     assert metadata["primary_target_match"] is True
 
 
+def test_com_property_busy_retry_is_bounded_and_only_for_transient_hresult(monkeypatch):
+    class BusyThenReady:
+        def __init__(self):
+            self.calls = 0
+
+        @property
+        def Name(self):
+            self.calls += 1
+            if self.calls < 3:
+                raise RuntimeError(cb._RPC_E_CALL_REJECTED, "Call was rejected by callee")
+            return "Drawing1.dwg"
+
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+    obj = BusyThenReady()
+    assert cb._com_property_with_busy_retry(obj, "Name", attempts=3, delay_seconds=0.01) == "Drawing1.dwg"
+    assert obj.calls == 3
+
+    class PermanentFailure:
+        calls = 0
+
+        @property
+        def Name(self):
+            type(self).calls += 1
+            raise RuntimeError(-2147467259, "unspecified failure")
+
+    with pytest.raises(RuntimeError, match="unspecified failure"):
+        cb._com_property_with_busy_retry(PermanentFailure(), "Name", attempts=5, delay_seconds=0.01)
+    assert PermanentFailure.calls == 1
+
+
+def test_com_call_busy_retry_retries_only_the_rejected_call(monkeypatch):
+    calls = 0
+
+    def add_document():
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise RuntimeError(cb._RPC_E_SERVERCALL_RETRYLATER, "server busy")
+        return "doc"
+
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+    assert cb._com_call_with_busy_retry(add_document, attempts=3, delay_seconds=0.01) == "doc"
+    assert calls == 3
+
+
+def test_generated_wrapper_property_names_are_resolved_case_insensitively():
+    class GeneratedLike:
+        _prop_map_get_ = {"color": object(), "Layer": object()}
+        _prop_map_put_ = {"color": object(), "Layer": object()}
+
+        def __init__(self):
+            object.__setattr__(self, "color", 256)
+            object.__setattr__(self, "Layer", "0")
+
+        def __setattr__(self, name, value):
+            if name not in self._prop_map_put_:
+                raise AttributeError(name)
+            object.__setattr__(self, name, value)
+
+    entity = GeneratedLike()
+    assert cb._com_get_attr(entity, "Color") == 256
+    cb._com_set_attr(entity, "Color", 3)
+    assert entity.color == 3
+    assert cb._com_get_attr(entity, "Layer") == "0"
+
+
+def test_doc_retries_transient_busy_properties(settings, monkeypatch):
+    doc = SimpleNamespace(Name="busy.dwg", FullName="C:/work/busy.dwg")
+
+    class Docs:
+        def __init__(self):
+            self.calls = 0
+
+        @property
+        def Count(self):
+            self.calls += 1
+            if self.calls < 3:
+                raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy docs")
+            return 1
+
+    docs = Docs()
+
+    class App:
+        def __init__(self):
+            self.documents_calls = 0
+            self.active_calls = 0
+
+        @property
+        def Documents(self):
+            self.documents_calls += 1
+            if self.documents_calls < 2:
+                raise RuntimeError(cb._RPC_E_SERVERCALL_RETRYLATER, "busy app")
+            return docs
+
+        @property
+        def ActiveDocument(self):
+            self.active_calls += 1
+            if self.active_calls < 2:
+                raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy active document")
+            return doc
+
+    app = App()
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_app", lambda: app)
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+
+    assert backend._doc() is doc
+    assert app.documents_calls == 2
+    assert docs.calls == 3
+    assert app.active_calls == 2
+
+
+def test_collection_name_reads_retry_transient_busy_calls(monkeypatch):
+    class Item:
+        def __init__(self, name):
+            self.name_calls = 0
+            self.value = name
+
+        @property
+        def Name(self):
+            self.name_calls += 1
+            if self.name_calls == 1:
+                raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy item name")
+            return self.value
+
+    class Collection:
+        def __init__(self):
+            self.count_calls = 0
+            self.item_calls = 0
+            self.items = [Item("0"), Item("DIM")]
+
+        @property
+        def Count(self):
+            self.count_calls += 1
+            if self.count_calls == 1:
+                raise RuntimeError(cb._RPC_E_SERVERCALL_RETRYLATER, "busy count")
+            return len(self.items)
+
+        def Item(self, index):
+            self.item_calls += 1
+            if self.item_calls == 1:
+                raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy item")
+            return self.items[index]
+
+    collection = Collection()
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+    assert ComBackend._collection_names(collection) == ["0", "DIM"]
+    assert collection.count_calls == 2
+    assert collection.item_calls == 3
+
+
+def test_generated_base_entity_can_be_rewrapped_for_subtype_properties(monkeypatch):
+    ole = object()
+    generic = SimpleNamespace(_oleobj_=ole, ObjectName="AcDbLine")
+    dynamic = SimpleNamespace(
+        _oleobj_=ole,
+        ObjectName="AcDbLine",
+        StartPoint=(0.0, 0.0, 0.0),
+        EndPoint=(1.0, 1.0, 0.0),
+    )
+    calls = []
+
+    class FakeDynamic:
+        @staticmethod
+        def DumbDispatch(value):
+            calls.append(value)
+            return dynamic
+
+    fake_client = SimpleNamespace(dynamic=FakeDynamic)
+    monkeypatch.setattr(cb, "_COM_IMPORTS_OK", True)
+    monkeypatch.setattr(cb, "win32com", SimpleNamespace(client=fake_client), raising=False)
+
+    assert cb._entity_property_view(generic) is dynamic
+    assert calls == [ole]
+
+
+def test_primary_type_library_bootstrap_uses_common_program_files(monkeypatch, tmp_path):
+    tlb = tmp_path / "Autodesk Shared" / "acax26enu.tlb"
+    tlb.parent.mkdir(parents=True)
+    tlb.write_bytes(b"fake")
+    calls = []
+
+    class FakeTypeLib:
+        @staticmethod
+        def GetLibAttr():
+            return ("{GUID}", 0, 3, 1, 0, 8)
+
+    class FakePythonCom:
+        @staticmethod
+        def LoadTypeLib(path):
+            calls.append(("load", path))
+            return FakeTypeLib()
+
+    class FakeGenCache:
+        @staticmethod
+        def EnsureModule(guid, lcid, major, minor):
+            calls.append(("ensure", guid, lcid, major, minor))
+            return object()
+
+    monkeypatch.setattr(cb, "_COM_IMPORTS_OK", True)
+    monkeypatch.setattr(cb, "pythoncom", FakePythonCom, raising=False)
+    monkeypatch.setattr(
+        cb,
+        "win32com",
+        SimpleNamespace(client=SimpleNamespace(gencache=FakeGenCache)),
+        raising=False,
+    )
+    monkeypatch.setenv("CommonProgramFiles", str(tmp_path))
+
+    assert cb._ensure_autocad_type_library() is True
+    assert calls == [
+        ("load", str(tlb)),
+        ("ensure", "{GUID}", 0, 1, 0),
+    ]
+
+
 def test_status_declares_primary_2027_certification_target_before_connection(settings):
     backend = ComBackend(replace(settings, backend="com"))
     status = backend.status()
@@ -58,7 +274,7 @@ def test_status_declares_primary_2027_certification_target_before_connection(set
         "state": "pending_real_autocad",
         "primary_release": "2027",
         "primary_com_version": "26.0",
-        "primary_progid": "AutoCAD.Application.26.0",
+        "primary_progid": "AutoCAD.Application.26",
         "required_edition": "full",
         "required_platform": "windows_x64",
         "compatibility_policy": "explicit_native_matrix_required",
@@ -338,6 +554,28 @@ async def _inline_run(func):
 
 
 @pytest.mark.asyncio
+async def test_document_open_does_not_retry_mutating_open_call(settings, monkeypatch, tmp_path):
+    backend = ComBackend(replace(settings, backend="com"))
+    calls = 0
+
+    class Documents:
+        def Open(self, _path):
+            nonlocal calls
+            calls += 1
+            raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy open")
+
+    app = SimpleNamespace(Documents=Documents())
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_app", lambda: app)
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(cb, "resolve_autocad_document_path", lambda *_args, **_kwargs: tmp_path / "input.dwg")
+
+    with pytest.raises(RuntimeError, match="busy open"):
+        await backend.document_open(str(tmp_path / "input.dwg"))
+    assert calls == 1
+
+
+@pytest.mark.asyncio
 async def test_document_info_reads_insunits_from_document_not_application(settings, monkeypatch):
     backend = ComBackend(replace(settings, backend="com"))
     variable_calls = []
@@ -373,13 +611,84 @@ async def test_document_info_reads_insunits_from_document_not_application(settin
 
 
 @pytest.mark.asyncio
-async def test_native_pdf_plot_forces_foreground_and_restores_backgroundplot(settings, monkeypatch, tmp_path):
+async def test_document_save_as_does_not_retry_mutating_save_as_call(
+    settings, monkeypatch, tmp_path
+):
+    backend = ComBackend(replace(settings, backend="com"))
+    calls = 0
+
+    class FakeDoc:
+        Name = "safe.dwg"
+        FullName = str(tmp_path / "safe.dwg")
+
+        def SaveAs(self, _path, _file_type):
+            nonlocal calls
+            calls += 1
+            raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy save")
+
+    doc = FakeDoc()
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(RuntimeError, match="busy save"):
+        await backend.document_save_as(str(tmp_path / "safe.dwg"))
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_document_save_as_retries_only_post_save_scope_reads(
+    settings, monkeypatch, tmp_path
+):
+    backend = ComBackend(replace(settings, backend="com"))
+    save_calls = 0
+    full_name_reads = 0
+    target = tmp_path / "safe.dwg"
+
+    class FakeDoc:
+        Name = "safe.dwg"
+
+        @property
+        def FullName(self):
+            nonlocal full_name_reads
+            full_name_reads += 1
+            if full_name_reads < 3:
+                raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy full name")
+            return str(target)
+
+        def SaveAs(self, _path, _file_type):
+            nonlocal save_calls
+            save_calls += 1
+
+    doc = FakeDoc()
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+
+    result = await backend.document_save_as(str(target))
+    assert result["ok"] is True
+    assert save_calls == 1
+    assert full_name_reads == 3
+    assert backend._document_scope_key == ("safe.dwg", str(target))
+
+
+@pytest.mark.asyncio
+async def test_native_pdf_plot_retries_busy_boundaries_and_restores_backgroundplot(
+    settings, monkeypatch, tmp_path
+):
     backend = ComBackend(replace(settings, backend="com"))
     calls = []
     state = {"backgroundplot": 2}
+    get_attempts = 0
+    set_attempts = {0: 0, 2: 0}
+    plot_attempts = 0
 
     class FakePlot:
         def PlotToFile(self, path, config):
+            nonlocal plot_attempts
+            plot_attempts += 1
+            if plot_attempts == 1:
+                raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy plot")
             calls.append(("plot", state["backgroundplot"], path, config))
             return True
 
@@ -389,20 +698,32 @@ async def test_native_pdf_plot_forces_foreground_and_restores_backgroundplot(set
         Plot = FakePlot()
 
         def GetVariable(self, name):
+            nonlocal get_attempts
             assert name == "BACKGROUNDPLOT"
+            get_attempts += 1
+            if get_attempts == 1:
+                raise RuntimeError(cb._RPC_E_SERVERCALL_RETRYLATER, "busy get")
             return state["backgroundplot"]
 
         def SetVariable(self, name, value):
             assert name == "BACKGROUNDPLOT"
-            state["backgroundplot"] = int(value)
-            calls.append(("set", int(value)))
+            normalized = int(value)
+            set_attempts[normalized] += 1
+            if set_attempts[normalized] == 1:
+                raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy set")
+            state["backgroundplot"] = normalized
+            calls.append(("set", normalized))
 
     doc = FakeDoc()
     monkeypatch.setattr(backend, "_run", _inline_run)
     monkeypatch.setattr(backend, "_doc", lambda: doc)
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
 
     result = await backend.document_export_pdf(str(tmp_path / "plot.pdf"))
     assert result["ok"] is True
+    assert get_attempts == 2
+    assert set_attempts == {0: 2, 2: 2}
+    assert plot_attempts == 2
     assert calls[0] == ("set", 0)
     assert calls[1][0:2] == ("plot", 0)
     assert calls[-1] == ("set", 2)

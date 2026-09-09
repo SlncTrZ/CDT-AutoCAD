@@ -28,13 +28,13 @@ Forbidden unless explicitly assigned:
 - Provider version: `0.3.0rc1`
 - Contract: `autocad-a2-v1-rc1`
 - Public surface: 50 MCP tools
-- A2 implementation: release candidate; primary AutoCAD 2027 live acceptance still OPEN.
-- Primary certification target: AutoCAD 2027 full, Windows x64, ActiveX COM `26.0` / `AutoCAD.Application.26.0`.
-- A3.1 ACIS backend: staged/private pending real AutoCAD verification.
-- A3.2 advanced dimensions: angular/radial/diametric/ordinate implemented backend-side, capability-false/non-public pending native verification.
-- A3.3 analysis: object measurement/current-space WCS extents + native COM intersections implemented backend-side, capability-false/non-public pending native verification.
+- A2 native AutoCAD 2027 acceptance: PASS on Windows `.171`; release-candidate state retained pending explicit promotion/release review.
+- Primary certification target: AutoCAD 2027 full, Windows x64, ActiveX COM `26.0` / `AutoCAD.Application.26`.
+- A3.1 ACIS backend: live-verified on AutoCAD 2027; remains staged/private until explicit promotion.
+- A3.2 advanced dimensions: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
+- A3.3 analysis: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
 - Extraction baseline: 54 tests PASS, 2 live-Windows/AutoCAD tests SKIP before repository split.
-- Current generic staging checkpoint: Linux 72 PASS / 4 live SKIP; Windows `.171` 71 PASS / 5 SKIP (4 native gates + 1 non-Windows honesty test).
+- Current generic staging checkpoint: Linux 83 PASS / 4 live SKIP; Windows `.171` 82 PASS / 5 SKIP (4 native gates + 1 non-Windows honesty test).
 
 ## First delivery gates
 

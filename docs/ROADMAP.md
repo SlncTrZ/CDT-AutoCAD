@@ -322,10 +322,10 @@ has explicit ProgID + attach policy, a single STA executor, native DWG/DXF, nati
 undo marks, active-document scope protection, timeout uncertainty semantics and conservative
 pre-existing viewport deletion (`force=true`).
 
-A2 **cannot honestly be marked acceptance-CLOSED yet**. The primary native certification target is
-AutoCAD 2027 full on Windows x64 (`AutoCAD.Application.26.0`). Runtime status now identifies the
-attached ActiveX COM version/release and reports the certification target. The native gate remains
-pending while AutoCAD 2027 is being installed; mock/Linux evidence is not substituted for that PASS.
+A2 native acceptance is **live-verified PASS** on full AutoCAD 2027 / Windows `.171` using
+`AutoCAD.Application.26`. Runtime status identifies the attached ActiveX COM version/release and
+reports the certification target. The provider remains `0.3.0rc1` until an explicit promotion/release
+decision; live verification alone does not change public capability or tool surface.
 
 ### A3.1 — Native ACIS 3D solids staged
 
@@ -346,9 +346,9 @@ operation failure without masking the primary modeling error. Sweep path types a
 COM to avoid opaque HRESULT failures. Loft is explicitly not claimed because ActiveX has no typed
 Loft creation method in the supported API surface.
 
-A3 methods are intentionally backend-staged, not public MCP tools yet. `autocad.solid.acis` and
-`autocad.view.3d` remain capability-false with reason `A3_staged_pending_live_verification` until a
-real AutoCAD lane proves the behavior.
+A3 methods are intentionally backend-staged, not public MCP tools yet. The A3.1 native lane is
+live-verified on AutoCAD 2027, but `autocad.solid.acis` and `autocad.view.3d` remain capability-false
+until an explicit promotion changes the public contract.
 
 ### A3.2 — Advanced dimensions staged
 
@@ -366,8 +366,8 @@ The COM backend maps to typed ActiveX `AddDimAngular`, `AddDimRadial`, `AddDimDi
 `AcDb*Dimension` object types as common `DIMENSION` entities.
 
 `autocad.dimensions.advanced` remains capability-false (`A3_2_staged_not_public` on ezdxf and
-`A3_2_staged_pending_live_verification` on COM). Public MCP surface remains exactly 50 tools.
-A separate AutoCAD 2027 native/JUnit lane is prepared in `tests/test_advanced_dimensions.py`.
+staged/non-public on COM) despite its AutoCAD 2027 native PASS. Public MCP surface remains exactly
+50 tools; live evidence is retained in `tests/test_advanced_dimensions.py` JUnit runs.
 
 ### A3.3 — Measurement / intersection analysis staged
 
@@ -387,32 +387,30 @@ The COM backend reads typed ActiveX properties (`Length`, `Radius`, `Circumferen
 and malformed non-XYZ COM payloads fail before or at the analysis boundary rather than being guessed.
 
 `autocad.analysis.measurement` and `autocad.analysis.intersections` remain capability-false and no
-new MCP tools are published. A separate AutoCAD 2027 native/JUnit lane is prepared in
-`tests/test_measurement_analysis.py`.
+new MCP tools are published despite the AutoCAD 2027 native PASS. Live evidence is retained in
+`tests/test_measurement_analysis.py` JUnit runs.
 
 ### Verification evidence
 
-Current generic verification after repo extraction + 2027 live-gate preparation + A3.2/A3.3 staging:
+Current verification on the final hardening tree:
 
-- COM A2 focused gate: `20 passed, 1 skipped`;
-- A3.1 solid focused gate: `9 passed, 1 skipped`;
-- A3.2 advanced-dimension focused gate: `5 passed, 1 skipped`;
-- A3.3 analysis focused gate: `7 passed, 1 skipped`;
-- A3.3 + server-contract gate: `20 passed, 1 skipped`, with public MCP tool count still exactly 50;
-- Linux full regression: `72 passed, 4 skipped` (A2/A3.1/A3.2/A3.3 live lanes);
-- Windows `.171` generic regression: `71 passed, 5 skipped`; four skips are A2/A3.1/A3.2/A3.3 native lanes and one is the deliberate non-Windows capability-honesty test;
-- PowerShell live-acceptance runner parses successfully on Windows `.171`;
-- application version parsing identifies official COM release series through AutoCAD 2027 (`26.0`);
-- ActiveX document variables are read from the Document object; native PDF plotting forces foreground `BACKGROUNDPLOT=0` and restores the prior value;
-- provider runtime/package versions remain locked by regression test (`pyproject.toml` == `__version__`).
+- AutoCAD 2027 hidden native A2: `30 passed, 1 skipped`;
+- AutoCAD 2027 hidden native A3.1: `11 passed`;
+- AutoCAD 2027 hidden native A3.2: `6 passed`;
+- AutoCAD 2027 hidden native A3.3: `8 passed`;
+- Linux full regression: `83 passed, 4 skipped`;
+- Windows `.171` generic regression: `82 passed, 5 skipped`; four skips are the opt-in native lanes and one is the deliberate non-Windows capability-honesty test;
+- `python -m compileall src tests` and `git diff --check` pass;
+- application version parsing identifies AutoCAD 2027 as COM `26.0`; usable live ProgID is `AutoCAD.Application.26`;
+- native PDF plotting retries bounded busy COM boundaries while restoring `BACKGROUNDPLOT` and prior layout state;
+- `SaveAs` remains single-shot mutation; only post-save `Name`/`FullName` reads receive bounded busy retry;
+- public MCP tool count remains exactly 50 and A3 capability promotion is still deferred.
 
 ### Next gates
 
-1. Finish installing/licensing AutoCAD 2027 full on the Windows lane and start it normally.
-2. Run `./scripts/run_live_acceptance.ps1`; preserve the generated JUnit + pytest artifact directory.
-3. Review any native failure without weakening/skipping the gate; status must identify release 2027 / COM 26.0.
-4. If A2 live passes, promote the A2 RC identity intentionally and update help/docs with evidence.
-5. If A3.1 live passes, expose staged solid/view methods under the next provider extension contract.
+1. Keep the A2 RC identity until an explicit release/promotion decision.
+2. Promote A3.1/A3.2/A3.3 capabilities/tools only through an explicit contract change backed by the retained native evidence.
+3. Use the live-verified hidden `pythonw.exe` interactive launcher for architectural stress tests and preserve DWG + screenshot checkpoints.
 6. If the separate A3.2 native gate passes, intentionally version/promote the four advanced-dimension tools.
 7. If the separate A3.3 native gate passes, intentionally version/promote measurement/extents/intersection analysis tools.
 8. Continue A3 drafting/engineering families (mirror/array/offset, selection, trim/fillet and GDT)

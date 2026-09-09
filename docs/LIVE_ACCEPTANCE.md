@@ -10,7 +10,7 @@ CDT-AutoCAD separates application identification from certification.
 
 - Default runtime ProgID stays unversioned: `AutoCAD.Application`.
 - Primary certification target is AutoCAD 2027 full on Windows x64.
-- AutoCAD 2027 ActiveX COM version is `26.0`; version-pinned ProgID is `AutoCAD.Application.26.0`.
+- AutoCAD 2027 ActiveX COM version is `26.0`; the live-verified versioned ProgID on Windows `.171` is `AutoCAD.Application.26`.
 - Other AutoCAD releases are compatibility candidates, not automatically certified.
 - AutoCAD LT is not a certification target because the provider's A3 native-solid lane requires full ActiveX/3D functionality.
 - A release becomes supported/certified only after its native matrix gate passes; version parsing alone never grants capability support.
@@ -69,10 +69,14 @@ PowerShell from the `CDT-AutoCAD` repository root:
 ./scripts/run_live_acceptance.ps1
 ```
 
-The runner sets `CDT_AUTOCAD_LIVE_TEST=1`, expects release `2027`, pins
-`AutoCAD.Application.26.0`, and keeps the backend in `attach_only` mode. It writes separate JUnit
+The runner sets `CDT_AUTOCAD_LIVE_TEST=1`, expects release `2027`, prefers
+`AutoCAD.Application.26`, and keeps the backend in `attach_only` mode. It writes separate JUnit
 reports for the A2/A3.1 core gate, A3.2 advanced-dimension gate and A3.3 analysis gate so one failure
 does not obscure which acceptance boundary failed.
+
+On 2026-09-09, the final hidden `pythonw.exe` interactive run against full AutoCAD 2027 on Windows
+`.171` passed A2, A3.1, A3.2 and A3.3. A3 surfaces remain staged/capability-false until an explicit
+promotion decision; native verification does not itself publish new tools.
 
 ## 5. A2 live evidence covered
 

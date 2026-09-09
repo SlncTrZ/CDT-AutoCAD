@@ -1,5 +1,5 @@
 """A3 COM 3D-solid staged regression tests.
-Wing: code | Topic: autocad-a3 | Updated: 2026-09-09 19:01
+Wing: code | Topic: autocad-a3 | Updated: 2026-09-09 22:36
 """
 
 from __future__ import annotations
@@ -189,6 +189,28 @@ async def test_headless_backend_refuses_acis_solid_operations(settings):
     with pytest.raises(UnsupportedCapabilityError) as exc_info:
         await backend.solid_box(0, 0, 0, 10, 20, 30)
     assert exc_info.value.capability == "autocad.solid.acis"
+
+
+def test_solid_info_treats_solid_type_as_optional_diagnostic():
+    class LiveLikeSolid:
+        Handle = "LIVE1"
+        Layer = "0"
+        Visible = True
+        Volume = 125.0
+        Centroid = (1.0, 2.0, 3.0)
+
+        @property
+        def SolidType(self):
+            raise RuntimeError("AutoCAD 2027 SolidType getter failed")
+
+        @staticmethod
+        def GetBoundingBox():
+            return ((-1.0, -2.0, -3.0), (4.0, 5.0, 6.0))
+
+    info = ComBackend._solid_info(LiveLikeSolid())
+    assert info["type"] == "3DSOLID"
+    assert info["solid_type"] is None
+    assert info["volume"] == pytest.approx(125.0)
 
 
 @pytest.mark.asyncio

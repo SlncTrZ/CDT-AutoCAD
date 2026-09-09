@@ -57,7 +57,7 @@ Credentials must be supplied by deployment/runtime configuration. Do not commit 
 
 The runtime default remains `AutoCAD.Application` so normal use can attach to the registered full
 AutoCAD installation. The **primary certification target is AutoCAD 2027 full on Windows x64**, whose
-versioned ActiveX ProgID is `AutoCAD.Application.26.0`. Other releases are compatibility candidates
+versioned ActiveX ProgID is `AutoCAD.Application.26`. Other releases are compatibility candidates
 and require their own native evidence before they are called certified. `system_status` reports the
 primary certification target and, after COM attachment, the detected application version, COM
 version and mapped AutoCAD release.
@@ -90,14 +90,15 @@ version-pinned:
 ./scripts/run_live_acceptance.ps1
 ```
 
-The runner targets AutoCAD 2027 / `AutoCAD.Application.26.0`, preserves separate pytest/JUnit
+The runner targets AutoCAD 2027 / `AutoCAD.Application.26`, preserves separate pytest/JUnit
 evidence under ignored `artifacts/live-acceptance/`, and executes A2/A3.1 plus independent A3.2
 advanced-dimension and A3.3 measurement/intersection lanes. AutoCAD must already be running because
 acceptance uses the fail-closed `attach_only` policy.
 
-A2 implementation remains RC until its native gate passes and the evidence is reviewed. A3.1 solid,
-A3.2 advanced-dimension and A3.3 analysis methods remain backend-staged/capability-false until their
-own native evidence is accepted; the public MCP surface remains 50 tools.
+A2 native acceptance has passed on Windows `.171` against full AutoCAD 2027; the RC identity is
+retained until an explicit promotion/release decision. A3.1 solid, A3.2 advanced-dimension and A3.3
+analysis methods are live-verified but remain backend-staged/capability-false until explicit
+promotion; the public MCP surface remains 50 tools.
 
 ## Development checks
 

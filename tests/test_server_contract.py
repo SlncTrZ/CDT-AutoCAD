@@ -100,7 +100,7 @@ async def test_com_system_status_exposes_primary_live_certification_target(setti
 
     payload = result.structured_content or {}
     assert payload["live_certification"]["primary_release"] == "2027"
-    assert payload["live_certification"]["primary_progid"] == "AutoCAD.Application.26.0"
+    assert payload["live_certification"]["primary_progid"] == "AutoCAD.Application.26"
     assert payload["application"] is None
 
 

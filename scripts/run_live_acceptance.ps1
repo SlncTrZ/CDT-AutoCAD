@@ -2,10 +2,12 @@
 param(
     [string]$Python = "",
     [string]$ExpectedRelease = "2027",
-    [string]$ProgId = "AutoCAD.Application.26.0"
+    [string]$ProgId = ""
 )
 
 $ErrorActionPreference = "Stop"
+$repoRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $repoRoot
 
 if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
     throw "CDT-AutoCAD live acceptance must run on Windows."
@@ -14,6 +16,18 @@ if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
 if (-not $Python) {
     $localVenvPython = Join-Path $env:USERPROFILE ".venvs\CDT-AutoCAD\Scripts\python.exe"
     $Python = if (Test-Path $localVenvPython) { $localVenvPython } else { "python" }
+}
+
+if (-not $ProgId) {
+    foreach ($candidate in @("AutoCAD.Application.26", "AutoCAD.Application.26.0", "AutoCAD.Application")) {
+        if ([type]::GetTypeFromProgID($candidate, $false)) {
+            $ProgId = $candidate
+            break
+        }
+    }
+    if (-not $ProgId) {
+        throw "No registered AutoCAD 2027-compatible COM ProgID was found."
+    }
 }
 
 if (-not (Get-Process -Name "acad" -ErrorAction SilentlyContinue)) {
@@ -30,7 +44,7 @@ $env:CDT_AUTOCAD_EXPECT_RELEASE = $ExpectedRelease
 $env:CDT_AUTOCAD_COM_PROGID = $ProgId
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$evidenceRoot = Join-Path (Get-Location) "artifacts/live-acceptance"
+$evidenceRoot = Join-Path $repoRoot "artifacts/live-acceptance"
 $coreBaseTemp = Join-Path $evidenceRoot "pytest-core-$timestamp"
 $advancedBaseTemp = Join-Path $evidenceRoot "pytest-advanced-dimensions-$timestamp"
 $analysisBaseTemp = Join-Path $evidenceRoot "pytest-analysis-$timestamp"

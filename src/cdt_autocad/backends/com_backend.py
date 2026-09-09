@@ -1,5 +1,5 @@
 """Live AutoCAD backend using the Windows ActiveX/COM automation API.
-Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-09 21:13
+Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-09 22:58
 
 This backend intentionally implements only the existing A0/A1 provider contract. It does not
 copy the much larger reference server surface. All COM work is serialized through one STA worker
@@ -12,9 +12,11 @@ import asyncio
 import ctypes
 import io
 import math
+import os
 import re
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, TypeVar
@@ -33,6 +35,7 @@ if _WIN32:
         import pythoncom
         import pywintypes
         import win32com.client
+        import win32com.client.dynamic
         import win32gui
         import win32ui
 
@@ -74,7 +77,10 @@ _AUTOCAD_RELEASE_BY_COM_VERSION = {
 }
 _PRIMARY_CERTIFICATION_RELEASE = "2027"
 _PRIMARY_CERTIFICATION_COM_VERSION = "26.0"
-_PRIMARY_CERTIFICATION_PROGID = "AutoCAD.Application.26.0"
+_PRIMARY_CERTIFICATION_PROGID = "AutoCAD.Application.26"
+_RPC_E_CALL_REJECTED = -2147418111
+_RPC_E_SERVERCALL_RETRYLATER = -2147417846
+_COM_BUSY_HRESULTS = {_RPC_E_CALL_REJECTED, _RPC_E_SERVERCALL_RETRYLATER}
 
 _UNIT_NAMES = {
     0: "unitless",
@@ -97,10 +103,105 @@ def _autocad_release_info(raw_version: str) -> tuple[str | None, str | None]:
     return com_version, _AUTOCAD_RELEASE_BY_COM_VERSION.get(com_version)
 
 
+def _com_hresult(exc: BaseException) -> int | None:
+    try:
+        return int(exc.args[0])
+    except (IndexError, TypeError, ValueError):
+        return None
+
+
+def _com_call_with_busy_retry(
+    func,
+    *,
+    attempts: int = 20,
+    delay_seconds: float = 0.05,
+) -> Any:
+    if attempts < 1:
+        raise ValueError("attempts must be >= 1")
+    for attempt in range(attempts):
+        try:
+            return func()
+        except Exception as exc:
+            if _com_hresult(exc) not in _COM_BUSY_HRESULTS or attempt + 1 >= attempts:
+                raise
+            time.sleep(delay_seconds)
+    raise RuntimeError("unreachable COM call retry state")
+
+
+def _com_property_with_busy_retry(
+    obj: Any,
+    name: str,
+    *,
+    attempts: int = 20,
+    delay_seconds: float = 0.05,
+) -> Any:
+    return _com_call_with_busy_retry(
+        lambda: getattr(obj, name),
+        attempts=attempts,
+        delay_seconds=delay_seconds,
+    )
+
+
+def _ensure_autocad_type_library() -> bool:
+    if not _COM_IMPORTS_OK:
+        return False
+    common_program_files = os.environ.get("CommonProgramFiles")
+    if not common_program_files:
+        return False
+    shared = Path(common_program_files) / "Autodesk Shared"
+    candidates = [shared / "acax26enu.tlb"]
+    if shared.exists():
+        candidates.extend(sorted(shared.glob("acax26*.tlb")))
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen or not candidate.is_file():
+            continue
+        seen.add(candidate)
+        try:
+            attributes = pythoncom.LoadTypeLib(str(candidate)).GetLibAttr()
+            win32com.client.gencache.EnsureModule(
+                attributes[0], attributes[1], attributes[3], attributes[4]
+            )
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def _resolve_com_attr_name(obj: Any, name: str, *, writable: bool = False) -> str:
+    mapping_name = "_prop_map_put_" if writable else "_prop_map_get_"
+    mapping = getattr(obj, mapping_name, None)
+    if isinstance(mapping, dict):
+        if name in mapping:
+            return name
+        wanted = name.casefold()
+        for candidate in mapping:
+            if str(candidate).casefold() == wanted:
+                return str(candidate)
+    return name
+
+
+def _com_get_attr(obj: Any, name: str) -> Any:
+    resolved = _resolve_com_attr_name(obj, name)
+    return _com_property_with_busy_retry(obj, resolved)
+
+
+def _com_set_attr(obj: Any, name: str, value: Any) -> None:
+    resolved = _resolve_com_attr_name(obj, name, writable=True)
+    _com_call_with_busy_retry(lambda: setattr(obj, resolved, value))
+
+
+def _optional_com_property(obj: Any, name: str) -> Any | None:
+    try:
+        return _com_property_with_busy_retry(obj, name)
+    except Exception:
+        return None
+
+
 def _application_text_property(app: Any, name: str) -> str | None:
     """Read optional COM diagnostics without turning metadata failure into attach failure."""
     try:
-        value = getattr(app, name)
+        value = _com_property_with_busy_retry(app, name)
     except Exception:
         return None
     text = str(value or "").strip()
@@ -220,7 +321,20 @@ def _com_bounding_box(entity: Any) -> dict[str, list[float]]:
     return {"min": _xyz(minimum.value), "max": _xyz(maximum.value)}
 
 
+def _entity_property_view(entity: Any) -> Any:
+    if not _COM_IMPORTS_OK:
+        return entity
+    ole = getattr(entity, "_oleobj_", None)
+    if ole is None:
+        return entity
+    try:
+        return win32com.client.dynamic.DumbDispatch(ole)
+    except Exception:
+        return entity
+
+
 def _entity_info(entity: Any) -> EntityInfo:
+    entity = _entity_property_view(entity)
     entity_type = _object_type(entity)
     properties: dict[str, Any] = {}
 
@@ -291,7 +405,7 @@ def _entity_info(entity: Any) -> EntityInfo:
         id=str(entity.Handle),
         type=entity_type,
         layer=str(entity.Layer),
-        color=int(entity.Color),
+        color=int(_com_get_attr(entity, "Color")),
         linetype=linetype,
         visible=visible,
         properties=properties,
@@ -299,15 +413,16 @@ def _entity_info(entity: Any) -> EntityInfo:
 
 
 def _layer_info(layer: Any, current_layer: str) -> LayerInfo:
+    name = str(_com_get_attr(layer, "Name"))
     return LayerInfo(
-        name=str(layer.Name),
-        color=abs(int(layer.Color)),
-        linetype=str(layer.Linetype),
-        lineweight=int(layer.LineWeight),
-        is_on=bool(layer.LayerOn),
-        is_frozen=bool(layer.Freeze),
-        is_locked=bool(layer.Lock),
-        is_current=str(layer.Name).lower() == current_layer.lower(),
+        name=name,
+        color=abs(int(_com_get_attr(layer, "Color"))),
+        linetype=str(_com_get_attr(layer, "Linetype")),
+        lineweight=int(_com_get_attr(layer, "LineWeight")),
+        is_on=bool(_com_get_attr(layer, "LayerOn")),
+        is_frozen=bool(_com_get_attr(layer, "Freeze")),
+        is_locked=bool(_com_get_attr(layer, "Lock")),
+        is_current=name.lower() == current_layer.lower(),
     )
 
 
@@ -541,6 +656,7 @@ class ComBackend(AutoCADBackend):
             return app
 
         progid = self.settings.com_progid
+        _ensure_autocad_type_library()
         try:
             app = win32com.client.GetActiveObject(progid)
         except Exception as attach_error:
@@ -564,12 +680,16 @@ class ComBackend(AutoCADBackend):
 
     def _doc(self) -> Any:
         app = self._app()
-        if int(app.Documents.Count) <= 0:
+        documents = _com_property_with_busy_retry(app, "Documents")
+        if int(_com_property_with_busy_retry(documents, "Count")) <= 0:
             raise StateConflictError(
                 "No document open in AutoCAD; call document_new or document_open first"
             )
-        doc = app.ActiveDocument
-        key = (str(doc.Name), str(getattr(doc, "FullName", "") or ""))
+        doc = _com_property_with_busy_retry(app, "ActiveDocument")
+        key = (
+            str(_com_property_with_busy_retry(doc, "Name")),
+            str(_optional_com_property(doc, "FullName") or ""),
+        )
         if key != self._document_scope_key:
             if self._document_scope_key is not None and self._transaction_depth > 0:
                 raise StateConflictError(
@@ -583,13 +703,19 @@ class ComBackend(AutoCADBackend):
     def _space(self) -> Any:
         doc = self._doc()
         try:
-            return doc.ActiveLayout.Block
+            active_layout = _com_property_with_busy_retry(doc, "ActiveLayout")
+            return _com_property_with_busy_retry(active_layout, "Block")
         except Exception:
-            return doc.ModelSpace
+            return _com_property_with_busy_retry(doc, "ModelSpace")
 
     @staticmethod
     def _collection_names(collection: Any) -> list[str]:
-        return [str(collection.Item(index).Name) for index in range(int(collection.Count))]
+        count = int(_com_property_with_busy_retry(collection, "Count"))
+        names: list[str] = []
+        for index in range(count):
+            item = _com_call_with_busy_retry(lambda index=index: collection.Item(index))
+            names.append(str(_com_property_with_busy_retry(item, "Name")))
+        return names
 
     @classmethod
     def _find_name(cls, collection: Any, raw_name: str) -> str | None:
@@ -693,13 +819,14 @@ class ComBackend(AutoCADBackend):
     def _solid_info(solid: Any) -> dict[str, Any]:
         lower, upper = solid.GetBoundingBox()
         centroid = _xyz(solid.Centroid)
+        raw_solid_type = _optional_com_property(solid, "SolidType")
         return {
             "ok": True,
             "handle": str(solid.Handle),
             "type": "3DSOLID",
             "layer": str(solid.Layer),
             "visible": bool(solid.Visible),
-            "solid_type": str(solid.SolidType),
+            "solid_type": str(raw_solid_type) if raw_solid_type is not None else None,
             "volume": float(solid.Volume),
             "centroid": centroid,
             "bounding_box": {"min": _xyz(lower), "max": _xyz(upper)},
@@ -768,8 +895,10 @@ class ComBackend(AutoCADBackend):
             raise StateConflictError("Cannot create a new document while a transaction is active")
 
         def _sync() -> dict[str, Any]:
-            doc = self._app().Documents.Add()
-            return {"ok": True, "name": str(doc.Name), "backend": self.name}
+            documents = _com_property_with_busy_retry(self._app(), "Documents")
+            doc = documents.Add()
+            name = str(_com_property_with_busy_retry(doc, "Name"))
+            return {"ok": True, "name": name, "backend": self.name}
 
         result = await self._run(_sync)
         self._transaction_depth = 0
@@ -784,11 +913,12 @@ class ComBackend(AutoCADBackend):
         target = resolve_autocad_document_path(path, self.settings, must_exist=True)
 
         def _sync() -> dict[str, Any]:
-            doc = self._app().Documents.Open(str(target))
+            documents = _com_property_with_busy_retry(self._app(), "Documents")
+            doc = documents.Open(str(target))
             return {
                 "ok": True,
-                "name": str(doc.Name),
-                "path": str(doc.FullName),
+                "name": str(_com_property_with_busy_retry(doc, "Name")),
+                "path": str(_optional_com_property(doc, "FullName") or target),
                 "backend": self.name,
             }
 
@@ -803,17 +933,18 @@ class ComBackend(AutoCADBackend):
         def _sync() -> dict[str, Any]:
             doc = self._doc()
             app = self._app()
-            active_layout = str(doc.ActiveLayout.Name)
-            space = doc.ActiveLayout.Block
-            full_name = str(getattr(doc, "FullName", "") or "")
+            active_layout_obj = _com_property_with_busy_retry(doc, "ActiveLayout")
+            active_layout = str(_com_property_with_busy_retry(active_layout_obj, "Name"))
+            space = _com_property_with_busy_retry(active_layout_obj, "Block")
+            full_name = str(_optional_com_property(doc, "FullName") or "")
             try:
-                units_code = int(doc.GetVariable("INSUNITS"))
+                units_code = int(_com_call_with_busy_retry(lambda: doc.GetVariable("INSUNITS")))
             except Exception:
                 units_code = 0
             application = _inspect_application(app)
             self._application_metadata = application
             return {
-                "name": str(doc.Name),
+                "name": str(_com_property_with_busy_retry(doc, "Name")),
                 "path": full_name or None,
                 "saved": bool(doc.Saved),
                 "entity_count": int(space.Count),
@@ -867,7 +998,9 @@ class ComBackend(AutoCADBackend):
         def _sync() -> dict[str, Any]:
             doc = self._doc()
             doc.SaveAs(str(target), file_type)
-            self._document_scope_key = (str(doc.Name), str(getattr(doc, "FullName", "") or ""))
+            name = str(_com_property_with_busy_retry(doc, "Name"))
+            full_name = str(_optional_com_property(doc, "FullName") or target)
+            self._document_scope_key = (name, full_name)
             return {
                 "ok": True,
                 "path": str(target),
@@ -881,30 +1014,46 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> dict[str, Any]:
             doc = self._doc()
-            previous = str(doc.ActiveLayout.Name)
+            active_layout = _com_property_with_busy_retry(doc, "ActiveLayout")
+            previous = str(_com_property_with_busy_retry(active_layout, "Name"))
             selected = previous
             if layout is not None:
-                canonical = self._find_name(doc.Layouts, layout)
+                layouts = _com_property_with_busy_retry(doc, "Layouts")
+                canonical = self._find_name(layouts, layout)
                 if canonical is None:
                     raise ValueError(f"layout not found: {layout}")
                 selected = canonical
                 if canonical != previous:
-                    doc.ActiveLayout = doc.Layouts.Item(canonical)
+                    target_layout = _com_call_with_busy_retry(lambda: layouts.Item(canonical))
+                    _com_set_attr(doc, "ActiveLayout", target_layout)
             background_plot = None
             try:
-                background_plot = doc.GetVariable("BACKGROUNDPLOT")
-                doc.SetVariable("BACKGROUNDPLOT", 0)
-                ok = bool(doc.Plot.PlotToFile(str(target), "DWG To PDF.pc3"))
+                background_plot = _com_call_with_busy_retry(
+                    lambda: doc.GetVariable("BACKGROUNDPLOT")
+                )
+                _com_call_with_busy_retry(lambda: doc.SetVariable("BACKGROUNDPLOT", 0))
+                plot = _com_property_with_busy_retry(doc, "Plot")
+                ok = bool(
+                    _com_call_with_busy_retry(
+                        lambda: plot.PlotToFile(str(target), "DWG To PDF.pc3")
+                    )
+                )
                 if not ok:
                     raise RuntimeError("AutoCAD PlotToFile returned false")
                 return {"ok": True, "path": str(target), "layout": selected}
             finally:
                 try:
                     if background_plot is not None:
-                        doc.SetVariable("BACKGROUNDPLOT", background_plot)
+                        _com_call_with_busy_retry(
+                            lambda: doc.SetVariable("BACKGROUNDPLOT", background_plot)
+                        )
                 finally:
                     if selected != previous:
-                        doc.ActiveLayout = doc.Layouts.Item(previous)
+                        layouts = _com_property_with_busy_retry(doc, "Layouts")
+                        previous_layout = _com_call_with_busy_retry(
+                            lambda: layouts.Item(previous)
+                        )
+                        _com_set_attr(doc, "ActiveLayout", previous_layout)
 
         return await self._run(_sync)
 
@@ -1100,7 +1249,7 @@ class ComBackend(AutoCADBackend):
             if canonical_layer is not None:
                 entity.Layer = canonical_layer
             if normalized_color is not None:
-                entity.Color = normalized_color
+                _com_set_attr(entity, "Color", normalized_color)
             if canonical_linetype is not None:
                 entity.Linetype = canonical_linetype
             if visible is not None:
@@ -1187,7 +1336,7 @@ class ComBackend(AutoCADBackend):
             if canonical_layer is not None:
                 entity.Layer = canonical_layer
             if normalized_color is not None:
-                entity.Color = normalized_color
+                _com_set_attr(entity, "Color", normalized_color)
             return _entity_info(entity)
 
         return await self._run(_sync)
@@ -1210,7 +1359,7 @@ class ComBackend(AutoCADBackend):
             if canonical_layer is not None:
                 entity.Layer = canonical_layer
             if normalized_color is not None:
-                entity.Color = normalized_color
+                _com_set_attr(entity, "Color", normalized_color)
             return _entity_info(entity)
 
         return await self._run(_sync)
@@ -1240,7 +1389,7 @@ class ComBackend(AutoCADBackend):
             if canonical_layer is not None:
                 entity.Layer = canonical_layer
             if normalized_color is not None:
-                entity.Color = normalized_color
+                _com_set_attr(entity, "Color", normalized_color)
             return _entity_info(entity)
 
         return await self._run(_sync)
@@ -1264,7 +1413,7 @@ class ComBackend(AutoCADBackend):
             if canonical_layer is not None:
                 entity.Layer = canonical_layer
             if normalized_color is not None:
-                entity.Color = normalized_color
+                _com_set_attr(entity, "Color", normalized_color)
             return _entity_info(entity)
 
         return await self._run(_sync)
@@ -1290,7 +1439,7 @@ class ComBackend(AutoCADBackend):
             if canonical_layer is not None:
                 entity.Layer = canonical_layer
             if normalized_color is not None:
-                entity.Color = normalized_color
+                _com_set_attr(entity, "Color", normalized_color)
             return _entity_info(entity)
 
         return await self._run(_sync)
@@ -1328,7 +1477,7 @@ class ComBackend(AutoCADBackend):
                 if canonical_layer is not None:
                     hatch.Layer = canonical_layer
                 if normalized_color is not None:
-                    hatch.Color = normalized_color
+                    _com_set_attr(hatch, "Color", normalized_color)
                 return _entity_info(hatch)
             except Exception:
                 if hatch is not None:
@@ -1526,7 +1675,7 @@ class ComBackend(AutoCADBackend):
             if self._find_name(doc.Layers, wanted) is not None:
                 raise ValueError(f"layer already exists: {wanted}")
             layer = doc.Layers.Add(wanted)
-            layer.Color = normalized_color
+            _com_set_attr(layer, "Color", normalized_color)
             return _layer_info(layer, str(doc.ActiveLayer.Name))
 
         return await self._run(_sync)
@@ -1682,7 +1831,7 @@ class ComBackend(AutoCADBackend):
         for index in range(int(block.Count)):
             entity = block.Item(index)
             if str(entity.ObjectName) == "AcDbViewport":
-                viewports.append(entity)
+                viewports.append(_entity_property_view(entity))
         return viewports
 
     def _resolve_viewport(self, doc: Any, handle: str) -> tuple[Any, str | None]:
@@ -1690,7 +1839,7 @@ class ComBackend(AutoCADBackend):
         if not key:
             raise ValueError("viewport handle must not be empty")
         try:
-            entity = doc.HandleToObject(key)
+            entity = _entity_property_view(doc.HandleToObject(key))
         except Exception as exc:
             raise KeyError(f"viewport not found: {handle}") from exc
         if str(entity.ObjectName) != "AcDbViewport":

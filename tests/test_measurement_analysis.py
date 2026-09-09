@@ -1,5 +1,5 @@
 """A3.3 measurement, extents and native-intersection staging tests.
-Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-09 21:02
+Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-09 22:36
 """
 
 from __future__ import annotations
@@ -234,4 +234,4 @@ async def test_live_autocad_a3_3_measurement_extents_and_intersections(settings)
                 await backend._run(lambda: backend._app().ActiveDocument.Close(False))
             except Exception:
                 pass
-        backend.close()
+        backend.shutdown()
