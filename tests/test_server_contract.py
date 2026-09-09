@@ -1,5 +1,5 @@
 """Provider contract regression tests across AutoCAD backends.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 16:13
+Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 19:01
 """
 
 from __future__ import annotations
@@ -90,6 +90,18 @@ def test_backend_factory_selects_com(settings):
     app = create_mcp(replace(settings, backend="com"))
     assert isinstance(app._cdt_backend, ComBackend)
     assert app._cdt_backend.name == "com"
+
+
+@pytest.mark.asyncio
+async def test_com_system_status_exposes_primary_live_certification_target(settings):
+    app = create_mcp(replace(settings, backend="com"))
+    async with Client(app) as client:
+        result = await client.call_tool("system_status", {})
+
+    payload = result.structured_content or {}
+    assert payload["live_certification"]["primary_release"] == "2027"
+    assert payload["live_certification"]["primary_progid"] == "AutoCAD.Application.26.0"
+    assert payload["application"] is None
 
 
 def test_capability_keyset_is_stable_across_backends(settings):

@@ -5,7 +5,7 @@
 
 ## 1. Objective
 
-AutoCAD is Lane A, the first implemented provider and the current migration-first runtime because it already contains active A2/A3 work. After a clean checkpoint, its runtime moves to independent repo `CDT-AutoCAD`. It remains a reference provider used to validate:
+AutoCAD is Lane A and the first implemented provider. Its runtime has been extracted history-preserving into this independent `CDT-AutoCAD` repository; the governing control-plane specs remain pinned to `CDT_Engineer@643019c`. It remains a reference provider used to validate:
 
 - SlncTrZ provider compliance;
 - CDT common CAD contract;
@@ -321,21 +321,22 @@ has explicit ProgID + attach policy, a single STA executor, native DWG/DXF, nati
 undo marks, active-document scope protection, timeout uncertainty semantics and conservative
 pre-existing viewport deletion (`force=true`).
 
-A2 **cannot honestly be marked acceptance-CLOSED yet**. The reachable Windows development machine
-was checked directly and currently has no AutoCAD installation registered or present in standard
-Autodesk install locations; therefore the real ActiveX integration lane cannot run. This is an
-environmental blocker, not a substituted mock PASS.
+A2 **cannot honestly be marked acceptance-CLOSED yet**. The primary native certification target is
+AutoCAD 2027 full on Windows x64 (`AutoCAD.Application.26.0`). Runtime status now identifies the
+attached ActiveX COM version/release and reports the certification target. The native gate remains
+pending while AutoCAD 2027 is being installed; mock/Linux evidence is not substituted for that PASS.
 
 ### A3.1 — Native ACIS 3D solids staged
 
 The COM backend now has a focused `SolidContract` implementation for:
 
-- BOX / CYLINDER / SPHERE / CONE primitives;
+- BOX / CYLINDER / SPHERE / CONE / TORUS / WEDGE primitives;
 - closed planar profile → EXTRUDE;
 - closed planar profile → REVOLVE around an arbitrary 3D axis;
 - profile → SWEEP along Autodesk-supported Arc/Circle/Ellipse/Polyline/Spline paths;
 - Boolean UNION / SUBTRACT / INTERSECT with validated distinct solid handles;
-- 3D MOVE and `Rotate3D`;
+- 3D polyline sweep-path creation;
+- 3D MOVE, `Rotate3D`, `ScaleEntity` and `Mirror3D`;
 - solid inspection: type, layer, visibility, volume, centroid and bounding box;
 - normalized arbitrary 3D view direction + zoom extents.
 
@@ -350,25 +351,26 @@ real AutoCAD lane proves the behavior.
 
 ### Verification evidence
 
-Current generic Linux verification after A2 RC + A3.1:
+Current generic Linux verification after repo extraction + 2027 live-gate preparation:
 
-- A2 contract/help gate: `11 passed`;
-- A3 focused gate: `7 passed, 1 skipped`;
-- combined A2+A3 targeted gate: `19 passed, 1 skipped`;
-- full regression before final hygiene: `51 passed, 2 skipped`;
+- COM A2 focused gate: `20 passed, 1 skipped`;
+- A3 focused gate: `9 passed, 1 skipped`;
+- combined A2/A3 + server-contract gate: `42 passed, 2 skipped`;
+- full regression: `60 passed, 2 skipped`;
 - the two skips are deliberate real-Windows/AutoCAD live lanes;
-- provider runtime/package versions are locked by regression test (`pyproject.toml` == `__version__`);
-- Ruff remains unavailable because the existing `.deps` has the Python wrapper but no native Ruff
-  binary; no dependency was installed outside approved scope.
+- application version parsing identifies official COM release series through AutoCAD 2027 (`26.0`);
+- ActiveX document variables are read from the Document object; native PDF plotting forces foreground `BACKGROUNDPLOT=0` and restores the prior value;
+- provider runtime/package versions remain locked by regression test (`pyproject.toml` == `__version__`).
 
 ### Next gates
 
-1. Install/restore AutoCAD on a reachable Windows lane.
-2. Run `CDT_AUTOCAD_LIVE_TEST=1 pytest -q tests/test_com_backend.py tests/test_com_3d.py`.
-3. Run full A0/A1 parity using `CDT_AUTOCAD_BACKEND=com`.
-4. If A2 live passes, promote `0.3.0rc1 / autocad-a2-v1-rc1` to final A2 identity.
-5. If A3 live passes, expose the staged solid/view methods as the next provider extension contract.
+1. Finish installing/licensing AutoCAD 2027 full on the Windows lane and start it normally.
+2. Run `./scripts/run_live_acceptance.ps1`; preserve the generated JUnit + pytest artifact directory.
+3. Review any native failure without weakening/skipping the gate; status must identify release 2027 / COM 26.0.
+4. If A2 live passes, promote the A2 RC identity intentionally and update help/docs with evidence.
+5. If A3.1 live passes, expose staged solid/view methods under the next provider extension contract.
 6. Continue A3 drafting/engineering families (trim/offset/fillet, selection, advanced dimensions,
    GDT) after the 3D lane is proven.
 
-Do not extract shared runtime from this lane. After repo split, any reusable infrastructure must be proposed through Rule-of-Two evidence and may enter `CDT-Provider-Kit` only after cross-provider conformance proves equivalent semantics.
+See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared
+runtime from this lane; reusable infrastructure still requires Rule-of-Two cross-provider evidence.

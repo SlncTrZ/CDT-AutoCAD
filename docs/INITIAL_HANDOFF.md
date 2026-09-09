@@ -14,9 +14,10 @@
 3. `docs/ROADMAP.md`
 4. `README.md`
 5. `docs/TOOL_GUIDE.md`
-6. `specs/MCP_PROVIDER_STANDARD.md`
-7. `specs/ARCHITECTURE.md`
-8. `specs/CONTRACTS.md`
+6. `docs/LIVE_ACCEPTANCE.md`
+7. `specs/MCP_PROVIDER_STANDARD.md`
+8. `specs/ARCHITECTURE.md`
+9. `specs/CONTRACTS.md`
 
 ## Starting state
 
@@ -26,24 +27,25 @@ Known implementation state:
 
 - A0+A1 closed in prior monorepo history;
 - A2 public release candidate `0.3.0rc1 / autocad-a2-v1-rc1`, 50 tools;
-- A2 live acceptance blocked until a real AutoCAD installation is available on Windows;
+- primary native certification target is AutoCAD 2027 full / Windows x64 / COM `26.0`;
+- A2 live acceptance remains open while AutoCAD 2027 is being installed;
 - A3.1 native ACIS implementation staged below public capability surface;
 - source profile preservation for region-based 3D operations uses Copy -> temporary Region -> solid -> cleanup.
 
 ## First task
 
-Before adding features, prove repository extraction equivalence:
+Repository extraction equivalence is complete. Current generic checkpoint after 2027 live-gate
+preparation/hardening is `60 PASS / 2 live SKIP`.
 
-```text
-package/runtime version unchanged
-help contract version unchanged
-help fingerprint unchanged
-focused contract/A3 tests pass
-full generic suite matches 54 PASS / 2 live SKIP
-compile/hygiene pass
+When AutoCAD 2027 is installed/licensed and running, execute:
+
+```powershell
+./scripts/run_live_acceptance.ps1
 ```
 
-Then proceed with A2 live acceptance followed by A3 live verification per `docs/ROADMAP.md`.
+Review the generated JUnit/pytest evidence before changing A2/A3 capability state. Until then, useful
+work may continue only on generic correctness, advanced drafting implementation and test preparation
+that does not claim native acceptance.
 
 ## Restrictions
 

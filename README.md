@@ -1,6 +1,6 @@
 # CDT AutoCAD Provider
 
-> Status: A2 release candidate · real AutoCAD acceptance blocked by missing installation · Version: 0.3.0rc1 · Updated: 2026-09-09
+> Status: A2 release candidate · primary AutoCAD 2027 live acceptance pending · Version: 0.3.0rc1 · Updated: 2026-09-09
 
 This provider is the first CDT_Engineer reference implementation. The default backend remains
 `ezdxf`; the public release-candidate contract is now a bounded 50-tool `autocad-a2-v1-rc1` surface.
@@ -25,8 +25,8 @@ capture while preserving typed refusal on the headless backend.
 - Typed MCP errors for unsupported capabilities, state conflicts and timeouts.
 
 A2 viewport create/list/scale/lock/delete, live zoom and native-window PNG capture are now public MCP
-release-candidate tools. They remain **live-unverified** because the current Windows development PC
-has no AutoCAD installation. Mock/Linux verification does not substitute for that acceptance gate.
+release-candidate tools. They remain **live-unverified** until the primary AutoCAD 2027 Windows gate
+passes. Mock/Linux verification does not substitute for that acceptance gate.
 
 ## Runtime configuration
 
@@ -53,6 +53,17 @@ verify the drawing before retrying to avoid double-applying an operation.
 
 Credentials must be supplied by deployment/runtime configuration. Do not commit them.
 
+## AutoCAD version policy
+
+The runtime default remains `AutoCAD.Application` so normal use can attach to the registered full
+AutoCAD installation. The **primary certification target is AutoCAD 2027 full on Windows x64**, whose
+versioned ActiveX ProgID is `AutoCAD.Application.26.0`. Other releases are compatibility candidates
+and require their own native evidence before they are called certified. `system_status` reports the
+primary certification target and, after COM attachment, the detected application version, COM
+version and mapped AutoCAD release.
+
+See [`docs/LIVE_ACCEPTANCE.md`](docs/LIVE_ACCEPTANCE.md) for the version matrix and gate procedure.
+
 ## Optional dependencies
 
 Headless PDF rendering:
@@ -72,19 +83,18 @@ remain capability/refusal conditions rather than silent fallbacks.
 
 ## A2 release-candidate verification lane
 
-Generic CI uses mocks and remains cross-platform. The destructive/live smoke is opt-in:
+Generic CI uses mocks and remains cross-platform. The primary certification lane is opt-in and
+version-pinned:
 
-```text
-CDT_AUTOCAD_LIVE_TEST=1 pytest -q tests/test_com_backend.py
+```powershell
+./scripts/run_live_acceptance.ps1
 ```
 
-Run that only on Windows with AutoCAD already running when using the default `attach_only` policy.
-The smoke creates a disposable drawing, exercises basic geometry, layout + viewport operations, zoom,
-PNG capture and native DWG save, then closes the created document without saving further changes.
+The runner targets AutoCAD 2027 / `AutoCAD.Application.26.0`, preserves pytest/JUnit evidence under
+ignored `artifacts/live-acceptance/`, and executes both A2 and A3.1 live lanes. AutoCAD must already
+be running because acceptance uses the fail-closed `attach_only` policy.
 
-Current blocker: the reachable Windows PC does not have AutoCAD registered/installed, so this lane
-cannot yet run. A2 implementation may advance to RC, but A2 acceptance must remain OPEN until this
-specific gate passes.
+A2 implementation remains RC until this native gate passes and the evidence is reviewed.
 
 ## Development checks
 
@@ -108,6 +118,7 @@ content with SHA-256.
 ## Reference provenance
 
 A0/A1 and staged A2 behavior were informed primarily by the MIT-licensed `U-C4N/Autocad-MCP`
-reference in `_private/reference/autocad/Autocad-MCP`, especially its dual-engine, capability-refusal,
-COM STA, viewport, screenshot, layout, transaction and timeout-integrity patterns. CDT_Engineer does
-not vendor the upstream monolithic server surface; the public contract is normalized to CDT/SlncTrZ.
+reference used during the original CDT_Engineer monorepo research, especially its dual-engine,
+capability-refusal, COM STA, viewport, screenshot, layout, transaction and timeout-integrity patterns.
+CDT-AutoCAD does not vendor the upstream monolithic server surface; the public contract is normalized
+to CDT/SlncTrZ.

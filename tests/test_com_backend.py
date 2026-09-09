@@ -1,5 +1,5 @@
 """A2 COM backend regression and live-lane tests.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 14:16
+Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 19:01
 """
 
 from __future__ import annotations
@@ -22,6 +22,47 @@ from cdt_autocad.errors import BackendTimeoutError, StateConflictError
 from cdt_autocad.security import resolve_autocad_document_path
 
 _LIVE_COM_ENABLED = sys.platform == "win32" and os.environ.get("CDT_AUTOCAD_LIVE_TEST") == "1"
+_LIVE_COM_PROGID = os.environ.get("CDT_AUTOCAD_COM_PROGID", "AutoCAD.Application").strip() or "AutoCAD.Application"
+
+
+def test_autocad_version_mapping_recognizes_official_release_series():
+    assert cb._autocad_release_info("26.0s (LMS Tech)") == ("26.0", "2027")
+    assert cb._autocad_release_info("25.1") == ("25.1", "2026")
+    assert cb._autocad_release_info("25.0.58.0") == ("25.0", "2025")
+    assert cb._autocad_release_info("99.9") == ("99.9", None)
+    assert cb._autocad_release_info("") == (None, None)
+
+
+def test_application_metadata_is_best_effort_when_optional_com_property_fails():
+    class PartialApp:
+        Name = "AutoCAD"
+        Version = "26.0"
+        FullName = r"C:\AutoCAD 2027\acad.exe"
+
+        @property
+        def Caption(self):
+            raise RuntimeError("caption unavailable")
+
+    metadata = cb._inspect_application(PartialApp())
+    assert metadata["release"] == "2027"
+    assert metadata["caption"] is None
+    assert metadata["primary_target_match"] is True
+
+
+def test_status_declares_primary_2027_certification_target_before_connection(settings):
+    backend = ComBackend(replace(settings, backend="com"))
+    status = backend.status()
+
+    assert status["application"] is None
+    assert status["live_certification"] == {
+        "state": "pending_real_autocad",
+        "primary_release": "2027",
+        "primary_com_version": "26.0",
+        "primary_progid": "AutoCAD.Application.26.0",
+        "required_edition": "full",
+        "required_platform": "windows_x64",
+        "compatibility_policy": "explicit_native_matrix_required",
+    }
 
 
 def test_direct_settings_construction_rejects_unsafe_com_policy(settings):
@@ -104,7 +145,13 @@ def test_attach_only_policy_never_starts_autocad(settings, monkeypatch):
 
 
 def test_attach_or_start_dispatches_only_after_attach_fails(settings, monkeypatch):
-    app = SimpleNamespace(Visible=False)
+    app = SimpleNamespace(
+        Visible=False,
+        Name="AutoCAD",
+        Version="26.0s (LMS Tech)",
+        Caption="Autodesk AutoCAD 2027",
+        FullName=r"C:\Program Files\Autodesk\AutoCAD 2027\acad.exe",
+    )
     calls = _fake_com_runtime(
         monkeypatch,
         active_error=RuntimeError("not running"),
@@ -125,7 +172,17 @@ def test_attach_or_start_dispatches_only_after_attach_fails(settings, monkeypatc
             ("attach", "AutoCAD.Application"),
             ("dispatch", "AutoCAD.Application"),
         ]
-        assert backend.status()["connected"] is True
+        status = backend.status()
+        assert status["connected"] is True
+        assert status["application"] == {
+            "name": "AutoCAD",
+            "version": "26.0s (LMS Tech)",
+            "com_version": "26.0",
+            "release": "2027",
+            "caption": "Autodesk AutoCAD 2027",
+            "full_name": r"C:\Program Files\Autodesk\AutoCAD 2027\acad.exe",
+            "primary_target_match": True,
+        }
     finally:
         assert backend._executor is not None
         backend._executor.shutdown(wait=False)
@@ -281,6 +338,78 @@ async def _inline_run(func):
 
 
 @pytest.mark.asyncio
+async def test_document_info_reads_insunits_from_document_not_application(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+    variable_calls = []
+
+    class FakeDoc:
+        Name = "live.dwg"
+        FullName = ""
+        Saved = True
+        ActiveLayout = SimpleNamespace(Name="Model", Block=SimpleNamespace(Count=0))
+        ModelSpace = SimpleNamespace(Count=0)
+        Layers = SimpleNamespace(Count=1)
+        Blocks = _FakeCollection([])
+        Layouts = SimpleNamespace(Count=1)
+
+        def GetVariable(self, name):
+            variable_calls.append(name)
+            return 4
+
+    app = SimpleNamespace(
+        Name="AutoCAD",
+        Version="26.0",
+        Caption="Autodesk AutoCAD 2027",
+        FullName=r"C:\AutoCAD 2027\acad.exe",
+    )
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: FakeDoc())
+    monkeypatch.setattr(backend, "_app", lambda: app)
+
+    info = await backend.document_info()
+    assert variable_calls == ["INSUNITS"]
+    assert info["units"] == "mm"
+    assert info["autocad_release"] == "2027"
+
+
+@pytest.mark.asyncio
+async def test_native_pdf_plot_forces_foreground_and_restores_backgroundplot(settings, monkeypatch, tmp_path):
+    backend = ComBackend(replace(settings, backend="com"))
+    calls = []
+    state = {"backgroundplot": 2}
+
+    class FakePlot:
+        def PlotToFile(self, path, config):
+            calls.append(("plot", state["backgroundplot"], path, config))
+            return True
+
+    class FakeDoc:
+        ActiveLayout = SimpleNamespace(Name="Model")
+        Layouts = _FakeCollection([SimpleNamespace(Name="Model")])
+        Plot = FakePlot()
+
+        def GetVariable(self, name):
+            assert name == "BACKGROUNDPLOT"
+            return state["backgroundplot"]
+
+        def SetVariable(self, name, value):
+            assert name == "BACKGROUNDPLOT"
+            state["backgroundplot"] = int(value)
+            calls.append(("set", int(value)))
+
+    doc = FakeDoc()
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+
+    result = await backend.document_export_pdf(str(tmp_path / "plot.pdf"))
+    assert result["ok"] is True
+    assert calls[0] == ("set", 0)
+    assert calls[1][0:2] == ("plot", 0)
+    assert calls[-1] == ("set", 2)
+    assert state["backgroundplot"] == 2
+
+
+@pytest.mark.asyncio
 async def test_staged_viewport_roundtrip_and_safe_delete(settings, monkeypatch):
     backend = ComBackend(replace(settings, backend="com"))
     doc = _FakeDoc()
@@ -410,16 +539,61 @@ async def test_live_autocad_native_dwg_smoke(settings, tmp_path: Path):
             settings,
             backend="com",
             com_attach_policy="attach_only",
-            com_call_timeout_seconds=30.0,
+            com_progid=_LIVE_COM_PROGID,
+            com_call_timeout_seconds=60.0,
         )
     )
     created_name = None
     try:
         created = await backend.document_new()
         created_name = created["name"]
-        line = await backend.entity_create_line(0, 0, 25, 0)
-        assert line.type == "LINE"
+        layer = await backend.layer_create("CDT-LIVE", color=3)
+        assert layer.name == "CDT-LIVE"
+        assert (await backend.layer_set_current("CDT-LIVE"))["current_layer"] == "CDT-LIVE"
+
+        line = await backend.entity_create_line(0, 0, 25, 0, layer="CDT-LIVE")
+        circle = await backend.entity_create_circle(40, 0, 8, layer="CDT-LIVE")
+        arc = await backend.entity_create_arc(65, 0, 8, 0, 180, layer="CDT-LIVE")
+        polyline = await backend.entity_create_polyline(
+            [[0, 20], [20, 20], [20, 35], [0, 35]], closed=True, layer="CDT-LIVE"
+        )
+        text = await backend.entity_create_text("CDT A2 LIVE", 30, 25, layer="CDT-LIVE")
+        hatch = await backend.hatch_create(
+            [[50, 20], [70, 20], [70, 35], [50, 35]], layer="CDT-LIVE"
+        )
+        linear_dim = await backend.dimension_linear(0, 0, 25, 0, 12.5, -8, layer="CDT-LIVE")
+        aligned_dim = await backend.dimension_aligned(0, 20, 20, 35, 10, 42, layer="CDT-LIVE")
+        assert {entity.type for entity in (line, circle, arc, polyline, text, hatch)} == {
+            "LINE",
+            "CIRCLE",
+            "ARC",
+            "LWPOLYLINE",
+            "TEXT",
+            "HATCH",
+        }
+        assert linear_dim.type == aligned_dim.type == "DIMENSION"
         assert await backend.object_count(type_filter="LINE") >= 1
+        assert (await backend.object_get(line.id)).id == line.id
+        assert len(await backend.object_list(layer_filter="CDT-LIVE")) >= 8
+
+        edited = await backend.object_set_properties(line.id, color=1, visible=True)
+        assert edited.color == 1
+        moved = await backend.object_move(line.id, 5, 5)
+        assert moved.properties["start"] == pytest.approx([5.0, 5.0, 0.0])
+        copied = await backend.object_copy(circle.id, 0, 20)
+        assert copied.type == "CIRCLE"
+        await backend.object_rotate(polyline.id, 0, 20, 15)
+        await backend.object_scale(text.id, 30, 25, 1.2)
+
+        block = await backend.block_create("CDT-LIVE-BLOCK", [line.id, circle.id], 0, 0)
+        assert block.entity_count == 2
+        inserted = await backend.block_insert("CDT-LIVE-BLOCK", 90, 25, layer="CDT-LIVE")
+        assert inserted.type == "INSERT"
+
+        assert (await backend.transaction_begin())["transaction_depth"] == 1
+        await backend.entity_create_line(0, 50, 25, 50, layer="CDT-LIVE")
+        assert (await backend.transaction_commit())["transaction_depth"] == 0
+        assert (await backend.drawing_purge())["ok"] is True
 
         await backend.layout_create("CDT-A2-SHEET")
         viewport = await backend.viewport_create(
@@ -438,6 +612,11 @@ async def test_live_autocad_native_dwg_smoke(settings, tmp_path: Path):
         screenshot = await backend.view_screenshot()
         assert screenshot.startswith(b"\x89PNG\r\n\x1a\n")
 
+        pdf_target = tmp_path / "cdt-a2-live-smoke.pdf"
+        plotted = await backend.document_export_pdf(str(pdf_target), layout="CDT-A2-SHEET")
+        assert plotted["ok"] is True
+        assert pdf_target.is_file()
+
         target = tmp_path / "cdt-a2-live-smoke.dwg"
         saved = await backend.document_save_as(str(target))
         assert saved["format"] == "dwg"
@@ -446,7 +625,22 @@ async def test_live_autocad_native_dwg_smoke(settings, tmp_path: Path):
         info = await backend.document_info()
         assert info["backend"] == "com"
         assert info["path"] == str(target)
+        assert info["autocad_com_version"] is not None
+        assert info["autocad_release"] is not None
+        expected_release = os.environ.get("CDT_AUTOCAD_EXPECT_RELEASE", "").strip()
+        if expected_release:
+            assert info["autocad_release"] == expected_release
+        status = backend.status()
+        assert status["application"]["release"] == info["autocad_release"]
         assert (await backend.viewport_delete(viewport["handle"]))["ok"] is True
+
+        await backend._run(lambda: backend._app().ActiveDocument.Close(False))
+        created_name = None
+        reopened = await backend.document_open(str(target))
+        created_name = reopened["name"]
+        assert reopened["path"] == str(target)
+        reopened_info = await backend.document_info()
+        assert reopened_info["path"] == str(target)
     finally:
         if created_name and backend._executor is not None:
             try:

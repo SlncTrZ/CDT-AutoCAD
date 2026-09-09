@@ -28,14 +28,16 @@ Forbidden unless explicitly assigned:
 - Provider version: `0.3.0rc1`
 - Contract: `autocad-a2-v1-rc1`
 - Public surface: 50 MCP tools
-- A2 implementation: release candidate; real AutoCAD acceptance still OPEN.
+- A2 implementation: release candidate; primary AutoCAD 2027 live acceptance still OPEN.
+- Primary certification target: AutoCAD 2027 full, Windows x64, ActiveX COM `26.0` / `AutoCAD.Application.26.0`.
 - A3.1 ACIS backend: staged/private pending real AutoCAD verification.
 - Extraction baseline: 54 tests PASS, 2 live-Windows/AutoCAD tests SKIP before repository split.
+- Current generic hardening checkpoint: 60 tests PASS, 2 deliberate live tests SKIP.
 
 ## First delivery gates
 
-1. Prove extraction caused no package/version/help/test drift.
-2. A2: run the real Windows AutoCAD ActiveX lane; mocks are not substitutes.
+1. Extraction equivalence is complete; preserve the pinned spec/runtime boundary.
+2. A2: run `scripts/run_live_acceptance.ps1` against full AutoCAD 2027; mocks are not substitutes.
 3. A3: live-verify native solids before publishing capability/tool surface.
 4. Continue advanced drafting/engineering only after A2/A3 acceptance evidence is explicit.
 

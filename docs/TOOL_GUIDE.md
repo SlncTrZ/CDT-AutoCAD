@@ -8,9 +8,9 @@ This is the **A2 release-candidate 50-tool surface**. `ezdxf` remains the defaul
 backend is selected explicitly on Windows for live AutoCAD, native DWG, native plotting, viewport
 management, live zoom and PNG capture.
 
-A2 implementation is code-complete but **not acceptance-closed**: the current Windows development PC
-has no AutoCAD installation, so the real ActiveX lane cannot yet certify the release candidate. The
-provider reports this state explicitly rather than treating mock coverage as live verification.
+A2 implementation is code-complete but **not acceptance-closed** until the primary AutoCAD 2027
+Windows ActiveX lane passes. The provider reports this state explicitly rather than treating mock
+coverage as live verification.
 
 ## Recommended workflow
 
@@ -25,7 +25,8 @@ provider reports this state explicitly rather than treating mock coverage as liv
 ## Identity
 
 - `help` — read-only provider guide and contract fingerprint.
-- `system_status` — backend/runtime state, transaction state and COM staging metadata.
+- `system_status` — backend/runtime state, transaction state, primary live-certification target and,
+  after COM attachment, detected AutoCAD application/version/release metadata.
 - `system_capabilities` — machine-readable capability map for the selected backend.
 
 ## Documents
@@ -148,6 +149,10 @@ CDT_AUTOCAD_COM_TIMEOUT         COM deadline in seconds; default 60
 `attach_only` is fail-closed: if no matching application is already running, the provider refuses
 rather than starting AutoCAD. `attach_or_start` must be chosen explicitly.
 
+Primary live certification targets **AutoCAD 2027 full / Windows x64**. Its versioned ProgID is
+`AutoCAD.Application.26.0`; normal runtime remains unversioned by default. Other releases require an
+explicit native compatibility matrix before they are called certified. See `docs/LIVE_ACCEPTANCE.md`.
+
 The `com` optional dependency installs pywin32 plus Pillow; Pillow is used by native-window PNG
 capture.
 
@@ -166,16 +171,15 @@ capture.
 
 ## Current explicit limitations
 
-The A2 release candidate still does not expose:
+The A2 release candidate still does not publicly expose:
 
-- A3 ACIS 3D solid tools (implementation follows after this RC gate);
+- staged A3 ACIS 3D solid/view tools;
 - angular/radius/diameter dimensions;
 - advanced hatch editing/gradients;
 - trim/offset/fillet;
-- GDT;
-- ACIS 3D solids.
+- GDT.
 
-A2 acceptance remains OPEN until the opt-in Windows + real AutoCAD lane validates native DWG,
-A0/A1 parity, viewport operations, zoom and PNG capture. The blocker is environmental: AutoCAD is
-not installed on the current Windows development PC. A3 can proceed as staged COM code, but its own
-live acceptance follows the same real-AutoCAD gate.
+A2 acceptance remains OPEN until the opt-in AutoCAD 2027 Windows lane validates native DWG,
+A0/A1 parity, viewport operations, zoom, PNG capture and native PDF plotting. A3.1 is implemented
+behind capability-false staging and has a broader native solid test lane, but it follows the same
+real-AutoCAD evidence rule before publication.

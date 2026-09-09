@@ -1,5 +1,5 @@
 """Live AutoCAD backend using the Windows ActiveX/COM automation API.
-Wing: code | Topic: autocad-a3 | Updated: 2026-09-09 16:13
+Wing: code | Topic: autocad-a3 | Updated: 2026-09-09 19:01
 
 This backend intentionally implements only the existing A0/A1 provider contract. It does not
 copy the much larger reference server surface. All COM work is serialized through one STA worker
@@ -12,6 +12,7 @@ import asyncio
 import ctypes
 import io
 import math
+import re
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -57,6 +58,24 @@ _THREAD_STATE = threading.local()
 _AC2018_DWG = 64
 _AC2018_DXF = 65
 
+# Autodesk's version-dependent ActiveX ProgID series. These entries are used only to identify
+# the attached application and report certification context; they do not imply that every release
+# is certified by CDT-AutoCAD.
+_AUTOCAD_RELEASE_BY_COM_VERSION = {
+    "23.0": "2019",
+    "23.1": "2020",
+    "24.0": "2021",
+    "24.1": "2022",
+    "24.2": "2023",
+    "24.3": "2024",
+    "25.0": "2025",
+    "25.1": "2026",
+    "26.0": "2027",
+}
+_PRIMARY_CERTIFICATION_RELEASE = "2027"
+_PRIMARY_CERTIFICATION_COM_VERSION = "26.0"
+_PRIMARY_CERTIFICATION_PROGID = "AutoCAD.Application.26.0"
+
 _UNIT_NAMES = {
     0: "unitless",
     1: "inches",
@@ -67,6 +86,41 @@ _UNIT_NAMES = {
     6: "m",
     7: "km",
 }
+
+
+def _autocad_release_info(raw_version: str) -> tuple[str | None, str | None]:
+    """Map the leading ActiveX COM version to a known AutoCAD release without over-claiming support."""
+    match = re.search(r"(\d+\.\d+)", str(raw_version or "").strip())
+    if match is None:
+        return None, None
+    com_version = match.group(1)
+    return com_version, _AUTOCAD_RELEASE_BY_COM_VERSION.get(com_version)
+
+
+def _application_text_property(app: Any, name: str) -> str | None:
+    """Read optional COM diagnostics without turning metadata failure into attach failure."""
+    try:
+        value = getattr(app, name)
+    except Exception:
+        return None
+    text = str(value or "").strip()
+    return text or None
+
+
+def _inspect_application(app: Any) -> dict[str, Any]:
+    raw_version = _application_text_property(app, "Version") or ""
+    com_version, release = _autocad_release_info(raw_version)
+    return {
+        "name": _application_text_property(app, "Name"),
+        "version": raw_version or None,
+        "com_version": com_version,
+        "release": release,
+        "caption": _application_text_property(app, "Caption"),
+        "full_name": _application_text_property(app, "FullName"),
+        "primary_target_match": (
+            release == _PRIMARY_CERTIFICATION_RELEASE if release is not None else None
+        ),
+    }
 
 
 def _com_initialize(generation: int) -> None:
@@ -286,6 +340,7 @@ class ComBackend(AutoCADBackend):
         self._apps: dict[int, Any] = {}
         self._executor: ThreadPoolExecutor | None = None
         self._connected = False
+        self._application_metadata: dict[str, Any] | None = None
         self._transaction_depth = 0
         self._timeout_uncertain = False
         self._document_scope_key: tuple[str, str] | None = None
@@ -331,6 +386,7 @@ class ComBackend(AutoCADBackend):
         executor.shutdown(wait=False)
         self._executor = None
         self._connected = False
+        self._application_metadata = None
         self._document_scope_key = None
         self._created_viewport_handles.clear()
 
@@ -409,6 +465,18 @@ class ComBackend(AutoCADBackend):
             "timeout_uncertain": self._timeout_uncertain,
             "a2_implementation_state": "release_candidate",
             "a2_live_verification": "pending_real_autocad",
+            "live_certification": {
+                "state": "pending_real_autocad",
+                "primary_release": _PRIMARY_CERTIFICATION_RELEASE,
+                "primary_com_version": _PRIMARY_CERTIFICATION_COM_VERSION,
+                "primary_progid": _PRIMARY_CERTIFICATION_PROGID,
+                "required_edition": "full",
+                "required_platform": "windows_x64",
+                "compatibility_policy": "explicit_native_matrix_required",
+            },
+            "application": (
+                dict(self._application_metadata) if self._application_metadata is not None else None
+            ),
             "platform": sys.platform,
         }
 
@@ -419,6 +487,8 @@ class ComBackend(AutoCADBackend):
         generation = int(getattr(_THREAD_STATE, "generation", self._generation))
         app = self._apps.get(generation)
         if app is not None:
+            if self._application_metadata is None:
+                self._application_metadata = _inspect_application(app)
             return app
 
         progid = self.settings.com_progid
@@ -439,6 +509,7 @@ class ComBackend(AutoCADBackend):
                 ) from start_error
 
         self._apps[generation] = app
+        self._application_metadata = _inspect_application(app)
         self._connected = True
         return app
 
@@ -495,6 +566,7 @@ class ComBackend(AutoCADBackend):
 
             self._timeout_uncertain = True
             self._connected = False
+            self._application_metadata = None
             self._created_viewport_handles.clear()
             stuck = self._executor
             old_generation = self._generation
@@ -512,6 +584,7 @@ class ComBackend(AutoCADBackend):
             ) from exc
         except _COM_ERROR as exc:
             self._connected = False
+            self._application_metadata = None
             hr = exc.args[0] if exc.args else 0
             detail = exc.args[1] if len(exc.args) > 1 else str(exc)
             raise RuntimeError(f"AutoCAD COM error ({hr:#010x}): {detail}") from exc
@@ -677,9 +750,11 @@ class ComBackend(AutoCADBackend):
             space = doc.ActiveLayout.Block
             full_name = str(getattr(doc, "FullName", "") or "")
             try:
-                units_code = int(app.GetVariable("INSUNITS"))
+                units_code = int(doc.GetVariable("INSUNITS"))
             except Exception:
                 units_code = 0
+            application = _inspect_application(app)
+            self._application_metadata = application
             return {
                 "name": str(doc.Name),
                 "path": full_name or None,
@@ -692,7 +767,9 @@ class ComBackend(AutoCADBackend):
                 ),
                 "layout_count": int(doc.Layouts.Count),
                 "units": _UNIT_NAMES.get(units_code, f"unknown:{units_code}"),
-                "autocad_version": str(app.Version),
+                "autocad_version": application["version"],
+                "autocad_com_version": application["com_version"],
+                "autocad_release": application["release"],
                 "backend": self.name,
                 "current_space": active_layout,
                 "default_coordinate_frame": "wcs",
@@ -756,14 +833,21 @@ class ComBackend(AutoCADBackend):
                 selected = canonical
                 if canonical != previous:
                     doc.ActiveLayout = doc.Layouts.Item(canonical)
+            background_plot = None
             try:
+                background_plot = doc.GetVariable("BACKGROUNDPLOT")
+                doc.SetVariable("BACKGROUNDPLOT", 0)
                 ok = bool(doc.Plot.PlotToFile(str(target), "DWG To PDF.pc3"))
                 if not ok:
                     raise RuntimeError("AutoCAD PlotToFile returned false")
                 return {"ok": True, "path": str(target), "layout": selected}
             finally:
-                if selected != previous:
-                    doc.ActiveLayout = doc.Layouts.Item(previous)
+                try:
+                    if background_plot is not None:
+                        doc.SetVariable("BACKGROUNDPLOT", background_plot)
+                finally:
+                    if selected != previous:
+                        doc.ActiveLayout = doc.Layouts.Item(previous)
 
         return await self._run(_sync)
 

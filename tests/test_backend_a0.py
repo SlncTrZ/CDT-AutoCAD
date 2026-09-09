@@ -1,3 +1,7 @@
+"""A0 headless backend contract and timeout-integrity tests.
+Wing: code | Topic: autocad-a0 | Updated: 2026-09-09 19:19
+"""
+
 from __future__ import annotations
 
 import time
@@ -104,16 +108,15 @@ async def test_capability_map_is_explicit(settings):
 
 
 async def test_timed_out_mutation_quarantines_until_document_rebind(settings):
-    short = Settings(
-        allowed_paths=settings.allowed_paths,
-        max_dxf_bytes=settings.max_dxf_bytes,
-        call_timeout_seconds=0.01,
-    )
-    backend = EzdxfBackend(short)
+    backend = EzdxfBackend(settings)
     await backend.document_new()
 
     with pytest.raises(BackendTimeoutError):
-        await backend._run(lambda: time.sleep(0.05), may_mutate_document=True)
+        await backend._run(
+            lambda: time.sleep(0.05),
+            may_mutate_document=True,
+            timeout_seconds=0.01,
+        )
 
     assert backend.status()["quarantined"] is True
     with pytest.raises(BackendQuarantinedError):

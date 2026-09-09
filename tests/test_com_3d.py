@@ -1,5 +1,5 @@
 """A3 COM 3D-solid staged regression tests.
-Wing: code | Topic: autocad-a3 | Updated: 2026-09-09 16:13
+Wing: code | Topic: autocad-a3 | Updated: 2026-09-09 19:01
 """
 
 from __future__ import annotations
@@ -342,6 +342,7 @@ async def test_3d_view_direction_is_normalized_and_rejects_zero_vector(settings,
 
 
 _LIVE_COM_ENABLED = sys.platform == "win32" and os.environ.get("CDT_AUTOCAD_LIVE_TEST") == "1"
+_LIVE_COM_PROGID = os.environ.get("CDT_AUTOCAD_COM_PROGID", "AutoCAD.Application").strip() or "AutoCAD.Application"
 
 
 @pytest.mark.skipif(
@@ -355,7 +356,8 @@ async def test_live_autocad_a3_solid_smoke(settings):
             settings,
             backend="com",
             com_attach_policy="attach_only",
-            com_call_timeout_seconds=30.0,
+            com_progid=_LIVE_COM_PROGID,
+            com_call_timeout_seconds=60.0,
         )
     )
     created_name = None
@@ -364,9 +366,45 @@ async def test_live_autocad_a3_solid_smoke(settings):
         created_name = created["name"]
         box = await backend.solid_box(0, 0, 0, 40, 30, 20)
         cylinder = await backend.solid_cylinder(0, 0, 0, 5, 30)
+        sphere = await backend.solid_sphere(60, 0, 0, 8)
+        cone = await backend.solid_cone(80, 0, 0, 8, 20)
+        torus = await backend.solid_torus(105, 0, 0, 12, 3)
+        wedge = await backend.solid_wedge(135, 0, 0, 20, 15, 10)
+        for primitive in (box, cylinder, sphere, cone, torus, wedge):
+            assert primitive["type"] == "3DSOLID"
+            assert primitive["volume"] > 0
+
         result = await backend.solid_boolean(box["handle"], cylinder["handle"], "subtract")
         assert result["volume"] > 0
+        await backend.solid_move(box["handle"], 5, 0, 0)
         await backend.solid_rotate3d(box["handle"], 0, 0, 0, 0, 0, 1, 30)
+        await backend.solid_scale3d(box["handle"], 0, 0, 0, 1.1)
+        mirrored = await backend.solid_mirror3d(
+            box["handle"], 0, 0, 0, 0, 10, 0, 0, 10, 10
+        )
+        assert mirrored["type"] == "3DSOLID"
+
+        extrude_profile = await backend.entity_create_polyline(
+            [[0, 50], [20, 50], [20, 70], [0, 70]], closed=True
+        )
+        extruded = await backend.solid_extrude(extrude_profile.id, 15)
+        assert extruded["volume"] > 0
+
+        revolve_profile = await backend.entity_create_polyline(
+            [[5, 90], [12, 90], [12, 105], [5, 105]], closed=True
+        )
+        revolved = await backend.solid_revolve(
+            revolve_profile.id, 0, 90, 0, 0, 105, 0, angle_deg=360
+        )
+        assert revolved["volume"] > 0
+
+        sweep_profile = await backend.entity_create_circle(0, 130, 3)
+        sweep_path = await backend.entity_create_3d_polyline(
+            [[0, 130, 0], [0, 130, 15], [10, 130, 30]], closed=False
+        )
+        swept = await backend.solid_sweep(sweep_profile.id, sweep_path["handle"])
+        assert swept["volume"] > 0
+
         inspected = await backend.solid_inspect(box["handle"])
         assert inspected["type"] == "3DSOLID"
         assert inspected["volume"] > 0
