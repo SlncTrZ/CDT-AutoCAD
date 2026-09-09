@@ -31,15 +31,17 @@ Forbidden unless explicitly assigned:
 - A2 implementation: release candidate; primary AutoCAD 2027 live acceptance still OPEN.
 - Primary certification target: AutoCAD 2027 full, Windows x64, ActiveX COM `26.0` / `AutoCAD.Application.26.0`.
 - A3.1 ACIS backend: staged/private pending real AutoCAD verification.
+- A3.2 advanced dimensions: angular/radial/diametric/ordinate implemented backend-side, capability-false/non-public pending native verification.
 - Extraction baseline: 54 tests PASS, 2 live-Windows/AutoCAD tests SKIP before repository split.
-- Current generic hardening checkpoint: 60 tests PASS, 2 deliberate live tests SKIP.
+- Current generic staging checkpoint: Linux 65 PASS / 3 live SKIP; Windows `.171` 64 PASS / 4 SKIP (3 native gates + 1 non-Windows honesty test).
 
 ## First delivery gates
 
 1. Extraction equivalence is complete; preserve the pinned spec/runtime boundary.
 2. A2: run `scripts/run_live_acceptance.ps1` against full AutoCAD 2027; mocks are not substitutes.
-3. A3: live-verify native solids before publishing capability/tool surface.
-4. Continue advanced drafting/engineering only after A2/A3 acceptance evidence is explicit.
+3. A3.1: live-verify native solids before publishing capability/tool surface.
+4. A3.2: live-verify advanced dimensions before adding the four MCP tools or enabling `autocad.dimensions.advanced`.
+5. Continue advanced drafting/engineering only with capability-false staging until each native acceptance boundary is explicit.
 
 ## Required workflow
 

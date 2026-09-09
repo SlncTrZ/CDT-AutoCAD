@@ -173,13 +173,15 @@ capture.
 
 The A2 release candidate still does not publicly expose:
 
-- staged A3 ACIS 3D solid/view tools;
-- angular/radius/diameter dimensions;
+- staged A3.1 ACIS 3D solid/view tools;
+- staged A3.2 angular/radial/diametric/ordinate dimension tools;
 - advanced hatch editing/gradients;
 - trim/offset/fillet;
 - GDT.
 
 A2 acceptance remains OPEN until the opt-in AutoCAD 2027 Windows lane validates native DWG,
 A0/A1 parity, viewport operations, zoom, PNG capture and native PDF plotting. A3.1 is implemented
-behind capability-false staging and has a broader native solid test lane, but it follows the same
-real-AutoCAD evidence rule before publication.
+behind capability-false staging and has a broader native solid test lane. A3.2 is also implemented
+backend-side for angular, radial, diametric and X/Y ordinate dimensions, but
+`autocad.dimensions.advanced` remains capability-false and no additional MCP tools are exposed until
+its separate native AutoCAD gate passes.

@@ -31,8 +31,10 @@ $env:CDT_AUTOCAD_COM_PROGID = $ProgId
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $evidenceRoot = Join-Path (Get-Location) "artifacts/live-acceptance"
-$baseTemp = Join-Path $evidenceRoot "pytest-$timestamp"
-$junit = Join-Path $evidenceRoot "junit-$timestamp.xml"
+$coreBaseTemp = Join-Path $evidenceRoot "pytest-core-$timestamp"
+$advancedBaseTemp = Join-Path $evidenceRoot "pytest-advanced-dimensions-$timestamp"
+$coreJunit = Join-Path $evidenceRoot "junit-core-$timestamp.xml"
+$advancedJunit = Join-Path $evidenceRoot "junit-advanced-dimensions-$timestamp.xml"
 New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
 
 Write-Host "CDT-AutoCAD live acceptance"
@@ -43,13 +45,31 @@ Write-Host "  Evidence:         $evidenceRoot"
 & $Python -m pytest -q `
     tests/test_com_backend.py `
     tests/test_com_3d.py `
-    --basetemp $baseTemp `
-    --junitxml $junit
+    --basetemp $coreBaseTemp `
+    --junitxml $coreJunit
+$coreExitCode = $LASTEXITCODE
 
-$exitCode = $LASTEXITCODE
-if ($exitCode -eq 0) {
-    Write-Host "Live acceptance PASS. Preserve the evidence directory for review."
+& $Python -m pytest -q `
+    tests/test_advanced_dimensions.py `
+    --basetemp $advancedBaseTemp `
+    --junitxml $advancedJunit
+$advancedExitCode = $LASTEXITCODE
+
+if ($coreExitCode -eq 0) {
+    Write-Host "A2/A3.1 native gate: PASS"
 } else {
-    Write-Host "Live acceptance FAILED with exit code $exitCode. Do not promote A2/A3 capability state."
+    Write-Host "A2/A3.1 native gate: FAIL ($coreExitCode)"
 }
-exit $exitCode
+if ($advancedExitCode -eq 0) {
+    Write-Host "A3.2 advanced-dimension native gate: PASS"
+} else {
+    Write-Host "A3.2 advanced-dimension native gate: FAIL ($advancedExitCode)"
+}
+
+if (($coreExitCode -eq 0) -and ($advancedExitCode -eq 0)) {
+    Write-Host "All current native gates PASS. Preserve the evidence directory for review."
+    exit 0
+}
+
+Write-Host "One or more native gates FAILED. Review the separate JUnit reports before changing capability state."
+exit 1

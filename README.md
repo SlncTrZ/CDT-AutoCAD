@@ -90,11 +90,14 @@ version-pinned:
 ./scripts/run_live_acceptance.ps1
 ```
 
-The runner targets AutoCAD 2027 / `AutoCAD.Application.26.0`, preserves pytest/JUnit evidence under
-ignored `artifacts/live-acceptance/`, and executes both A2 and A3.1 live lanes. AutoCAD must already
-be running because acceptance uses the fail-closed `attach_only` policy.
+The runner targets AutoCAD 2027 / `AutoCAD.Application.26.0`, preserves separate pytest/JUnit
+evidence under ignored `artifacts/live-acceptance/`, and executes A2/A3.1 plus the independently
+staged A3.2 advanced-dimension lane. AutoCAD must already be running because acceptance uses the
+fail-closed `attach_only` policy.
 
-A2 implementation remains RC until this native gate passes and the evidence is reviewed.
+A2 implementation remains RC until its native gate passes and the evidence is reviewed. A3.1 solid
+and A3.2 advanced-dimension methods remain backend-staged/capability-false until their own native
+evidence is accepted; the public MCP surface remains 50 tools.
 
 ## Development checks
 

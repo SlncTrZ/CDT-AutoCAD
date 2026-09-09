@@ -1,9 +1,10 @@
 """Focused backend contracts for the AutoCAD provider.
-Wing: code | Topic: autocad-a3 | Updated: 2026-09-09 16:13
+Wing: code | Topic: autocad-a3-dimensions | Updated: 2026-09-09 20:42
 """
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -118,6 +119,18 @@ class EntityCreationContract(ABC):
 
     @abstractmethod
     async def dimension_aligned(self, **kwargs: Any) -> EntityInfo: ...
+
+    @abstractmethod
+    async def dimension_angular(self, **kwargs: Any) -> EntityInfo: ...
+
+    @abstractmethod
+    async def dimension_radial(self, **kwargs: Any) -> EntityInfo: ...
+
+    @abstractmethod
+    async def dimension_diametric(self, **kwargs: Any) -> EntityInfo: ...
+
+    @abstractmethod
+    async def dimension_ordinate(self, **kwargs: Any) -> EntityInfo: ...
 
 
 class LayerContract(ABC):
@@ -315,3 +328,88 @@ class AutoCADBackend(
     TransactionContract,
 ):
     """Composition surface for staged AutoCAD backends."""
+
+    @staticmethod
+    def _require_finite_dimension_values(*values: float) -> None:
+        if not all(math.isfinite(float(value)) for value in values):
+            raise ValueError("dimension coordinates must be finite")
+
+    @staticmethod
+    def _validate_angular_dimension(
+        vertex_x: float,
+        vertex_y: float,
+        first_x: float,
+        first_y: float,
+        second_x: float,
+        second_y: float,
+        text_x: float,
+        text_y: float,
+    ) -> None:
+        AutoCADBackend._require_finite_dimension_values(
+            vertex_x, vertex_y, first_x, first_y, second_x, second_y, text_x, text_y
+        )
+        first_dx = float(first_x) - float(vertex_x)
+        first_dy = float(first_y) - float(vertex_y)
+        second_dx = float(second_x) - float(vertex_x)
+        second_dy = float(second_y) - float(vertex_y)
+        first_length = math.hypot(first_dx, first_dy)
+        second_length = math.hypot(second_dx, second_dy)
+        if first_length <= 0 or second_length <= 0:
+            raise ValueError("angular dimension requires two distinct rays from the vertex")
+        cross = first_dx * second_dy - first_dy * second_dx
+        if abs(cross) <= 1e-12 * first_length * second_length:
+            raise ValueError("angular dimension requires two distinct rays from the vertex")
+
+    @staticmethod
+    def _validate_radial_dimension(
+        center_x: float,
+        center_y: float,
+        chord_x: float,
+        chord_y: float,
+        leader_length: float,
+    ) -> float:
+        AutoCADBackend._require_finite_dimension_values(
+            center_x, center_y, chord_x, chord_y, leader_length
+        )
+        radius = math.hypot(float(chord_x) - float(center_x), float(chord_y) - float(center_y))
+        if radius <= 0:
+            raise ValueError("radial dimension chord point must differ from center")
+        if float(leader_length) <= 0:
+            raise ValueError("leader_length must be a finite value > 0")
+        return radius
+
+    @staticmethod
+    def _validate_diametric_dimension(
+        center_x: float,
+        center_y: float,
+        chord_x: float,
+        chord_y: float,
+        leader_length: float,
+    ) -> float:
+        AutoCADBackend._require_finite_dimension_values(
+            center_x, center_y, chord_x, chord_y, leader_length
+        )
+        radius = math.hypot(float(chord_x) - float(center_x), float(chord_y) - float(center_y))
+        if radius <= 0:
+            raise ValueError("diametric dimension chord point must differ from center")
+        if float(leader_length) <= 0:
+            raise ValueError("leader_length must be a finite value > 0")
+        return radius
+
+    @staticmethod
+    def _normalize_ordinate_axis(
+        definition_x: float,
+        definition_y: float,
+        leader_x: float,
+        leader_y: float,
+        axis: str,
+    ) -> str:
+        AutoCADBackend._require_finite_dimension_values(
+            definition_x, definition_y, leader_x, leader_y
+        )
+        normalized = str(axis).strip().lower()
+        if normalized not in {"x", "y"}:
+            raise ValueError("ordinate dimension axis must be 'x' or 'y'")
+        if math.hypot(float(leader_x) - float(definition_x), float(leader_y) - float(definition_y)) <= 0:
+            raise ValueError("ordinate dimension leader endpoint must differ from definition point")
+        return normalized

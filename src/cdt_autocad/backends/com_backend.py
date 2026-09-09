@@ -1,5 +1,5 @@
 """Live AutoCAD backend using the Windows ActiveX/COM automation API.
-Wing: code | Topic: autocad-a3 | Updated: 2026-09-09 19:01
+Wing: code | Topic: autocad-a3-dimensions | Updated: 2026-09-09 20:46
 
 This backend intentionally implements only the existing A0/A1 provider contract. It does not
 copy the much larger reference server surface. All COM work is serialized through one STA worker
@@ -177,7 +177,11 @@ def _object_type(entity: Any) -> str:
         "AcDb3dSolid": "3DSOLID",
         "AcDb3dPolyline": "3DPOLYLINE",
     }
-    return mapping.get(name, name.removeprefix("AcDb").upper())
+    if name in mapping:
+        return mapping[name]
+    if name.startswith("AcDb") and name.endswith("Dimension"):
+        return "DIMENSION"
+    return name.removeprefix("AcDb").upper()
 
 
 def _entity_info(entity: Any) -> EntityInfo:
@@ -422,6 +426,9 @@ class ComBackend(AutoCADBackend):
             "autocad.layouts": supported(),
             "autocad.dimensions.linear": supported(),
             "autocad.dimensions.aligned": supported(),
+            "autocad.dimensions.advanced": Capability(
+                False, reason="A3_2_staged_pending_live_verification"
+            ),
             "autocad.hatch": supported(),
             "autocad.audit": supported("sendcommand"),
             "autocad.audit.detail": Capability(
@@ -1237,6 +1244,112 @@ class ComBackend(AutoCADBackend):
                 _point(x1, y1),
                 _point(x2, y2),
                 _point(dim_x, dim_y),
+            )
+            if canonical_layer is not None:
+                entity.Layer = canonical_layer
+            return _entity_info(entity)
+
+        return await self._run(_sync)
+
+    async def dimension_angular(
+        self,
+        vertex_x: float,
+        vertex_y: float,
+        first_x: float,
+        first_y: float,
+        second_x: float,
+        second_y: float,
+        text_x: float,
+        text_y: float,
+        layer: str | None = None,
+    ) -> EntityInfo:
+        self._validate_angular_dimension(
+            vertex_x, vertex_y, first_x, first_y, second_x, second_y, text_x, text_y
+        )
+
+        def _sync() -> EntityInfo:
+            canonical_layer = self._validate_layer(layer)
+            entity = self._space().AddDimAngular(
+                _point(vertex_x, vertex_y),
+                _point(first_x, first_y),
+                _point(second_x, second_y),
+                _point(text_x, text_y),
+            )
+            if canonical_layer is not None:
+                entity.Layer = canonical_layer
+            return _entity_info(entity)
+
+        return await self._run(_sync)
+
+    async def dimension_radial(
+        self,
+        center_x: float,
+        center_y: float,
+        chord_x: float,
+        chord_y: float,
+        leader_length: float,
+        layer: str | None = None,
+    ) -> EntityInfo:
+        self._validate_radial_dimension(center_x, center_y, chord_x, chord_y, leader_length)
+
+        def _sync() -> EntityInfo:
+            canonical_layer = self._validate_layer(layer)
+            entity = self._space().AddDimRadial(
+                _point(center_x, center_y),
+                _point(chord_x, chord_y),
+                float(leader_length),
+            )
+            if canonical_layer is not None:
+                entity.Layer = canonical_layer
+            return _entity_info(entity)
+
+        return await self._run(_sync)
+
+    async def dimension_diametric(
+        self,
+        center_x: float,
+        center_y: float,
+        chord_x: float,
+        chord_y: float,
+        leader_length: float,
+        layer: str | None = None,
+    ) -> EntityInfo:
+        self._validate_diametric_dimension(center_x, center_y, chord_x, chord_y, leader_length)
+        far_chord_x = 2.0 * float(center_x) - float(chord_x)
+        far_chord_y = 2.0 * float(center_y) - float(chord_y)
+
+        def _sync() -> EntityInfo:
+            canonical_layer = self._validate_layer(layer)
+            entity = self._space().AddDimDiametric(
+                _point(chord_x, chord_y),
+                _point(far_chord_x, far_chord_y),
+                float(leader_length),
+            )
+            if canonical_layer is not None:
+                entity.Layer = canonical_layer
+            return _entity_info(entity)
+
+        return await self._run(_sync)
+
+    async def dimension_ordinate(
+        self,
+        definition_x: float,
+        definition_y: float,
+        leader_x: float,
+        leader_y: float,
+        axis: str = "x",
+        layer: str | None = None,
+    ) -> EntityInfo:
+        normalized_axis = self._normalize_ordinate_axis(
+            definition_x, definition_y, leader_x, leader_y, axis
+        )
+
+        def _sync() -> EntityInfo:
+            canonical_layer = self._validate_layer(layer)
+            entity = self._space().AddDimOrdinate(
+                _point(definition_x, definition_y),
+                _point(leader_x, leader_y),
+                normalized_axis == "x",
             )
             if canonical_layer is not None:
                 entity.Layer = canonical_layer

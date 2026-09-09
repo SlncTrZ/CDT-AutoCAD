@@ -1,5 +1,5 @@
 """Headless DXF backend for the CDT_Engineer AutoCAD provider.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 16:13
+Wing: code | Topic: autocad-a3-dimensions | Updated: 2026-09-09 20:44
 
 The dual-engine shape and several edge-case choices are informed by the MIT-licensed
 U-C4N/Autocad-MCP reference, but this implementation is normalized to the CDT A0/A1
@@ -193,6 +193,9 @@ class EzdxfBackend(AutoCADBackend):
             "autocad.layouts": Capability(True, "native"),
             "autocad.dimensions.linear": Capability(True, "native"),
             "autocad.dimensions.aligned": Capability(True, "native"),
+            "autocad.dimensions.advanced": Capability(
+                False, reason="A3_2_staged_not_public"
+            ),
             "autocad.hatch": Capability(True, "native"),
             "autocad.audit": Capability(True, "native"),
             "autocad.audit.detail": Capability(True, "native"),
@@ -691,6 +694,139 @@ class EzdxfBackend(AutoCADBackend):
                 p1=(x1, y1),
                 p2=(x2, y2),
                 distance=signed_distance,
+                dimstyle="Standard",
+            )
+            dim.render()
+            entity = dim.dimension
+            entity.dxf.layer = layer_name
+            return _entity_info(entity)
+
+        return await self._run(_sync, integrity_sensitive=True, record_history=True)
+
+    async def dimension_angular(
+        self,
+        vertex_x: float,
+        vertex_y: float,
+        first_x: float,
+        first_y: float,
+        second_x: float,
+        second_y: float,
+        text_x: float,
+        text_y: float,
+        layer: str | None = None,
+    ) -> EntityInfo:
+        self._validate_angular_dimension(
+            vertex_x, vertex_y, first_x, first_y, second_x, second_y, text_x, text_y
+        )
+
+        def _sync() -> EntityInfo:
+            layer_name = self._validate_layer(layer)
+            dim = self._space().add_angular_dim_3p(
+                base=(text_x, text_y),
+                center=(vertex_x, vertex_y),
+                p1=(first_x, first_y),
+                p2=(second_x, second_y),
+                location=(text_x, text_y),
+                dimstyle="Standard",
+            )
+            dim.render()
+            entity = dim.dimension
+            entity.dxf.layer = layer_name
+            return _entity_info(entity)
+
+        return await self._run(_sync, integrity_sensitive=True, record_history=True)
+
+    async def dimension_radial(
+        self,
+        center_x: float,
+        center_y: float,
+        chord_x: float,
+        chord_y: float,
+        leader_length: float,
+        layer: str | None = None,
+    ) -> EntityInfo:
+        radius = self._validate_radial_dimension(
+            center_x, center_y, chord_x, chord_y, leader_length
+        )
+        unit_x = (float(chord_x) - float(center_x)) / radius
+        unit_y = (float(chord_y) - float(center_y)) / radius
+        location = (
+            float(center_x) + unit_x * (radius + float(leader_length)),
+            float(center_y) + unit_y * (radius + float(leader_length)),
+        )
+
+        def _sync() -> EntityInfo:
+            layer_name = self._validate_layer(layer)
+            dim = self._space().add_radius_dim(
+                center=(center_x, center_y),
+                radius=radius,
+                location=location,
+                dimstyle="Standard",
+            )
+            dim.render()
+            entity = dim.dimension
+            entity.dxf.layer = layer_name
+            return _entity_info(entity)
+
+        return await self._run(_sync, integrity_sensitive=True, record_history=True)
+
+    async def dimension_diametric(
+        self,
+        center_x: float,
+        center_y: float,
+        chord_x: float,
+        chord_y: float,
+        leader_length: float,
+        layer: str | None = None,
+    ) -> EntityInfo:
+        radius = self._validate_diametric_dimension(
+            center_x, center_y, chord_x, chord_y, leader_length
+        )
+        unit_x = (float(chord_x) - float(center_x)) / radius
+        unit_y = (float(chord_y) - float(center_y)) / radius
+        location = (
+            float(center_x) + unit_x * (radius + float(leader_length)),
+            float(center_y) + unit_y * (radius + float(leader_length)),
+        )
+
+        def _sync() -> EntityInfo:
+            layer_name = self._validate_layer(layer)
+            dim = self._space().add_diameter_dim(
+                center=(center_x, center_y),
+                radius=radius,
+                location=location,
+                dimstyle="Standard",
+            )
+            dim.render()
+            entity = dim.dimension
+            entity.dxf.layer = layer_name
+            return _entity_info(entity)
+
+        return await self._run(_sync, integrity_sensitive=True, record_history=True)
+
+    async def dimension_ordinate(
+        self,
+        definition_x: float,
+        definition_y: float,
+        leader_x: float,
+        leader_y: float,
+        axis: str = "x",
+        layer: str | None = None,
+    ) -> EntityInfo:
+        normalized_axis = self._normalize_ordinate_axis(
+            definition_x, definition_y, leader_x, leader_y, axis
+        )
+        offset = (
+            float(leader_x) - float(definition_x),
+            float(leader_y) - float(definition_y),
+        )
+
+        def _sync() -> EntityInfo:
+            layer_name = self._validate_layer(layer)
+            dim = self._space().add_ordinate_dim(
+                feature_location=(definition_x, definition_y),
+                offset=offset,
+                dtype=1 if normalized_axis == "x" else 0,
                 dimstyle="Standard",
             )
             dim.render()

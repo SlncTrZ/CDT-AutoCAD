@@ -66,13 +66,13 @@ pass before AutoCAD installation.
 PowerShell from the `CDT-AutoCAD` repository root:
 
 ```powershell
-$env:CDT_AUTOCAD_LIVE_TEST = "1"
-$env:CDT_AUTOCAD_EXPECT_RELEASE = "2027"
-$env:CDT_AUTOCAD_COM_PROGID = "AutoCAD.Application.26.0"
-python -m pytest -q tests/test_com_backend.py tests/test_com_3d.py
+./scripts/run_live_acceptance.ps1
 ```
 
-`CDT_AUTOCAD_EXPECT_RELEASE` makes the live A2 gate fail if the attached ActiveX application does not identify as the expected AutoCAD release. The test backend still uses `attach_only`.
+The runner sets `CDT_AUTOCAD_LIVE_TEST=1`, expects release `2027`, pins
+`AutoCAD.Application.26.0`, and keeps the backend in `attach_only` mode. It writes separate JUnit
+reports for the A2/A3.1 core gate and the staged A3.2 advanced-dimension gate so one failure does
+not obscure which acceptance boundary failed.
 
 ## 5. A2 live evidence covered
 
@@ -112,7 +112,22 @@ The A3 live lane exercises a second disposable drawing and checks:
 
 A3 methods remain staged/non-public until this lane passes on the primary certification target and the result is reviewed.
 
-## 7. Acceptance decision
+## 7. A3.2 advanced-dimension live evidence covered
+
+A3.2 is implemented behind a capability-false staging boundary and has its own disposable-drawing
+native test. It checks typed ActiveX creation for:
+
+- angular dimension (`AddDimAngular`);
+- radial dimension (`AddDimRadial`);
+- diametric dimension (`AddDimDiametric`);
+- X/Y ordinate dimensions (`AddDimOrdinate`);
+- common `DIMENSION` object normalization and object counting.
+
+The headless ezdxf lane independently verifies the same semantic methods plus DXF save/reopen.
+Visual placement may differ between ezdxf rendering and native AutoCAD; live evidence is required
+before public promotion.
+
+## 8. Acceptance decision
 
 A2 may move from RC to CLOSED only when all of these are true:
 
@@ -125,7 +140,11 @@ A2 may move from RC to CLOSED only when all of these are true:
 
 A3.1 may be promoted to public tools/capabilities only after its live test passes and the capability contract/version is intentionally advanced.
 
-## 8. Failure handling
+A3.2 may be promoted only when its separate native JUnit gate passes on the primary target and the
+provider extension contract intentionally adds the four new MCP tools. Until then,
+`autocad.dimensions.advanced` stays capability-false.
+
+## 9. Failure handling
 
 - A COM timeout is integrity-uncertain: inspect the drawing before retrying because the abandoned call may still complete.
 - Do not convert a live failure into a skip or mock PASS.
