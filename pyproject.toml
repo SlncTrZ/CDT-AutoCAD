@@ -1,0 +1,49 @@
+[project]
+name = "cdt-autocad-provider"
+version = "0.2.0"
+description = "CDT_Engineer AutoCAD MCP provider"
+requires-python = ">=3.11"
+dependencies = [
+  "fastmcp>=3.4.5,<4",
+  "ezdxf>=1.4,<2",
+  "pydantic>=2,<3",
+]
+
+[project.optional-dependencies]
+com = [
+  "pywin32>=306; sys_platform == 'win32'",
+  "pillow>=10,<12; sys_platform == 'win32'",
+]
+render = ["matplotlib>=3.8,<4"]
+
+[project.scripts]
+cdt-autocad = "cdt_autocad.server:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8,<9",
+  "pytest-asyncio>=0.23,<1",
+  "ruff>=0.16,<0.17",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cdt_autocad"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"docs/TOOL_GUIDE.md" = "cdt_autocad/docs/TOOL_GUIDE.md"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "strict"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["E501"]
