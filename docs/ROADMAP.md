@@ -206,6 +206,7 @@ COM tests should use mocks for generic CI and a real AutoCAD integration lane wh
 - trim/offset/fillet;
 - selection window/crossing/polygon;
 - advanced dimensions (A3.2 backend-staged);
+- measurement/intersection analysis (A3.3 backend-staged);
 - GDT;
 - engineering validation;
 - 3D solids via COM;
@@ -368,16 +369,38 @@ The COM backend maps to typed ActiveX `AddDimAngular`, `AddDimRadial`, `AddDimDi
 `A3_2_staged_pending_live_verification` on COM). Public MCP surface remains exactly 50 tools.
 A separate AutoCAD 2027 native/JUnit lane is prepared in `tests/test_advanced_dimensions.py`.
 
+### A3.3 — Measurement / intersection analysis staged
+
+A focused `AnalysisContract` now provides three backend-internal verification primitives:
+
+- `object_measure(object_id)` for exact typed metrics plus WCS bounding box;
+- `drawing_extents()` for the combined WCS bounding box of the current space;
+- `object_intersections(first_id, second_id, extend_mode)` for exact intersection points.
+
+The ezdxf backend computes exact LINE/CIRCLE/ARC/LWPOLYLINE core metrics and uses `ezdxf.bbox` for
+extents. LWPOLYLINE bulges are included in length/area calculations. Generic intersections are
+intentionally refused on ezdxf because a complete exact solver is not implemented.
+
+The COM backend reads typed ActiveX properties (`Length`, `Radius`, `Circumference`, `Area`,
+`ArcLength`, `Volume`, `Centroid` where applicable), uses `GetBoundingBox`, and maps exact
+`IntersectWith` output into normalized WCS XYZ triples. Invalid extension modes, duplicate handles
+and malformed non-XYZ COM payloads fail before or at the analysis boundary rather than being guessed.
+
+`autocad.analysis.measurement` and `autocad.analysis.intersections` remain capability-false and no
+new MCP tools are published. A separate AutoCAD 2027 native/JUnit lane is prepared in
+`tests/test_measurement_analysis.py`.
+
 ### Verification evidence
 
-Current generic verification after repo extraction + 2027 live-gate preparation + A3.2 staging:
+Current generic verification after repo extraction + 2027 live-gate preparation + A3.2/A3.3 staging:
 
 - COM A2 focused gate: `20 passed, 1 skipped`;
 - A3.1 solid focused gate: `9 passed, 1 skipped`;
 - A3.2 advanced-dimension focused gate: `5 passed, 1 skipped`;
-- A3.2 + server-contract gate: `18 passed, 1 skipped`, with public MCP tool count still exactly 50;
-- Linux full regression: `65 passed, 3 skipped` (A2/A3.1/A3.2 live lanes);
-- Windows `.171` generic regression: `64 passed, 4 skipped`; three skips are native AutoCAD lanes and one is the deliberate non-Windows capability-honesty test;
+- A3.3 analysis focused gate: `7 passed, 1 skipped`;
+- A3.3 + server-contract gate: `20 passed, 1 skipped`, with public MCP tool count still exactly 50;
+- Linux full regression: `72 passed, 4 skipped` (A2/A3.1/A3.2/A3.3 live lanes);
+- Windows `.171` generic regression: `71 passed, 5 skipped`; four skips are A2/A3.1/A3.2/A3.3 native lanes and one is the deliberate non-Windows capability-honesty test;
 - PowerShell live-acceptance runner parses successfully on Windows `.171`;
 - application version parsing identifies official COM release series through AutoCAD 2027 (`26.0`);
 - ActiveX document variables are read from the Document object; native PDF plotting forces foreground `BACKGROUNDPLOT=0` and restores the prior value;
@@ -391,8 +414,9 @@ Current generic verification after repo extraction + 2027 live-gate preparation 
 4. If A2 live passes, promote the A2 RC identity intentionally and update help/docs with evidence.
 5. If A3.1 live passes, expose staged solid/view methods under the next provider extension contract.
 6. If the separate A3.2 native gate passes, intentionally version/promote the four advanced-dimension tools.
-7. Continue A3 drafting/engineering families (measurement/intersection, mirror/array/offset,
-   selection, trim/fillet and GDT) without weakening native acceptance gates.
+7. If the separate A3.3 native gate passes, intentionally version/promote measurement/extents/intersection analysis tools.
+8. Continue A3 drafting/engineering families (mirror/array/offset, selection, trim/fillet and GDT)
+   without weakening native acceptance gates.
 
 See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared
 runtime from this lane; reusable infrastructure still requires Rule-of-Two cross-provider evidence.

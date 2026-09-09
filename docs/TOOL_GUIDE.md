@@ -175,6 +175,7 @@ The A2 release candidate still does not publicly expose:
 
 - staged A3.1 ACIS 3D solid/view tools;
 - staged A3.2 angular/radial/diametric/ordinate dimension tools;
+- staged A3.3 object measurement, current-space extents and native COM intersection analysis;
 - advanced hatch editing/gradients;
 - trim/offset/fillet;
 - GDT.
@@ -182,6 +183,7 @@ The A2 release candidate still does not publicly expose:
 A2 acceptance remains OPEN until the opt-in AutoCAD 2027 Windows lane validates native DWG,
 A0/A1 parity, viewport operations, zoom, PNG capture and native PDF plotting. A3.1 is implemented
 behind capability-false staging and has a broader native solid test lane. A3.2 is also implemented
-backend-side for angular, radial, diametric and X/Y ordinate dimensions, but
-`autocad.dimensions.advanced` remains capability-false and no additional MCP tools are exposed until
-its separate native AutoCAD gate passes.
+backend-side for angular, radial, diametric and X/Y ordinate dimensions. A3.3 adds typed object
+measurement/current-space WCS extents on both backends and exact `IntersectWith` analysis on COM;
+ezdxf refuses generic intersections rather than approximating them. All A3.2/A3.3 capabilities stay
+false and no additional MCP tools are exposed until their separate native AutoCAD gates pass.

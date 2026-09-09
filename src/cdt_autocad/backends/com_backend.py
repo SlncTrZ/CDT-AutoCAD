@@ -1,5 +1,5 @@
 """Live AutoCAD backend using the Windows ActiveX/COM automation API.
-Wing: code | Topic: autocad-a3-dimensions | Updated: 2026-09-09 20:46
+Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-09 21:13
 
 This backend intentionally implements only the existing A0/A1 provider contract. It does not
 copy the much larger reference server surface. All COM work is serialized through one STA worker
@@ -182,6 +182,42 @@ def _object_type(entity: Any) -> str:
     if name.startswith("AcDb") and name.endswith("Dimension"):
         return "DIMENSION"
     return name.removeprefix("AcDb").upper()
+
+
+def _com_float_property(entity: Any, name: str) -> float:
+    try:
+        return float(getattr(entity, name))
+    except Exception as exc:
+        raise RuntimeError(f"AutoCAD property unavailable: {name}") from exc
+
+
+def _com_vector_property(entity: Any, name: str) -> list[float]:
+    try:
+        return _xyz(getattr(entity, name))
+    except Exception as exc:
+        raise RuntimeError(f"AutoCAD property unavailable: {name}") from exc
+
+
+def _com_bounding_box(entity: Any) -> dict[str, list[float]]:
+    no_arg_error: Exception | None = None
+    try:
+        result = entity.GetBoundingBox()
+        if isinstance(result, (tuple, list)) and len(result) == 2:
+            return {"min": _xyz(result[0]), "max": _xyz(result[1])}
+    except Exception as exc:
+        no_arg_error = exc
+
+    if not _COM_IMPORTS_OK:
+        if no_arg_error is not None:
+            raise RuntimeError("GetBoundingBox failed") from no_arg_error
+        raise RuntimeError("pywin32 COM support is unavailable")
+    minimum = win32com.client.VARIANT(pythoncom.VT_BYREF | pythoncom.VT_VARIANT, None)
+    maximum = win32com.client.VARIANT(pythoncom.VT_BYREF | pythoncom.VT_VARIANT, None)
+    try:
+        entity.GetBoundingBox(minimum, maximum)
+    except Exception as exc:
+        raise RuntimeError("GetBoundingBox failed") from exc
+    return {"min": _xyz(minimum.value), "max": _xyz(maximum.value)}
 
 
 def _entity_info(entity: Any) -> EntityInfo:
@@ -429,6 +465,12 @@ class ComBackend(AutoCADBackend):
             "autocad.dimensions.advanced": Capability(
                 False, reason="A3_2_staged_pending_live_verification"
             ),
+            "autocad.analysis.measurement": Capability(
+                False, reason="A3_3_staged_pending_live_verification"
+            ),
+            "autocad.analysis.intersections": Capability(
+                False, reason="A3_3_staged_pending_live_verification"
+            ),
             "autocad.hatch": supported(),
             "autocad.audit": supported("sendcommand"),
             "autocad.audit.detail": Capability(
@@ -601,6 +643,14 @@ class ComBackend(AutoCADBackend):
             return self._doc().HandleToObject(str(object_id).strip())
         except Exception as exc:
             raise KeyError(f"entity not found: {object_id}") from exc
+
+    @staticmethod
+    def _normalize_extend_mode(extend_mode: str) -> tuple[str, int]:
+        normalized = str(extend_mode).strip().lower()
+        values = {"none": 0, "this": 1, "other": 2, "both": 3}
+        if normalized not in values:
+            raise ValueError("extend_mode must be one of: none, this, other, both")
+        return normalized, values[normalized]
 
     def _validate_layer(self, layer: str | None) -> str | None:
         if layer is None:
@@ -934,6 +984,102 @@ class ComBackend(AutoCADBackend):
                     continue
                 count += 1
             return count
+
+        return await self._run(_sync)
+
+    async def object_measure(self, object_id: str) -> dict[str, Any]:
+        def _sync() -> dict[str, Any]:
+            entity = self._entity_by_id(object_id)
+            entity_type = _object_type(entity)
+            result: dict[str, Any] = {
+                "object_id": str(entity.Handle),
+                "type": entity_type,
+                "coordinate_frame": "wcs",
+                "bounding_box": _com_bounding_box(entity),
+            }
+            if entity_type == "LINE":
+                result["length"] = _com_float_property(entity, "Length")
+            elif entity_type == "CIRCLE":
+                result.update(
+                    radius=_com_float_property(entity, "Radius"),
+                    circumference=_com_float_property(entity, "Circumference"),
+                    area=_com_float_property(entity, "Area"),
+                )
+            elif entity_type == "ARC":
+                result.update(
+                    radius=_com_float_property(entity, "Radius"),
+                    length=_com_float_property(entity, "ArcLength"),
+                )
+            elif entity_type in {"LWPOLYLINE", "POLYLINE", "3DPOLYLINE"}:
+                result["length"] = _com_float_property(entity, "Length")
+                if entity_type != "3DPOLYLINE":
+                    result["area"] = _com_float_property(entity, "Area")
+            elif entity_type in {"HATCH", "REGION"}:
+                result["area"] = _com_float_property(entity, "Area")
+            elif entity_type == "3DSOLID":
+                result["volume"] = _com_float_property(entity, "Volume")
+                result["centroid"] = _com_vector_property(entity, "Centroid")
+            return result
+
+        return await self._run(_sync)
+
+    async def drawing_extents(self) -> dict[str, Any]:
+        def _sync() -> dict[str, Any]:
+            space = self._space()
+            minimum: list[float] | None = None
+            maximum: list[float] | None = None
+            for index in range(int(space.Count)):
+                entity = space.Item(index)
+                box = _com_bounding_box(entity)
+                if minimum is None:
+                    minimum = list(box["min"])
+                    maximum = list(box["max"])
+                    continue
+                assert maximum is not None
+                minimum = [min(minimum[i], box["min"][i]) for i in range(3)]
+                maximum = [max(maximum[i], box["max"][i]) for i in range(3)]
+            bounding_box = None if minimum is None else {"min": minimum, "max": maximum}
+            return {
+                "empty": bounding_box is None,
+                "bounding_box": bounding_box,
+                "coordinate_frame": "wcs",
+            }
+
+        return await self._run(_sync)
+
+    async def object_intersections(
+        self, first_id: str, second_id: str, extend_mode: str = "none"
+    ) -> dict[str, Any]:
+        first_key = str(first_id).strip()
+        second_key = str(second_id).strip()
+        if not first_key or not second_key:
+            raise ValueError("intersection object IDs must not be empty")
+        if first_key.upper() == second_key.upper():
+            raise ValueError("intersection requires two distinct object IDs")
+        normalized_mode, extend_option = self._normalize_extend_mode(extend_mode)
+
+        def _sync() -> dict[str, Any]:
+            first = self._entity_by_id(first_key)
+            second = self._entity_by_id(second_key)
+            raw = first.IntersectWith(second, extend_option)
+            if raw is None:
+                values: list[float] = []
+            else:
+                try:
+                    values = [float(value) for value in raw]
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError("AutoCAD IntersectWith returned a non-numeric sequence payload") from exc
+            if len(values) % 3 != 0:
+                raise RuntimeError("AutoCAD IntersectWith returned a non-XYZ payload")
+            points = [values[index : index + 3] for index in range(0, len(values), 3)]
+            return {
+                "first_id": str(first.Handle),
+                "second_id": str(second.Handle),
+                "extend_mode": normalized_mode,
+                "coordinate_frame": "wcs",
+                "points": points,
+                "count": len(points),
+            }
 
         return await self._run(_sync)
 

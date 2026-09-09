@@ -31,13 +31,14 @@ Known implementation state:
 - A2 live acceptance remains open while AutoCAD 2027 is being installed;
 - A3.1 native ACIS implementation staged below public capability surface;
 - A3.2 angular/radial/diametric/ordinate dimensions implemented backend-side, capability-false and non-public pending native verification;
+- A3.3 object measurement/current-space WCS extents + native COM intersections implemented backend-side, capability-false and non-public pending native verification;
 - source profile preservation for region-based 3D operations uses Copy -> temporary Region -> solid -> cleanup.
 
 ## First task
 
-Repository extraction equivalence is complete. Current A3.2 staging checkpoint is Linux
-`65 PASS / 3 live SKIP` and Windows `.171` `64 PASS / 4 SKIP`; the extra Windows skip is the
-deliberate non-Windows capability-honesty test.
+Repository extraction equivalence is complete. Current A3.3 staging checkpoint is Linux
+`72 PASS / 4 live SKIP` and Windows `.171` `71 PASS / 5 SKIP`; four Windows skips are native
+A2/A3.1/A3.2/A3.3 gates and the extra skip is the deliberate non-Windows capability-honesty test.
 
 When AutoCAD 2027 is installed/licensed and running, execute:
 

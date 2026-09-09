@@ -1,5 +1,5 @@
 """Headless DXF backend for the CDT_Engineer AutoCAD provider.
-Wing: code | Topic: autocad-a3-dimensions | Updated: 2026-09-09 20:44
+Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-09 21:09
 
 The dual-engine shape and several edge-case choices are informed by the MIT-licensed
 U-C4N/Autocad-MCP reference, but this implementation is normalized to the CDT A0/A1
@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 import ezdxf
-from ezdxf.math import Matrix44
+import ezdxf.bbox as ezdxf_bbox
+from ezdxf.math import Matrix44, arc_angle_span_rad, bulge_to_arc
 
 from ..config import Settings
 from ..errors import (
@@ -142,6 +143,47 @@ def _layer_info(layer: Any, current_layer: str) -> LayerInfo:
     )
 
 
+def _bbox_payload(box: Any) -> dict[str, list[float]] | None:
+    if not box.has_data:
+        return None
+    return {"min": _point(box.extmin), "max": _point(box.extmax)}
+
+
+def _lwpolyline_metrics(entity: Any) -> tuple[float, float | None]:
+    points = [(float(x), float(y), float(bulge)) for x, y, bulge in entity.get_points("xyb")]
+    if len(points) < 2:
+        return 0.0, None
+
+    segment_pairs = list(zip(points, points[1:]))
+    if entity.closed:
+        segment_pairs.append((points[-1], points[0]))
+
+    length = 0.0
+    signed_area = 0.0
+    for (x1, y1, bulge), (x2, y2, _) in segment_pairs:
+        chord = math.hypot(x2 - x1, y2 - y1)
+        signed_area += 0.5 * (x1 * y2 - x2 * y1)
+        if chord <= 0:
+            continue
+        if abs(bulge) <= 1e-15:
+            length += chord
+            continue
+        _, start_angle, end_angle, radius = bulge_to_arc((x1, y1), (x2, y2), bulge)
+        span = arc_angle_span_rad(start_angle, end_angle)
+        signed_span = span if bulge > 0 else -span
+        length += abs(radius * signed_span)
+        signed_area += 0.5 * radius * radius * (signed_span - math.sin(signed_span))
+
+    area: float | None = None
+    if len(points) >= 3:
+        if not entity.closed:
+            x1, y1, _ = points[-1]
+            x2, y2, _ = points[0]
+            signed_area += 0.5 * (x1 * y2 - x2 * y1)
+        area = abs(signed_area)
+    return length, area
+
+
 def _audit_entry(entry: Any) -> dict[str, Any]:
     entity = getattr(entry, "entity", None)
     return {
@@ -195,6 +237,10 @@ class EzdxfBackend(AutoCADBackend):
             "autocad.dimensions.aligned": Capability(True, "native"),
             "autocad.dimensions.advanced": Capability(
                 False, reason="A3_2_staged_not_public"
+            ),
+            "autocad.analysis.measurement": Capability(False, reason="A3_3_staged_not_public"),
+            "autocad.analysis.intersections": Capability(
+                False, reason="generic_intersection_solver_not_implemented"
             ),
             "autocad.hatch": Capability(True, "native"),
             "autocad.audit": Capability(True, "native"),
@@ -885,6 +931,60 @@ class EzdxfBackend(AutoCADBackend):
             return count
 
         return await self._run(_sync)
+
+    async def object_measure(self, object_id: str) -> dict[str, Any]:
+        def _sync() -> dict[str, Any]:
+            entity = self._get_entity(object_id)
+            entity_type = entity.dxftype()
+            result: dict[str, Any] = {
+                "object_id": str(entity.dxf.handle),
+                "type": entity_type,
+                "coordinate_frame": "wcs",
+                "bounding_box": _bbox_payload(ezdxf_bbox.extents([entity])),
+            }
+            if entity_type == "LINE":
+                result["length"] = float(entity.dxf.start.distance(entity.dxf.end))
+            elif entity_type == "CIRCLE":
+                radius = float(entity.dxf.radius)
+                result.update(
+                    radius=radius,
+                    circumference=2.0 * math.pi * radius,
+                    area=math.pi * radius * radius,
+                )
+            elif entity_type == "ARC":
+                radius = float(entity.dxf.radius)
+                span = arc_angle_span_rad(
+                    math.radians(float(entity.dxf.start_angle)),
+                    math.radians(float(entity.dxf.end_angle)),
+                )
+                result.update(radius=radius, length=radius * span)
+            elif entity_type == "LWPOLYLINE":
+                length, area = _lwpolyline_metrics(entity)
+                result["length"] = length
+                if area is not None:
+                    result["area"] = area
+            return result
+
+        return await self._run(_sync)
+
+    async def drawing_extents(self) -> dict[str, Any]:
+        def _sync() -> dict[str, Any]:
+            bounding_box = _bbox_payload(ezdxf_bbox.extents(self._space()))
+            return {
+                "empty": bounding_box is None,
+                "bounding_box": bounding_box,
+                "coordinate_frame": "wcs",
+            }
+
+        return await self._run(_sync)
+
+    async def object_intersections(
+        self, first_id: str, second_id: str, extend_mode: str = "none"
+    ) -> dict[str, Any]:
+        raise UnsupportedCapabilityError(
+            "autocad.analysis.intersections",
+            "Generic exact intersections are staged only for the live AutoCAD backend.",
+        )
 
     async def object_set_properties(
         self,

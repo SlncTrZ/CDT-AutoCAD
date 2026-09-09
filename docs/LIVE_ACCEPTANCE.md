@@ -71,8 +71,8 @@ PowerShell from the `CDT-AutoCAD` repository root:
 
 The runner sets `CDT_AUTOCAD_LIVE_TEST=1`, expects release `2027`, pins
 `AutoCAD.Application.26.0`, and keeps the backend in `attach_only` mode. It writes separate JUnit
-reports for the A2/A3.1 core gate and the staged A3.2 advanced-dimension gate so one failure does
-not obscure which acceptance boundary failed.
+reports for the A2/A3.1 core gate, A3.2 advanced-dimension gate and A3.3 analysis gate so one failure
+does not obscure which acceptance boundary failed.
 
 ## 5. A2 live evidence covered
 
@@ -127,7 +127,20 @@ The headless ezdxf lane independently verifies the same semantic methods plus DX
 Visual placement may differ between ezdxf rendering and native AutoCAD; live evidence is required
 before public promotion.
 
-## 8. Acceptance decision
+## 8. A3.3 measurement/intersection live evidence covered
+
+A3.3 has a third disposable-drawing native lane that verifies:
+
+- typed line length and circle radius/area;
+- `GetBoundingBox`-based current-space WCS extents across multiple entities;
+- exact line/line intersection from ActiveX `IntersectWith` with no extension;
+- normalized XYZ intersection payload and count.
+
+The ezdxf backend independently verifies exact core measurement and WCS extents, but deliberately
+refuses generic intersections because a complete exact solver is not implemented there. This is
+intentional capability honesty rather than backend parity by approximation.
+
+## 9. Acceptance decision
 
 A2 may move from RC to CLOSED only when all of these are true:
 
@@ -144,7 +157,11 @@ A3.2 may be promoted only when its separate native JUnit gate passes on the prim
 provider extension contract intentionally adds the four new MCP tools. Until then,
 `autocad.dimensions.advanced` stays capability-false.
 
-## 9. Failure handling
+A3.3 may be promoted only after its native measurement/extents/intersection gate passes and the
+provider extension contract intentionally adds the analysis tools. Until then,
+`autocad.analysis.measurement` and `autocad.analysis.intersections` stay capability-false.
+
+## 10. Failure handling
 
 - A COM timeout is integrity-uncertain: inspect the drawing before retrying because the abandoned call may still complete.
 - Do not convert a live failure into a skip or mock PASS.

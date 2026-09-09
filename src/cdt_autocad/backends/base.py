@@ -1,5 +1,5 @@
 """Focused backend contracts for the AutoCAD provider.
-Wing: code | Topic: autocad-a3-dimensions | Updated: 2026-09-09 20:42
+Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-09 21:06
 """
 
 from __future__ import annotations
@@ -296,6 +296,21 @@ class SolidContract(ABC):
         raise self._solid_refusal()
 
 
+class AnalysisContract(ABC):
+    """A3.3 geometry-analysis surface staged below the public MCP contract."""
+
+    @abstractmethod
+    async def object_measure(self, object_id: str) -> dict[str, Any]: ...
+
+    @abstractmethod
+    async def drawing_extents(self) -> dict[str, Any]: ...
+
+    @abstractmethod
+    async def object_intersections(
+        self, first_id: str, second_id: str, extend_mode: str = "none"
+    ) -> dict[str, Any]: ...
+
+
 class TransactionContract(ABC):
     @abstractmethod
     async def transaction_begin(self) -> dict[str, Any]: ...
@@ -325,6 +340,7 @@ class AutoCADBackend(
     ViewContract,
     SpatialCurveContract,
     SolidContract,
+    AnalysisContract,
     TransactionContract,
 ):
     """Composition surface for staged AutoCAD backends."""

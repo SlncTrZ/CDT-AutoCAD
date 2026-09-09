@@ -33,8 +33,10 @@ $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $evidenceRoot = Join-Path (Get-Location) "artifacts/live-acceptance"
 $coreBaseTemp = Join-Path $evidenceRoot "pytest-core-$timestamp"
 $advancedBaseTemp = Join-Path $evidenceRoot "pytest-advanced-dimensions-$timestamp"
+$analysisBaseTemp = Join-Path $evidenceRoot "pytest-analysis-$timestamp"
 $coreJunit = Join-Path $evidenceRoot "junit-core-$timestamp.xml"
 $advancedJunit = Join-Path $evidenceRoot "junit-advanced-dimensions-$timestamp.xml"
+$analysisJunit = Join-Path $evidenceRoot "junit-analysis-$timestamp.xml"
 New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
 
 Write-Host "CDT-AutoCAD live acceptance"
@@ -55,6 +57,12 @@ $coreExitCode = $LASTEXITCODE
     --junitxml $advancedJunit
 $advancedExitCode = $LASTEXITCODE
 
+& $Python -m pytest -q `
+    tests/test_measurement_analysis.py `
+    --basetemp $analysisBaseTemp `
+    --junitxml $analysisJunit
+$analysisExitCode = $LASTEXITCODE
+
 if ($coreExitCode -eq 0) {
     Write-Host "A2/A3.1 native gate: PASS"
 } else {
@@ -65,8 +73,13 @@ if ($advancedExitCode -eq 0) {
 } else {
     Write-Host "A3.2 advanced-dimension native gate: FAIL ($advancedExitCode)"
 }
+if ($analysisExitCode -eq 0) {
+    Write-Host "A3.3 measurement/intersection native gate: PASS"
+} else {
+    Write-Host "A3.3 measurement/intersection native gate: FAIL ($analysisExitCode)"
+}
 
-if (($coreExitCode -eq 0) -and ($advancedExitCode -eq 0)) {
+if (($coreExitCode -eq 0) -and ($advancedExitCode -eq 0) -and ($analysisExitCode -eq 0)) {
     Write-Host "All current native gates PASS. Preserve the evidence directory for review."
     exit 0
 }
