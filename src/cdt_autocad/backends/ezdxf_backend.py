@@ -1,5 +1,5 @@
 """Headless DXF backend for the CDT_Engineer AutoCAD provider.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 14:06
+Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 16:13
 
 The dual-engine shape and several edge-case choices are informed by the MIT-licensed
 U-C4N/Autocad-MCP reference, but this implementation is normalized to the CDT A0/A1
@@ -203,8 +203,13 @@ class EzdxfBackend(AutoCADBackend):
                 None if render_available else "optional_dependency_missing:matplotlib",
             ),
             "autocad.live_ui": Capability(False, reason="COM_backend_required"),
+            "autocad.viewport.manage": Capability(False, reason="COM_backend_required"),
+            "autocad.view.zoom": Capability(False, reason="COM_backend_required"),
             "autocad.viewport.capture": Capability(False, reason="COM_backend_required"),
+            "autocad.view.3d": Capability(False, reason="COM_backend_required"),
+            "autocad.geometry.3d_polyline": Capability(False, reason="COM_backend_required"),
             "autocad.solid.acis": Capability(False, reason="COM_backend_required"),
+            "autocad.solid.loft": Capability(False, reason="COM_backend_required"),
         }
         return {key: value.to_dict() for key, value in capabilities.items()}
 

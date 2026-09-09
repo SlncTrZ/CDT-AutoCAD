@@ -1,5 +1,5 @@
 """Live AutoCAD backend using the Windows ActiveX/COM automation API.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 14:14
+Wing: code | Topic: autocad-a3 | Updated: 2026-09-09 16:13
 
 This backend intentionally implements only the existing A0/A1 provider contract. It does not
 copy the much larger reference server surface. All COM work is serialized through one STA worker
@@ -120,6 +120,8 @@ def _object_type(entity: Any) -> str:
         "AcDbRotatedDimension": "DIMENSION",
         "AcDbAlignedDimension": "DIMENSION",
         "AcDbHatch": "HATCH",
+        "AcDb3dSolid": "3DSOLID",
+        "AcDb3dPolyline": "3DPOLYLINE",
     }
     return mapping.get(name, name.removeprefix("AcDb").upper())
 
@@ -376,10 +378,23 @@ class ComBackend(AutoCADBackend):
             "autocad.purge": supported(),
             "autocad.pdf.export": supported("native_plot"),
             "autocad.live_ui": supported(),
+            "autocad.viewport.manage": supported("activex_pviewport"),
+            "autocad.view.zoom": supported("activex_live_view"),
             "autocad.viewport.capture": Capability(
-                False, reason="A2.2_staged_pending_public_contract_and_live_verification"
+                self.runtime_available and _PIL_OK,
+                "windows_gdi" if self.runtime_available and _PIL_OK else None,
+                (
+                    None
+                    if self.runtime_available and _PIL_OK
+                    else self._runtime_reason() or "optional_dependency_missing:pillow"
+                ),
             ),
-            "autocad.solid.acis": Capability(False, reason="A3_not_implemented"),
+            "autocad.view.3d": Capability(False, reason="A3_staged_pending_live_verification"),
+            "autocad.geometry.3d_polyline": Capability(
+                False, reason="A3_staged_pending_live_verification"
+            ),
+            "autocad.solid.acis": Capability(False, reason="A3_staged_pending_live_verification"),
+            "autocad.solid.loft": Capability(False, reason="activex_no_typed_loft_api"),
         }
         return {key: value.to_dict() for key, value in capabilities.items()}
 
@@ -392,7 +407,8 @@ class ComBackend(AutoCADBackend):
             "attach_policy": self.settings.com_attach_policy,
             "transaction_depth": self._transaction_depth,
             "timeout_uncertain": self._timeout_uncertain,
-            "a2_live_view_staged": True,
+            "a2_implementation_state": "release_candidate",
+            "a2_live_verification": "pending_real_autocad",
             "platform": sys.platform,
         }
 
@@ -530,6 +546,92 @@ class ComBackend(AutoCADBackend):
         if not 0 <= normalized <= 256:
             raise ValueError("color must be AutoCAD ACI value 0..256")
         return normalized
+
+    def _solid_by_id(self, handle: str) -> Any:
+        key = str(handle or "").strip()
+        if not key:
+            raise ValueError("solid handle must not be empty")
+        try:
+            solid = self._doc().HandleToObject(key)
+        except Exception as exc:
+            raise KeyError(f"solid not found: {handle}") from exc
+        if str(getattr(solid, "ObjectName", "")) != "AcDb3dSolid":
+            raise ValueError(f"handle {key} is {_object_type(solid)}, not 3DSOLID")
+        return solid
+
+    @staticmethod
+    def _solid_info(solid: Any) -> dict[str, Any]:
+        lower, upper = solid.GetBoundingBox()
+        centroid = _xyz(solid.Centroid)
+        return {
+            "ok": True,
+            "handle": str(solid.Handle),
+            "type": "3DSOLID",
+            "layer": str(solid.Layer),
+            "visible": bool(solid.Visible),
+            "solid_type": str(solid.SolidType),
+            "volume": float(solid.Volume),
+            "centroid": centroid,
+            "bounding_box": {"min": _xyz(lower), "max": _xyz(upper)},
+        }
+
+    def _region_from_profile(self, doc: Any, profile_handle: str) -> Any:
+        key = str(profile_handle or "").strip()
+        if not key:
+            raise ValueError("profile handle must not be empty")
+        try:
+            profile = doc.HandleToObject(key)
+        except Exception as exc:
+            raise KeyError(f"profile not found: {profile_handle}") from exc
+
+        profile_type = str(getattr(profile, "ObjectName", ""))
+        if profile_type == "AcDbRegion":
+            return profile.Copy()
+
+        allowed_profile_types = {
+            "AcDbArc",
+            "AcDbCircle",
+            "AcDbEllipse",
+            "AcDbLine",
+            "AcDbPolyline",
+            "AcDb2dPolyline",
+            "AcDb3dPolyline",
+            "AcDbSpline",
+        }
+        if profile_type not in allowed_profile_types:
+            raise ValueError(
+                "profile must be a Region or closed coplanar Arc/Circle/Ellipse/Line/Polyline/Spline"
+            )
+
+        temporary_profile = profile.Copy()
+        try:
+            raw_regions = doc.ModelSpace.AddRegion(_dispatch_array([temporary_profile]))
+            regions = list(raw_regions or [])
+        except Exception:
+            try:
+                temporary_profile.Delete()
+            except Exception:
+                pass
+            raise
+        finally:
+            # AddRegion normally consumes the copied source curve. If the COM
+            # implementation leaves it alive, delete only the temporary copy.
+            try:
+                temporary_profile.Delete()
+            except Exception:
+                pass
+
+        if len(regions) != 1:
+            for region in regions:
+                try:
+                    region.Delete()
+                except Exception:
+                    pass
+            raise ValueError(
+                f"profile {profile_handle} must produce exactly one closed planar region; "
+                f"AutoCAD produced {len(regions)}"
+            )
+        return regions[0]
 
     async def document_new(self) -> dict[str, Any]:
         if self._transaction_depth > 0:
@@ -1486,6 +1588,445 @@ class ComBackend(AutoCADBackend):
             return png
 
         return await self._run(_sync)
+
+    async def view_set_direction(self, dx: float, dy: float, dz: float) -> dict[str, Any]:
+        length = math.sqrt(float(dx) ** 2 + float(dy) ** 2 + float(dz) ** 2)
+        if length <= 0:
+            raise ValueError("3D view direction must be a non-zero vector")
+        direction = [float(dx) / length, float(dy) / length, float(dz) / length]
+
+        def _sync() -> dict[str, Any]:
+            doc = self._doc()
+            viewport = doc.ActiveViewport
+            viewport.Direction = _point(*direction)
+            doc.ActiveViewport = viewport
+            self._app().ZoomExtents()
+            return {"ok": True, "direction": direction, "normalized": True}
+
+        return await self._run(_sync)
+
+    async def entity_create_3d_polyline(
+        self, points: list[list[float]], closed: bool = False
+    ) -> dict[str, Any]:
+        if len(points) < 2 or any(len(point) < 3 for point in points):
+            raise ValueError("3D polyline requires at least two [x, y, z] points")
+        normalized = [
+            [float(point[0]), float(point[1]), float(point[2])] for point in points
+        ]
+        flat = [value for point in normalized for value in point]
+
+        def _sync() -> dict[str, Any]:
+            entity = self._doc().ModelSpace.Add3DPoly(_double_array(flat))
+            entity.Closed = bool(closed)
+            return {
+                "ok": True,
+                "handle": str(entity.Handle),
+                "type": "3DPOLYLINE",
+                "points": normalized,
+                "closed": bool(entity.Closed),
+                "coordinate_frame": "wcs",
+            }
+
+        return await self._run(_sync)
+
+    async def solid_box(
+        self,
+        cx: float,
+        cy: float,
+        cz: float,
+        length: float,
+        width: float,
+        height: float,
+    ) -> dict[str, Any]:
+        if length <= 0:
+            raise ValueError("box length must be > 0")
+        if width <= 0:
+            raise ValueError("box width must be > 0")
+        if height <= 0:
+            raise ValueError("box height must be > 0")
+
+        def _sync() -> dict[str, Any]:
+            solid = self._doc().ModelSpace.AddBox(
+                _point(cx, cy, cz), float(length), float(width), float(height)
+            )
+            return self._solid_info(solid)
+
+        return await self._run(_sync)
+
+    async def solid_cylinder(
+        self,
+        cx: float,
+        cy: float,
+        cz: float,
+        radius: float,
+        height: float,
+    ) -> dict[str, Any]:
+        if radius <= 0:
+            raise ValueError("cylinder radius must be > 0")
+        if height <= 0:
+            raise ValueError("cylinder height must be > 0")
+
+        def _sync() -> dict[str, Any]:
+            solid = self._doc().ModelSpace.AddCylinder(
+                _point(cx, cy, cz), float(radius), float(height)
+            )
+            return self._solid_info(solid)
+
+        return await self._run(_sync)
+
+    async def solid_sphere(
+        self,
+        cx: float,
+        cy: float,
+        cz: float,
+        radius: float,
+    ) -> dict[str, Any]:
+        if radius <= 0:
+            raise ValueError("sphere radius must be > 0")
+
+        def _sync() -> dict[str, Any]:
+            solid = self._doc().ModelSpace.AddSphere(_point(cx, cy, cz), float(radius))
+            return self._solid_info(solid)
+
+        return await self._run(_sync)
+
+    async def solid_cone(
+        self,
+        cx: float,
+        cy: float,
+        cz: float,
+        radius: float,
+        height: float,
+    ) -> dict[str, Any]:
+        if radius <= 0:
+            raise ValueError("cone radius must be > 0")
+        if height <= 0:
+            raise ValueError("cone height must be > 0")
+
+        def _sync() -> dict[str, Any]:
+            solid = self._doc().ModelSpace.AddCone(
+                _point(cx, cy, cz), float(radius), float(height)
+            )
+            return self._solid_info(solid)
+
+        return await self._run(_sync)
+
+    async def solid_torus(
+        self,
+        cx: float,
+        cy: float,
+        cz: float,
+        torus_radius: float,
+        tube_radius: float,
+    ) -> dict[str, Any]:
+        if torus_radius <= 0:
+            raise ValueError("torus_radius must be > 0")
+        if tube_radius <= 0:
+            raise ValueError("tube_radius must be > 0")
+
+        def _sync() -> dict[str, Any]:
+            solid = self._doc().ModelSpace.AddTorus(
+                _point(cx, cy, cz), float(torus_radius), float(tube_radius)
+            )
+            return self._solid_info(solid)
+
+        return await self._run(_sync)
+
+    async def solid_wedge(
+        self,
+        cx: float,
+        cy: float,
+        cz: float,
+        length: float,
+        width: float,
+        height: float,
+    ) -> dict[str, Any]:
+        if length <= 0:
+            raise ValueError("wedge length must be > 0")
+        if width <= 0:
+            raise ValueError("wedge width must be > 0")
+        if height <= 0:
+            raise ValueError("wedge height must be > 0")
+
+        def _sync() -> dict[str, Any]:
+            solid = self._doc().ModelSpace.AddWedge(
+                _point(cx, cy, cz), float(length), float(width), float(height)
+            )
+            return self._solid_info(solid)
+
+        return await self._run(_sync)
+
+    async def solid_extrude(
+        self,
+        profile_handle: str,
+        height: float,
+        taper_angle: float = 0.0,
+    ) -> dict[str, Any]:
+        if height == 0:
+            raise ValueError("extrude height must be non-zero")
+        if not -90.0 < float(taper_angle) < 90.0:
+            raise ValueError("taper_angle must be strictly between -90 and 90 degrees")
+
+        def _sync() -> dict[str, Any]:
+            doc = self._doc()
+            region = self._region_from_profile(doc, profile_handle)
+            failed = False
+            try:
+                solid = doc.ModelSpace.AddExtrudedSolid(
+                    region, float(height), math.radians(float(taper_angle))
+                )
+                return self._solid_info(solid)
+            except Exception:
+                failed = True
+                raise
+            finally:
+                try:
+                    region.Delete()
+                except Exception:
+                    if not failed:
+                        raise
+
+        return await self._run(_sync)
+
+    async def solid_sweep(self, profile_handle: str, path_handle: str) -> dict[str, Any]:
+        profile_key = str(profile_handle or "").strip().upper()
+        path_key = str(path_handle or "").strip().upper()
+        if not profile_key or not path_key:
+            raise ValueError("profile_handle and path_handle must not be empty")
+        if profile_key == path_key:
+            raise ValueError("profile and sweep path must be different objects")
+
+        def _sync() -> dict[str, Any]:
+            doc = self._doc()
+            region = self._region_from_profile(doc, profile_key)
+            failed = False
+            try:
+                try:
+                    path = doc.HandleToObject(path_key)
+                except Exception as exc:
+                    raise KeyError(f"path not found: {path_handle}") from exc
+                path_type = str(getattr(path, "ObjectName", ""))
+                allowed_path_types = {
+                    "AcDbArc",
+                    "AcDbCircle",
+                    "AcDbEllipse",
+                    "AcDbPolyline",
+                    "AcDb2dPolyline",
+                    "AcDb3dPolyline",
+                    "AcDbSpline",
+                }
+                if path_type not in allowed_path_types:
+                    raise ValueError(
+                        "sweep path must be an Arc, Circle, Ellipse, Polyline or Spline"
+                    )
+                solid = doc.ModelSpace.AddExtrudedSolidAlongPath(region, path)
+                return self._solid_info(solid)
+            except Exception:
+                failed = True
+                raise
+            finally:
+                try:
+                    region.Delete()
+                except Exception:
+                    if not failed:
+                        raise
+
+        return await self._run(_sync)
+
+    async def solid_revolve(
+        self,
+        profile_handle: str,
+        axis_x1: float,
+        axis_y1: float,
+        axis_z1: float,
+        axis_x2: float,
+        axis_y2: float,
+        axis_z2: float,
+        angle_deg: float = 360.0,
+    ) -> dict[str, Any]:
+        axis = (
+            float(axis_x2) - float(axis_x1),
+            float(axis_y2) - float(axis_y1),
+            float(axis_z2) - float(axis_z1),
+        )
+        if math.sqrt(sum(value * value for value in axis)) <= 0:
+            raise ValueError("revolve axis points must be distinct")
+        if angle_deg == 0 or abs(float(angle_deg)) > 360.0:
+            raise ValueError("revolve angle must be non-zero and within ±360 degrees")
+
+        def _sync() -> dict[str, Any]:
+            doc = self._doc()
+            region = self._region_from_profile(doc, profile_handle)
+            failed = False
+            try:
+                solid = doc.ModelSpace.AddRevolvedSolid(
+                    region,
+                    _point(axis_x1, axis_y1, axis_z1),
+                    _point(*axis),
+                    math.radians(float(angle_deg)),
+                )
+                return self._solid_info(solid)
+            except Exception:
+                failed = True
+                raise
+            finally:
+                try:
+                    region.Delete()
+                except Exception:
+                    if not failed:
+                        raise
+
+        return await self._run(_sync)
+
+    async def solid_boolean(
+        self,
+        target_handle: str,
+        tool_handle: str,
+        operation: str,
+    ) -> dict[str, Any]:
+        target_key = str(target_handle or "").strip().upper()
+        tool_key = str(tool_handle or "").strip().upper()
+        if not target_key or not tool_key:
+            raise ValueError("target_handle and tool_handle must not be empty")
+        if target_key == tool_key:
+            raise ValueError("Boolean target and tool must be different solids")
+        normalized = str(operation or "").strip().lower()
+        operation_codes = {
+            "union": 0,
+            "intersect": 1,
+            "intersection": 1,
+            "subtract": 2,
+            "subtraction": 2,
+        }
+        if normalized not in operation_codes:
+            raise ValueError("operation must be one of: union, subtract, intersect")
+        canonical = {
+            "intersection": "intersect",
+            "subtraction": "subtract",
+        }.get(normalized, normalized)
+
+        def _sync() -> dict[str, Any]:
+            doc = self._doc()
+            target = self._solid_by_id(target_key)
+            tool = self._solid_by_id(tool_key)
+            target.Boolean(operation_codes[normalized], tool)
+            result = self._solid_info(target)
+            try:
+                doc.HandleToObject(tool_key)
+                tool_exists_after = True
+            except Exception:
+                tool_exists_after = False
+            result.update(
+                {
+                    "operation": canonical,
+                    "tool_handle": tool_key,
+                    "tool_exists_after": tool_exists_after,
+                }
+            )
+            return result
+
+        return await self._run(_sync)
+
+    async def solid_move(
+        self, handle: str, dx: float, dy: float, dz: float
+    ) -> dict[str, Any]:
+        def _sync() -> dict[str, Any]:
+            solid = self._solid_by_id(handle)
+            solid.Move(_point(0, 0, 0), _point(dx, dy, dz))
+            return self._solid_info(solid)
+
+        return await self._run(_sync)
+
+    async def solid_rotate3d(
+        self,
+        handle: str,
+        axis_x1: float,
+        axis_y1: float,
+        axis_z1: float,
+        axis_x2: float,
+        axis_y2: float,
+        axis_z2: float,
+        angle_deg: float,
+    ) -> dict[str, Any]:
+        axis_length = math.sqrt(
+            (float(axis_x2) - float(axis_x1)) ** 2
+            + (float(axis_y2) - float(axis_y1)) ** 2
+            + (float(axis_z2) - float(axis_z1)) ** 2
+        )
+        if axis_length <= 0:
+            raise ValueError("Rotate3D axis points must be distinct")
+
+        def _sync() -> dict[str, Any]:
+            solid = self._solid_by_id(handle)
+            solid.Rotate3D(
+                _point(axis_x1, axis_y1, axis_z1),
+                _point(axis_x2, axis_y2, axis_z2),
+                math.radians(float(angle_deg)),
+            )
+            return self._solid_info(solid)
+
+        return await self._run(_sync)
+
+    async def solid_scale3d(
+        self,
+        handle: str,
+        base_x: float,
+        base_y: float,
+        base_z: float,
+        factor: float,
+    ) -> dict[str, Any]:
+        if factor <= 0:
+            raise ValueError("scale factor must be > 0")
+
+        def _sync() -> dict[str, Any]:
+            solid = self._solid_by_id(handle)
+            solid.ScaleEntity(_point(base_x, base_y, base_z), float(factor))
+            return self._solid_info(solid)
+
+        return await self._run(_sync)
+
+    async def solid_mirror3d(
+        self,
+        handle: str,
+        x1: float,
+        y1: float,
+        z1: float,
+        x2: float,
+        y2: float,
+        z2: float,
+        x3: float,
+        y3: float,
+        z3: float,
+    ) -> dict[str, Any]:
+        p1 = (float(x1), float(y1), float(z1))
+        p2 = (float(x2), float(y2), float(z2))
+        p3 = (float(x3), float(y3), float(z3))
+        v1 = tuple(p2[index] - p1[index] for index in range(3))
+        v2 = tuple(p3[index] - p1[index] for index in range(3))
+        cross = (
+            v1[1] * v2[2] - v1[2] * v2[1],
+            v1[2] * v2[0] - v1[0] * v2[2],
+            v1[0] * v2[1] - v1[1] * v2[0],
+        )
+        norm1 = math.sqrt(sum(value * value for value in v1))
+        norm2 = math.sqrt(sum(value * value for value in v2))
+        cross_norm = math.sqrt(sum(value * value for value in cross))
+        if norm1 <= 0 or norm2 <= 0 or cross_norm <= 1e-12 * norm1 * norm2:
+            raise ValueError("Mirror3D plane points must be distinct and non-collinear")
+
+        def _sync() -> dict[str, Any]:
+            solid = self._solid_by_id(handle)
+            mirrored = solid.Mirror3D(_point(*p1), _point(*p2), _point(*p3))
+            if str(getattr(mirrored, "ObjectName", "")) != "AcDb3dSolid":
+                raise RuntimeError("Mirror3D did not return a 3DSOLID")
+            result = self._solid_info(mirrored)
+            result["source_handle"] = str(handle)
+            return result
+
+        return await self._run(_sync)
+
+    async def solid_inspect(self, handle: str) -> dict[str, Any]:
+        return await self._run(lambda: self._solid_info(self._solid_by_id(handle)))
 
     async def transaction_begin(self) -> dict[str, Any]:
         if self._transaction_depth >= self.settings.transaction_depth:

@@ -1,5 +1,5 @@
 """FastMCP entrypoint for the CDT_Engineer AutoCAD provider.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 14:06
+Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 16:13
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from fastmcp import FastMCP
 from fastmcp.server.auth import StaticTokenVerifier
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 from fastmcp.tools.tool import ToolResult
+from fastmcp.utilities.types import Image
 
 from . import __version__
 from .backends.base import AutoCADBackend
@@ -27,7 +28,7 @@ from .errors import (
     UnsupportedCapabilityError,
 )
 
-_CONTRACT_VERSION = "autocad-a1-v1"
+_CONTRACT_VERSION = "autocad-a2-v1-rc1"
 _COMMON_CONTRACT_VERSION = "cdt-common-v1-draft"
 _UPDATED_AT = "2026-09-09"
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -426,6 +427,61 @@ def create_mcp(settings: Settings | None = None) -> FastMCP:
     @app.tool(tags={"layout", "write"})
     async def layout_set_current(name: str) -> dict[str, Any]:
         return await backend.layout_set_current(name)
+
+    @app.tool(tags={"viewport", "write"})
+    async def viewport_create(
+        layout: str,
+        center_x: float,
+        center_y: float,
+        width: float,
+        height: float,
+        view_center_x: float,
+        view_center_y: float,
+        scale: float = 1.0,
+    ) -> dict[str, Any]:
+        return await backend.viewport_create(
+            layout,
+            center_x,
+            center_y,
+            width,
+            height,
+            view_center_x,
+            view_center_y,
+            scale,
+        )
+
+    @app.tool(tags={"viewport", "read"})
+    async def viewport_list(layout: str | None = None) -> dict[str, Any]:
+        return await backend.viewport_list(layout)
+
+    @app.tool(tags={"viewport", "write"})
+    async def viewport_set_scale(handle: str, scale: float) -> dict[str, Any]:
+        return await backend.viewport_set_scale(handle, scale)
+
+    @app.tool(tags={"viewport", "write"})
+    async def viewport_lock(handle: str, locked: bool = True) -> dict[str, Any]:
+        return await backend.viewport_lock(handle, locked)
+
+    @app.tool(tags={"viewport", "write"})
+    async def viewport_delete(handle: str, force: bool = False) -> dict[str, Any]:
+        return await backend.viewport_delete(handle, force)
+
+    @app.tool(tags={"view", "write"})
+    async def view_zoom_extents() -> dict[str, Any]:
+        return await backend.view_zoom_extents()
+
+    @app.tool(tags={"view", "write"})
+    async def view_zoom_window(
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+    ) -> dict[str, Any]:
+        return await backend.view_zoom_window(x1, y1, x2, y2)
+
+    @app.tool(tags={"view", "read"})
+    async def view_screenshot() -> Image:
+        return Image(data=await backend.view_screenshot(), format="png")
 
     @app.tool(tags={"transaction", "write"})
     async def transaction_begin() -> dict[str, Any]:

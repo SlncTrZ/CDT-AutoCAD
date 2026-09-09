@@ -1,16 +1,16 @@
 # AutoCAD Provider Tool Guide
 
-> Contract version: `autocad-a1-v1` · Provider version: `0.2.0` · Updated: 2026-09-09
+> Contract version: `autocad-a2-v1-rc1` · Provider version: `0.3.0rc1` · Updated: 2026-09-09
 
 ## Runtime scope
 
-The public MCP contract remains the verified **A1 42-tool surface**. `ezdxf` is the default backend.
-A staged A2 `com` backend can be selected explicitly on Windows to run the same public A0/A1
-operations against live AutoCAD, including native DWG and native plotting.
+This is the **A2 release-candidate 50-tool surface**. `ezdxf` remains the default backend; the `com`
+backend is selected explicitly on Windows for live AutoCAD, native DWG, native plotting, viewport
+management, live zoom and PNG capture.
 
-Backend selection is capability-driven; no silent downgrade is permitted. The staged COM viewport,
-live zoom and PNG capture implementation is intentionally not promoted to public MCP tools until the
-real Windows + AutoCAD integration lane passes.
+A2 implementation is code-complete but **not acceptance-closed**: the current Windows development PC
+has no AutoCAD installation, so the real ActiveX lane cannot yet certify the release candidate. The
+provider reports this state explicitly rather than treating mock coverage as live verification.
 
 ## Recommended workflow
 
@@ -106,9 +106,19 @@ block definition if `CopyObjects` fails.
 
 Layout names resolve case-insensitively. Creation/query operations follow the active layout.
 
-A2 backend code also stages native viewport create/list/scale/lock/delete. Those methods are not yet
-part of `autocad-a1-v1`; they become public only after live AutoCAD verification and the subsequent
-contract/version decision.
+A2 public tools additionally include:
+
+- `viewport_create(layout, center_x, center_y, width, height, view_center_x, view_center_y, scale=1)`
+- `viewport_list(layout?)`
+- `viewport_set_scale(handle, scale)`
+- `viewport_lock(handle, locked=true)`
+- `viewport_delete(handle, force=false)`
+- `view_zoom_extents`
+- `view_zoom_window(x1, y1, x2, y2)`
+- `view_screenshot` — PNG image content on the COM backend.
+
+The headless backend refuses these with typed capability errors. Unknown/pre-existing live viewports
+require `force=true` for deletion because ActiveX exposes no reliable main-viewport predicate.
 
 ## Transactions / undo
 
@@ -138,8 +148,8 @@ CDT_AUTOCAD_COM_TIMEOUT         COM deadline in seconds; default 60
 `attach_only` is fail-closed: if no matching application is already running, the provider refuses
 rather than starting AutoCAD. `attach_or_start` must be chosen explicitly.
 
-The `com` optional dependency installs pywin32 plus Pillow; Pillow is used only by the staged native
-window PNG capture path.
+The `com` optional dependency installs pywin32 plus Pillow; Pillow is used by native-window PNG
+capture.
 
 ## Security / reliability
 
@@ -156,14 +166,16 @@ window PNG capture path.
 
 ## Current explicit limitations
 
-Public `autocad-a1-v1` still does not expose:
+The A2 release candidate still does not expose:
 
-- viewport management / live zoom / screenshot tools (A2 code staged, live verification pending);
+- A3 ACIS 3D solid tools (implementation follows after this RC gate);
 - angular/radius/diameter dimensions;
 - advanced hatch editing/gradients;
 - trim/offset/fillet;
 - GDT;
 - ACIS 3D solids.
 
-A2 is not CLOSED until the opt-in Windows + real AutoCAD lane validates native DWG, A0/A1 parity,
-viewport operations, zoom and PNG capture. A3 owns the advanced drafting/engineering families.
+A2 acceptance remains OPEN until the opt-in Windows + real AutoCAD lane validates native DWG,
+A0/A1 parity, viewport operations, zoom and PNG capture. The blocker is environmental: AutoCAD is
+not installed on the current Windows development PC. A3 can proceed as staged COM code, but its own
+live acceptance follows the same real-AutoCAD gate.

@@ -1,5 +1,5 @@
 """Focused backend contracts for the AutoCAD provider.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 14:14
+Wing: code | Topic: autocad-a3 | Updated: 2026-09-09 16:13
 """
 
 from __future__ import annotations
@@ -210,6 +210,78 @@ class ViewContract(ABC):
             "autocad.viewport.capture", "Live viewport capture requires the COM backend."
         )
 
+    async def view_set_direction(self, dx: float, dy: float, dz: float) -> dict[str, Any]:
+        raise UnsupportedCapabilityError(
+            "autocad.view.3d", "3D live view control requires the COM backend."
+        )
+
+
+class SpatialCurveContract(ABC):
+    """A3 supporting 3D-curve geometry for native modeling workflows."""
+
+    async def entity_create_3d_polyline(
+        self, points: list[list[float]], closed: bool = False
+    ) -> dict[str, Any]:
+        raise UnsupportedCapabilityError(
+            "autocad.geometry.3d_polyline",
+            "Native 3D polyline creation requires the live COM backend.",
+        )
+
+
+class SolidContract(ABC):
+    """A3 native ACIS solid surface with fail-closed non-COM defaults."""
+
+    @staticmethod
+    def _solid_refusal() -> UnsupportedCapabilityError:
+        return UnsupportedCapabilityError(
+            "autocad.solid.acis", "Native ACIS 3D solids require the live COM backend."
+        )
+
+    async def solid_box(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_cylinder(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_sphere(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_cone(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_torus(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_wedge(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_extrude(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_sweep(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_revolve(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_boolean(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_move(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_rotate3d(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_scale3d(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_mirror3d(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
+    async def solid_inspect(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
 
 class TransactionContract(ABC):
     @abstractmethod
@@ -238,6 +310,8 @@ class AutoCADBackend(
     BlockContract,
     LayoutContract,
     ViewContract,
+    SpatialCurveContract,
+    SolidContract,
     TransactionContract,
 ):
     """Composition surface for staged AutoCAD backends."""

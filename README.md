@@ -1,11 +1,11 @@
 # CDT AutoCAD Provider
 
-> Status: A1 public contract verified · A2 COM backend staged, live verification pending · Version: 0.2.0 · Updated: 2026-09-09
+> Status: A2 release candidate · real AutoCAD acceptance blocked by missing installation · Version: 0.3.0rc1 · Updated: 2026-09-09
 
 This provider is the first CDT_Engineer reference implementation. The default backend remains
-`ezdxf`, with a bounded 42-tool `autocad-a1-v1` MCP surface. An A2 `com` backend is now staged behind
-explicit configuration so the same A0/A1 operations can target a live Windows AutoCAD session and
-native DWG without changing the public contract before the real-AutoCAD gate passes.
+`ezdxf`; the public release-candidate contract is now a bounded 50-tool `autocad-a2-v1-rc1` surface.
+The `com` backend adds live Windows AutoCAD, native DWG, viewport management, live zoom and screenshot
+capture while preserving typed refusal on the headless backend.
 
 ## Current public scope
 
@@ -24,10 +24,9 @@ native DWG without changing the public contract before the real-AutoCAD gate pas
 - Allowed-root path containment and bounded backend calls.
 - Typed MCP errors for unsupported capabilities, state conflicts and timeouts.
 
-The staged A2 COM implementation additionally contains backend-level viewport create/list/scale/lock/
-delete, live zoom and native-window PNG capture. These methods are deliberately **not yet promoted to
-MCP tools**: ActiveX behavior and screenshot fidelity still require the real Windows + AutoCAD lane.
-The existing 42-tool contract therefore remains unchanged until that gate passes.
+A2 viewport create/list/scale/lock/delete, live zoom and native-window PNG capture are now public MCP
+release-candidate tools. They remain **live-unverified** because the current Windows development PC
+has no AutoCAD installation. Mock/Linux verification does not substitute for that acceptance gate.
 
 ## Runtime configuration
 
@@ -71,7 +70,7 @@ pip install 'cdt-autocad-provider[com]'
 The COM extra supplies `pywin32` plus Pillow for PNG window capture. Missing optional dependencies
 remain capability/refusal conditions rather than silent fallbacks.
 
-## A2 live verification lane
+## A2 release-candidate verification lane
 
 Generic CI uses mocks and remains cross-platform. The destructive/live smoke is opt-in:
 
@@ -82,6 +81,10 @@ CDT_AUTOCAD_LIVE_TEST=1 pytest -q tests/test_com_backend.py
 Run that only on Windows with AutoCAD already running when using the default `attach_only` policy.
 The smoke creates a disposable drawing, exercises basic geometry, layout + viewport operations, zoom,
 PNG capture and native DWG save, then closes the created document without saving further changes.
+
+Current blocker: the reachable Windows PC does not have AutoCAD registered/installed, so this lane
+cannot yet run. A2 implementation may advance to RC, but A2 acceptance must remain OPEN until this
+specific gate passes.
 
 ## Development checks
 

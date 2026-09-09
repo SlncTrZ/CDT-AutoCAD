@@ -1,23 +1,32 @@
 """Provider contract regression tests across AutoCAD backends.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 14:18
+Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 16:13
 """
 
 from __future__ import annotations
 
+import tomllib
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from fastmcp import Client
 
+from cdt_autocad import __version__
 from cdt_autocad.backends.com_backend import ComBackend
 from cdt_autocad.backends.ezdxf_backend import EzdxfBackend
 from cdt_autocad.config import Settings
 from cdt_autocad.server import _validate_http_launch, create_mcp
 
 
+def test_package_metadata_version_matches_runtime():
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    with pyproject.open("rb") as stream:
+        metadata = tomllib.load(stream)
+    assert metadata["project"]["version"] == __version__
+
+
 @pytest.mark.asyncio
-async def test_a1_tool_surface_is_bounded_and_explicit(settings):
+async def test_a2_rc_tool_surface_is_bounded_and_explicit(settings):
     app = create_mcp(settings)
     async with Client(app) as client:
         names = {tool.name for tool in await client.list_tools()}
@@ -60,13 +69,21 @@ async def test_a1_tool_surface_is_bounded_and_explicit(settings):
         "layout_list",
         "layout_create",
         "layout_set_current",
+        "viewport_create",
+        "viewport_list",
+        "viewport_set_scale",
+        "viewport_lock",
+        "viewport_delete",
+        "view_zoom_extents",
+        "view_zoom_window",
+        "view_screenshot",
         "transaction_begin",
         "transaction_commit",
         "transaction_rollback",
         "undo",
         "redo",
     }
-    assert len(names) == 42
+    assert len(names) == 50
 
 
 def test_backend_factory_selects_com(settings):
@@ -82,11 +99,11 @@ def test_capability_keyset_is_stable_across_backends(settings):
 
 
 @pytest.mark.asyncio
-async def test_com_selection_keeps_the_same_bounded_42_tool_surface(settings):
+async def test_com_selection_keeps_the_same_bounded_50_tool_surface(settings):
     app = create_mcp(replace(settings, backend="com"))
     async with Client(app) as client:
         names = {tool.name for tool in await client.list_tools()}
-    assert len(names) == 42
+    assert len(names) == 50
     assert "document_open" in names
     assert "undo" in names
 
@@ -98,10 +115,10 @@ async def test_help_and_basic_workflow_over_real_mcp_client(settings, tmp_path: 
         help_result = await client.call_tool("help", {})
         help_payload = help_result.structured_content or {}
         assert help_payload["provider_name"] == "autocad"
-        assert help_payload["provider_version"] == "0.2.0"
-        assert help_payload["contract_version"] == "autocad-a1-v1"
+        assert help_payload["provider_version"] == "0.3.0rc1"
+        assert help_payload["contract_version"] == "autocad-a2-v1-rc1"
         assert len(help_payload["contract_hash"]) == 64
-        assert "A1 42-tool surface" in help_payload["content"]
+        assert "A2 release-candidate" in help_payload["content"]
 
         await client.call_tool("document_new", {})
         created = await client.call_tool(
@@ -143,6 +160,19 @@ async def test_dwg_refusal_survives_mcp_boundary(settings, tmp_path: Path):
     assert payload["capability"] == "autocad.dwg.write"
     assert payload["backend"] == "ezdxf"
     assert not (tmp_path / "forbidden.dwg").exists()
+
+
+@pytest.mark.asyncio
+async def test_live_view_refusal_survives_mcp_boundary_on_ezdxf(settings):
+    app = create_mcp(settings)
+    async with Client(app) as client:
+        result = await client.call_tool("viewport_list", {}, raise_on_error=False)
+
+    assert result.is_error is True
+    payload = result.structured_content or {}
+    assert payload["kind"] == "unsupported_capability"
+    assert payload["capability"] == "autocad.viewport.manage"
+    assert payload["backend"] == "ezdxf"
 
 
 @pytest.mark.asyncio
