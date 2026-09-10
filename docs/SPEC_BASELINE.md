@@ -32,8 +32,9 @@ This provider repository implements AutoCAD runtime behavior against a pinned sn
 
 ## Local architecture overlay
 
-The pinned common specifications remain authoritative for the currently published provider contract, but CDT-AutoCAD now has a provider-local target-architecture overlay for the next development phase:
+The pinned common specifications remain authoritative for the currently published provider contract. CDT-AutoCAD also has a provider-local architecture overlay; N0–N3 of that overlay are implemented/closed and N4 is the current frontier:
 
+- `docs/CURRENT_CHECKPOINT.md`;
 - `docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`;
 - `docs/SEMANTIC_STATE_PROTOCOL.md`;
 - `docs/ARCHITECTURE_UPGRADE_PLAN.md`;

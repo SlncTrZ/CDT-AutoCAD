@@ -1,6 +1,6 @@
 # AutoCAD Provider Tool Guide
 
-> Contract version: `autocad-a2-v1-rc1` · Provider version: `0.3.0rc1` · Updated: 2026-09-10
+> Contract version: `autocad-a2-v1-rc1` · Provider version: `0.3.0rc1` · Updated: 2026-09-10 11:56 +07:00
 
 ## Runtime scope
 
@@ -135,7 +135,7 @@ require `force=true` for deletion because ActiveX exposes no reliable main-viewp
 - `undo`
 - `redo`
 
-`ezdxf` uses compressed bounded snapshots. Current `com` uses native AutoCAD undo marks. The target .NET bridge will use native database transactions plus verified semantic rollback/read-back; this is not yet the public runtime. COM additionally
+`ezdxf` uses compressed bounded snapshots. Current `com` uses native AutoCAD undo marks. The N3 .NET bridge is currently read-only; native database mutation transactions plus verified semantic rollback/read-back belong to N5+ and are not yet implemented or public. COM additionally
 tracks the active document: switching documents while a tracked transaction is open is refused, so a
 commit cannot accidentally close an undo mark in the wrong drawing.
 
@@ -188,9 +188,4 @@ The A2 release candidate still does not publicly expose:
 - trim/offset/fillet;
 - GDT.
 
-A2 native acceptance has passed on the AutoCAD 2027 Windows lane for native DWG, A0/A1 parity, viewport operations, zoom, PNG capture and native PDF plotting. A3.1 is implemented
-behind capability-false staging and has a broader native solid test lane. A3.2 is also implemented
-backend-side for angular, radial, diametric and X/Y ordinate dimensions. A3.3 adds typed object
-measurement/current-space WCS extents on both backends and exact `IntersectWith` analysis on COM;
-ezdxf refuses generic intersections rather than approximating them. All A3.2/A3.3 capabilities stay
-false and no additional MCP tools are exposed until their separate native AutoCAD gates pass.
+A2 native acceptance has passed on the AutoCAD 2027 Windows lane for native DWG, A0/A1 parity, viewport operations, zoom, PNG capture and native PDF plotting. A3.1, A3.2 and A3.3 have also passed their separate native AutoCAD 2027 lanes but remain staged/capability-false/non-public pending explicit contract promotion. A3.2 covers angular, radial, diametric and X/Y ordinate dimensions. A3.3 covers typed object measurement/current-space WCS extents and exact COM `IntersectWith` analysis; ezdxf refuses generic intersections rather than approximating them. No additional MCP tools are exposed by those native PASS results.

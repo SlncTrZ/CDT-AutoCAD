@@ -1,8 +1,8 @@
 # Drawing Execution & QA Workflow
 
-> Updated: 2026-09-10
+> Updated: 2026-09-10 11:56 +07:00
 > Scope: all CDT-AutoCAD user-facing drawing/reconstruction workflows
-> Status: Project execution invariant; target semantic architecture defined in `SEMANTIC_STATE_PROTOCOL.md`
+> Status: Project execution invariant; N3 transport/identity exists, full native Semantic State enforcement pending N4+
 
 ## 1. Purpose
 
@@ -260,18 +260,21 @@ Vision is reserved for:
 
 Screenshots may be captured at major visual gates or debugging points, but they are supplemental evidence. They do not replace native semantic state.
 
-## 15. Current COM migration rule
+## 15. Current migration rule
 
-Until the .NET bridge is implemented, the current COM/ezdxf runtime remains operational. During this migration phase:
+The N3 Managed .NET bridge is implemented and live-verified, but it is intentionally read-only and currently exposes only health/document identity. N4 full native semantic extraction and N5+ native mutation/rollback integration do not exist yet. During this migration phase:
 
+- keep COM/ezdxf as the supported drawing/runtime baseline;
 - use existing structured query/measurement APIs as much as possible;
-- do not claim COM screenshot review is equivalent to the target Semantic State Loop;
+- use the N3 bridge only for its verified internal read-only identity/transport scope;
+- do not claim that current COM/native-identity checks equal the full target Semantic State Loop;
+- a drawing step cannot be labeled full native `COMMITTED_VERIFIED`/`ROLLED_BACK_VERIFIED` until the required N4+ snapshot/fingerprint/rollback path exists;
 - COM timeout remains integrity-uncertain and requires read-back before retry;
 - old screenshot-heavy stress-test scripts are prototypes, not the target execution architecture.
 
 ## 16. Target native step runner
 
-The future runner should execute one ActionSpec at a time and return structured evidence, conceptually:
+N3 provides the transport/document-binding foundation only. The N4+ runner must execute one ActionSpec at a time and return structured evidence, conceptually:
 
 ```text
 semantic_step(action_spec)

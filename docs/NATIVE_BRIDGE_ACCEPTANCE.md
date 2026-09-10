@@ -1,12 +1,12 @@
 # Native Bridge + Semantic Integrity Acceptance
 
-> Updated: 2026-09-10
-> Status: N3/NB0 LIVE PASS · NB1–NB10 remain staged/open
+> Updated: 2026-09-10 11:56 +07:00
+> Status: N3/NB0 LIVE PASS · NB1 NEXT/OPEN · NB2 storage/policy PASS · NB3 core primitives PASS/native integration OPEN · NB4–NB10 OPEN
 > Target: AutoCAD 2027 full / Windows x64 / Managed .NET
 
 ## 1. Purpose
 
-This runbook defines the acceptance gates for the upcoming C# Managed .NET native bridge and Semantic State Loop. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
+This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0 has already live-passed; NB1 and later gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
 
 The upgrade is not accepted unless both core pillars are proven under fault injection:
 
@@ -34,7 +34,7 @@ This closes **N3 and NB0 only** plus the document-identity/non-dirtying subset n
 
 ## 2. Gate families
 
-### NB0 — Bridge identity / secure loading
+### NB0 — Bridge identity / secure loading — **PASS (N3)**
 
 Prove:
 
@@ -44,7 +44,7 @@ Prove:
 - malformed/oversized/unauthorized requests fail closed;
 - no endpoint accepts arbitrary C#, AutoLISP, shell, macro or free-text AutoCAD command execution.
 
-### NB1 — Read-only semantic extraction
+### NB1 — Read-only semantic extraction — **NEXT / OPEN (N4)**
 
 Prove repeated reads are stable for:
 
@@ -59,9 +59,9 @@ Prove repeated reads are stable for:
 
 Read-only extraction must not dirty or mutate the drawing.
 
-### NB2 — Persistent identity / PID
+### NB2 — Persistent identity / PID — **N2 STORAGE/POLICY PASS · FULL NATIVE INTEGRATION OPEN**
 
-**Storage/policy prototype status: LIVE PASS in N2 (2026-09-10).** See `docs/N2_PID_ACCEPTANCE.md` and `docs/evidence/n2-pid-native-2026-09-10.json`. The production N3+ bridge must reuse this carrier/policy and re-prove it through bridge IPC before overall bridge promotion.
+**Storage/policy prototype status: LIVE PASS in N2 (2026-09-10).** See `docs/N2_PID_ACCEPTANCE.md` and `docs/evidence/n2-pid-native-2026-09-10.json`. N3 reused the document-lineage carrier through bridge IPC and re-proved runtime-document disambiguation/non-dirtying for its read-only identity subset. Full entity-level native semantic extraction/fingerprint integration remains an N4/NB1/NB3 concern before overall bridge promotion.
 
 Prove on real DWG:
 
@@ -78,7 +78,7 @@ Prove on real DWG:
 
 AutoCAD `ObjectId` is not accepted as persistent identity. Native Handle may assist lookup but is not sufficient by itself.
 
-### NB3 — Canonical fingerprints
+### NB3 — Canonical fingerprints — **N1 PRIMITIVES PASS · NATIVE SNAPSHOT INTEGRATION OPEN**
 
 Golden tests must prove deterministic:
 
@@ -97,7 +97,7 @@ Required adversarial cases:
 - different semantic PIDs can share geometry fingerprint without sharing instance fingerprint;
 - forbidden duplicate geometry is detected independently of native handle.
 
-### NB4 — Native transaction rollback
+### NB4 — Native transaction rollback — **OPEN**
 
 Inject failures after each mutation stage and prove:
 
@@ -108,7 +108,7 @@ Inject failures after each mutation stage and prove:
 
 Target status: `ROLLED_BACK_VERIFIED`.
 
-### NB5 — Post-commit integrity / recovery
+### NB5 — Post-commit integrity / recovery — **OPEN**
 
 Inject mismatches after commit and prove:
 
@@ -121,7 +121,7 @@ Inject mismatches after commit and prove:
 
 If restoration cannot be proven, result must remain `ROLLBACK_FAILED` / `STATE_UNCERTAIN`.
 
-### NB6 — State drift
+### NB6 — State drift — **OPEN**
 
 After a verified step, manually modify the DWG before the next step.
 
@@ -132,7 +132,7 @@ Prove:
 - next mutation is refused with `STATE_DRIFT`;
 - no attempted mutation leaks into the document.
 
-### NB7 — Allowed-effects enforcement
+### NB7 — Allowed-effects enforcement — **OPEN**
 
 For each ActionSpec, inject an unexpected sibling create/modify/delete and prove semantic delta catches it.
 
@@ -145,7 +145,7 @@ Examples:
 
 Unexpected effects must fail validation and invoke rollback/recovery.
 
-### NB8 — File-level integrity
+### NB8 — File-level integrity — **OPEN**
 
 For SaveAs/export/native checkpoints prove:
 
@@ -154,7 +154,7 @@ For SaveAs/export/native checkpoints prove:
 - failed export/save does not advance state-chain identity;
 - reopen of promoted native checkpoint reproduces the expected semantic fingerprint.
 
-### NB9 — COM parity migration
+### NB9 — COM parity migration — **OPEN**
 
 For each migrated operation family, execute equivalent disposable-drawing scenarios through current COM and new .NET bridge.
 
@@ -167,7 +167,7 @@ No operation family replaces COM in the default live path until:
 - PID/fingerprint gates pass;
 - real AutoCAD 2027 native acceptance passes.
 
-### NB10 — Drawing stress test
+### NB10 — Drawing stress test — **OPEN**
 
 Rerun a complex reference-driven drawing from a clean document using only the Semantic State Loop for step correctness.
 

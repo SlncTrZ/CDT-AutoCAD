@@ -1,7 +1,7 @@
 # Semantic State Protocol — CDT-AutoCAD Target Contract
 
-> Updated: 2026-09-10  
-> Status: DESIGN BASELINE FOR ARCHITECTURE UPGRADE  
+> Updated: 2026-09-10 11:56 +07:00
+> Status: CONTRACT BASELINE · N1 semantic primitives + N2 identity + N3 transport implemented · N4+ native semantic integration pending
 > Scope: source semantics, native extraction, PID, canonicalization, fingerprinting, diff, rollback and deterministic validation
 
 ## 1. System invariant
@@ -16,6 +16,18 @@ Two pillars are non-negotiable:
 2. **Precise Identity / PID + Fingerprinting** — every document, semantic object, step and state must be identifiable independently of transient runtime references, and content identity must be verifiable deterministically.
 
 The Semantic State Loop is the control architecture. AutoCAD .NET, COM, ezdxf and future adapters are implementation mechanisms beneath it.
+
+### 1.1 Current implementation boundary
+
+As of the N3 closure checkpoint:
+
+- N1 implements the Python semantic models, canonicalization/fingerprint primitives, rollback receipts and state-chain primitives;
+- N2 live-verifies persistent PID carrier/clone semantics;
+- N3 live-verifies the read-only Managed .NET transport and runtime-document identity boundary;
+- N4 authoritative native `SemanticSnapshot` extraction is **not implemented yet**;
+- N5+ native mutation/rollback integration is **not implemented yet**.
+
+Accordingly, the protocol below is partly implemented and partly normative target contract. `expected_parent_fp` is a required future mutation invariant but cannot be claimed as enforced through the native bridge until N4 provides authoritative parent-state extraction and later mutation gates consume it. Current status authority: `docs/CURRENT_CHECKPOINT.md`.
 
 ## 2. Core protocol objects
 
@@ -492,6 +504,6 @@ The semantic protocol must be versioned independently of transport and native ad
 During migration:
 
 - COM/ezdxf may populate a subset of semantic fields for parity tests;
-- .NET bridge is the target authoritative live AutoCAD extractor/mutator;
+- the N3 .NET bridge currently provides only read-only transport/document identity; N4 is the target authoritative native extractor and N5+ introduces mutation only after its integrity gates;
 - missing semantic fields must be reported as unsupported/unknown, never fabricated;
 - old and new adapters should be dual-run on disposable drawings until parity/integrity gates close.

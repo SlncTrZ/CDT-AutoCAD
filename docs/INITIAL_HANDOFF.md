@@ -10,19 +10,20 @@
 ## Read first
 
 1. `AGENTS.md`
-2. `docs/SPEC_BASELINE.md`
-3. `docs/ROADMAP.md`
-4. `README.md`
-5. `docs/TOOL_GUIDE.md`
-6. `docs/LIVE_ACCEPTANCE.md`
-7. `docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`
-8. `docs/SEMANTIC_STATE_PROTOCOL.md`
-9. `docs/ARCHITECTURE_UPGRADE_PLAN.md`
-10. `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
-11. `docs/DRAWING_QUALITY_ACCEPTANCE.md`
-12. `specs/MCP_PROVIDER_STANDARD.md`
-13. `specs/ARCHITECTURE.md`
-14. `specs/CONTRACTS.md`
+2. `docs/CURRENT_CHECKPOINT.md`
+3. `docs/SPEC_BASELINE.md`
+4. `docs/ROADMAP.md`
+5. `README.md`
+6. `docs/TOOL_GUIDE.md`
+7. `docs/LIVE_ACCEPTANCE.md`
+8. `docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`
+9. `docs/SEMANTIC_STATE_PROTOCOL.md`
+10. `docs/ARCHITECTURE_UPGRADE_PLAN.md`
+11. `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
+12. `docs/DRAWING_QUALITY_ACCEPTANCE.md`
+13. `specs/MCP_PROVIDER_STANDARD.md`
+14. `specs/ARCHITECTURE.md`
+15. `specs/CONTRACTS.md`
 
 ## Starting state
 
@@ -34,15 +35,15 @@ Known implementation state:
 - A2 public release candidate `0.3.0rc1 / autocad-a2-v1-rc1`, 50 tools;
 - primary native certification target is AutoCAD 2027 full / Windows x64 / COM `26.0`;
 - A2 live acceptance passed on full AutoCAD 2027 / Windows `.171`; RC identity remains pending explicit release/promotion;
-- A3.1 native ACIS implementation staged below public capability surface;
-- A3.2 angular/radial/diametric/ordinate dimensions implemented backend-side, capability-false and non-public pending native verification;
-- A3.3 object measurement/current-space WCS extents + native COM intersections implemented backend-side, capability-false and non-public pending native verification;
+- A3.1 native ACIS implementation is native live-verified on AutoCAD 2027 and remains staged below the public capability surface pending explicit promotion;
+- A3.2 angular/radial/diametric/ordinate dimensions are backend-implemented and native live-verified on AutoCAD 2027; still capability-false/non-public pending explicit promotion;
+- A3.3 object measurement/current-space WCS extents + native COM intersections are backend-implemented and native live-verified on AutoCAD 2027; still capability-false/non-public pending explicit promotion;
 - source profile preservation for region-based 3D operations uses Copy -> temporary Region -> solid -> cleanup.
 - target architecture migration is in progress: N1 Python Semantic Core, N2 persistent PID policy, and N3 local typed IPC + in-process C# Managed .NET bridge are implemented/live-verified; N4 native semantic extraction is next;
 - the two architecture pillars are Data Integrity/Rollback and Precise Identity/PID+Fingerprinting;
 - Semantic State Loop is mandatory for future engineering automation; screenshots are supplemental, not per-step geometry proof.
 
-## First task
+## Current handoff task
 
 Architecture phases **N1**, **N2**, and **N3** are complete. N2 native P0–P10 on AutoCAD 2027 selected NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID with mandatory clone reconciliation. N3 then live-verified a staged read-only Managed .NET bridge using bounded local Named Pipe IPC, same-user/local/same-session enforcement and runtime-document disambiguation. The next task is **N4 — native semantic extractor**; native mutation remains prohibited until later transactional/state-integrity gates.
 
@@ -50,4 +51,4 @@ The current COM/ezdxf runtime remains the comparison baseline. New implementatio
 
 ## Restrictions
 
-Do not modify another provider repo. Treat `CDT_Engineer` as read-only. Do not publish A3 tools/capabilities or mark A2 CLOSED without real AutoCAD evidence.
+Do not modify another provider repo. Treat `CDT_Engineer` as read-only. Do not publish A3 tools/capabilities without an explicit contract promotion. Do not mark A2 CLOSED/promoted without an explicit promotion decision; native AutoCAD evidence is necessary but is not itself a promotion decision.

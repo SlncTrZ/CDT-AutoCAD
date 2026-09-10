@@ -118,3 +118,7 @@ Kết quả quan trọng nhất: AutoCAD 2027 thực sự clone Extension-Dictio
 ## 7. Render HTML
 
 Project/gateway hiện không có `scripts/md2html.ps1` hoặc `docs/report-components.md`; đã kiểm tra cả gateway workspace và Windows H: drive. Vì renderer chuẩn không hiện diện, HTML research artifact chưa được sinh trong N2 research checkpoint này. Không tự tạo renderer thay thế để tránh biến đổi toolchain ngoài phạm vi.
+
+## 8. Current follow-on status
+
+As of 2026-09-10 after the N3 closure, the PID carrier/clone policy in this research remains unchanged. N3 consumed the document-lineage carrier through the staged read-only Managed .NET bridge and proved runtime-document disambiguation for duplicate open lineage PIDs. N4 native `SemanticSnapshot` extraction is next; no native mutation endpoint is enabled. Current status authority: `docs/CURRENT_CHECKPOINT.md`.

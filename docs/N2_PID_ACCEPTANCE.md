@@ -8,7 +8,7 @@
 
 This checkpoint validates the persistent identity carrier and clone/remap policy required before the N3 Managed .NET bridge may depend on PID storage semantics.
 
-It closes **N2 / the storage-and-identity portion of NB2**. It does **not** close NB4 full Semantic State rollback/fingerprint integration, NB5 post-commit recovery, or the N3 IPC/native bridge acceptance gates.
+It closes **N2 / the storage-and-identity portion of NB2**. At the time of N2 closure it did **not** close N3 IPC/native bridge, NB4 full Semantic State rollback/fingerprint integration, or NB5 post-commit recovery. N3 has since closed/live-passed; NB4/NB5 and N4+ semantic integration remain open.
 
 ## 2. Selected carrier
 
@@ -108,11 +108,11 @@ The raw runner logs/DWG/DLL remain under ignored `artifacts/` / build output and
 
 Release build succeeds with `0` errors using user-local .NET SDK `10.0.401`. MSBuild still reports assembly-version conflict warnings for dependencies including `Microsoft.VisualBasic`, `System.Drawing` and `WindowsBase` between the SDK reference pack and Autodesk managed assemblies. The probe DLL nevertheless NETLOADed and executed all native probes inside real AutoCAD 2027.
 
-For the dev probe only, the exact output folder is now persisted in AutoCAD `TRUSTEDPATHS` while `SECURELOAD=1` remains enabled. AutoCAD was restarted and the full P0–P10 runner NETLOADed the DLL and completed PASS without the publisher/trusted-folder modal interrupting execution. Production N3 should move to a dedicated trusted deployment/bundle path rather than broadening trust to the repository tree.
+For the N2 dev probe only, the exact output folder was persisted in AutoCAD `TRUSTEDPATHS` while `SECURELOAD=1` remained enabled. AutoCAD was restarted and the full P0–P10 runner NETLOADed the DLL and completed PASS without the publisher/trusted-folder modal interrupting execution. **N3 subsequently implemented the production-style dedicated per-user ApplicationPlugins bundle and explicitly trusts only its `Contents\Windows` directory; the repository tree was not broadly trusted.**
 
-The committed probe reader also rejects malformed/unsupported PID XRecord schema instead of silently accepting an unknown version; explicit corruption-injection acceptance remains a production N3/NB0 test rather than an N2 claim.
+The committed probe reader also rejects malformed/unsupported PID XRecord schema instead of silently accepting an unknown version. N2 did not claim a live malformed-XRecord corruption-injection gate, and N3/NB0 did not add one; an explicit native PID-metadata corruption test remains open under later identity/semantic hardening rather than being retroactively claimed as N2 or N3 evidence.
 
-These warnings are **not silently waived for N3**. The production bridge project must resolve or explicitly document its Autodesk-recommended reference/build configuration before NB0 promotion.
+These warnings were **not silently waived**. N3 carried the same three `MSB3277` warning families as explicit unsuppressed build debt, built with `0` errors, and passed NB0 live acceptance. Reference-model cleanup remains open build debt; it is documented rather than hidden or retroactively treated as a failed N3 gate.
 
 ## 10. Decision
 

@@ -1,7 +1,7 @@
 # ADR-001 — Native .NET Bridge + Semantic State Loop
 
-> Date: 2026-09-10  
-> Status: ACCEPTED FOR ARCHITECTURE UPGRADE  
+> Date: 2026-09-10
+> Status: ACCEPTED · N0–N3 IMPLEMENTED/LIVE-VERIFIED · N4 NEXT
 > Scope: CDT-AutoCAD target architecture; current COM/ezdxf runtime remains supported during migration
 
 ## 1. Decision
@@ -216,6 +216,6 @@ Provider-specific geometry remains provider-owned; common semantic concepts shou
 
 ## 12. Compatibility rule
 
-This ADR defines the **target architecture**. It does not claim that the .NET bridge, Named Pipe IPC or semantic protocol are already implemented.
+This ADR defines the **target architecture** and records a decision that predates implementation. Current status as of 2026-09-10: N1 semantic primitives, N2 persistent PID policy, and the N3 staged read-only Managed .NET/Named Pipe bridge are implemented and verified; N4 native `SemanticSnapshot` extraction is next. The bridge still has no native mutation endpoint.
 
-The existing `ezdxf` + COM provider remains the current runtime baseline until each migration gate is implemented, tested on real AutoCAD and explicitly promoted.
+The existing `ezdxf` + COM provider remains the public/runtime migration baseline until later native semantic, rollback, parity and promotion gates are implemented, tested on real AutoCAD and explicitly promoted. See `docs/CURRENT_CHECKPOINT.md` for the authoritative current frontier.

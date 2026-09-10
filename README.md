@@ -1,6 +1,6 @@
 # CDT AutoCAD Provider
 
-> Status: A2 release candidate · AutoCAD 2027 COM live-verified · N3 native bridge live-verified/staged · Version: 0.3.0rc1 · Updated: 2026-09-10
+> Status: A2 release candidate · N0–N3 closed · N4 next · native mutation disabled · Version: 0.3.0rc1 · Updated: 2026-09-10 11:56 +07:00
 
 This provider is the first CDT_Engineer reference implementation. The default backend remains
 `ezdxf`; the public release-candidate contract is now a bounded 50-tool `autocad-a2-v1-rc1` surface.
@@ -61,7 +61,7 @@ Screenshots/Vision are not the geometry oracle. Native semantic data drives step
 
 Architecture status: `N0 CLOSED`, `N1 CLOSED/PASS`, `N2 CLOSED/LIVE PASS`, `N3 CLOSED/LIVE PASS`, `N4 NEXT`. N1 provides internal typed semantic contracts, versioned tolerance-aware canonical JSON, domain-separated SHA-256 fingerprints, duplicate PID/geometry helpers, rollback receipts and a tamper-evident state-chain. N2 live P0–P10 probes selected NOD/XRecord for document-lineage PID and Extension-Dictionary/XRecord for managed DBObject PID, with mandatory clone reconciliation because deep/cross/WBLOCK/INSERT paths copy entity PID metadata. N3 now supplies a staged read-only `net10.0-windows` bridge inside `acad.exe`, versioned bounded Named Pipe IPC, same-user/local/same-session enforcement, runtime-document IDs and native N2 document-PID readback. Raw file copies with the same lineage PID are distinguished by runtime document ID. `expected_parent_fp` remains intentionally deferred until native SemanticSnapshot/fingerprint extraction exists in N4/N6; there is still no native mutation endpoint.
 
-See [`docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`](docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md), [`docs/SEMANTIC_STATE_PROTOCOL.md`](docs/SEMANTIC_STATE_PROTOCOL.md), [`docs/N2_PID_ACCEPTANCE.md`](docs/N2_PID_ACCEPTANCE.md), [`docs/NATIVE_BRIDGE_ACCEPTANCE.md`](docs/NATIVE_BRIDGE_ACCEPTANCE.md) and [`docs/ARCHITECTURE_UPGRADE_PLAN.md`](docs/ARCHITECTURE_UPGRADE_PLAN.md).
+Current implementation status is canonical in [`docs/CURRENT_CHECKPOINT.md`](docs/CURRENT_CHECKPOINT.md). Architecture details are in [`docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`](docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md), [`docs/SEMANTIC_STATE_PROTOCOL.md`](docs/SEMANTIC_STATE_PROTOCOL.md), [`docs/N2_PID_ACCEPTANCE.md`](docs/N2_PID_ACCEPTANCE.md), [`docs/NATIVE_BRIDGE_ACCEPTANCE.md`](docs/NATIVE_BRIDGE_ACCEPTANCE.md) and [`docs/ARCHITECTURE_UPGRADE_PLAN.md`](docs/ARCHITECTURE_UPGRADE_PLAN.md).
 
 ## Runtime configuration
 

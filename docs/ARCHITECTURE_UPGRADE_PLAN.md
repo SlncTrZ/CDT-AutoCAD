@@ -1,6 +1,6 @@
 # Architecture Upgrade Plan — Native Bridge + Semantic State Loop
 
-> Updated: 2026-09-10
+> Updated: 2026-09-10 11:56 +07:00
 > Status: IMPLEMENTATION IN PROGRESS · N0–N3 CLOSED · N4 NEXT
 > Current runtime remains `ezdxf + COM` until migration gates close.
 > Acceptance companion: `docs/NATIVE_BRIDGE_ACCEPTANCE.md`
@@ -96,7 +96,7 @@ Gate:
 
 **Status: IMPLEMENTED / GATE PASS — 2026-09-10.**
 
-Implemented under `src/cdt_autocad/semantic/` with focused Linux tests and full Windows project regression. Evidence at this checkpoint: `31 passed` focused semantic tests; Windows `.171` full suite `113 passed, 5 skipped`; Python compile pass; `git diff --check` pass. The server-side global Python environment lacks the repo's optional/runtime dependencies for a full Linux suite, so the existing Windows project venv remains the complete regression lane for this checkpoint.
+Implemented under `src/cdt_autocad/semantic/`. Historical N1 closure evidence was `31 passed` focused semantic tests and Windows `.171` full suite `113 passed, 5 skipped`. Those numbers belong to the N1 checkpoint; the current N3-closure regression is Linux `141 passed, 4 skipped`, Windows `.171` `140 passed, 5 skipped`, and focused N3 `27 passed`. See `docs/CURRENT_CHECKPOINT.md`.
 
 Implement internal typed models for:
 
@@ -194,7 +194,7 @@ Known build debt: three Autodesk product-reference `MSB3277` warning families re
 
 ### N4 — Native semantic extractor
 
-Implement read-only extraction first.
+**Status: NEXT / NOT STARTED.** Implement read-only extraction first.
 
 Baseline semantic families:
 
@@ -216,6 +216,8 @@ Gate:
 - read-only path cannot mutate drawing.
 
 ### N5 — Native transactional executor + rollback
+
+**Status: NOT STARTED.**
 
 Implement typed mutations behind native transactions.
 
@@ -243,6 +245,8 @@ Gate:
 
 ### N6 — Deterministic validator + state-chain engine
 
+**Status: NOT STARTED.**
+
 Implement:
 
 - expected-parent fingerprint guard;
@@ -264,6 +268,8 @@ Gate:
 
 ### N7 — Two-phase native commit integrity
 
+**Status: NOT STARTED.**
+
 Implement:
 
 1. provisional extraction + deterministic validation inside transaction;
@@ -278,6 +284,8 @@ Gate:
 - rollback/restore path returns to verified predecessor or explicitly stops at `ROLLBACK_FAILED`.
 
 ### N8 — Migrate current live operations
+
+**Status: NOT STARTED.**
 
 Move current COM-backed public functionality incrementally to the native bridge while keeping public MCP semantics stable.
 
@@ -299,6 +307,8 @@ Each migrated family needs:
 - real AutoCAD acceptance.
 
 ### N9 — Drawing workflow migration
+
+**Status: NOT STARTED.**
 
 Reference-driven drawing automation moves from screenshot-heavy step runners to semantic steps:
 
@@ -325,6 +335,8 @@ Gate:
 - final drawing still satisfies `DRAWING_QUALITY_ACCEPTANCE.md`.
 
 ### N10 — Public contract/promotion decision
+
+**Status: NOT STARTED.**
 
 Only after native parity and semantic integrity are proven:
 

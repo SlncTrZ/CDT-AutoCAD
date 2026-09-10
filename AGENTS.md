@@ -8,7 +8,7 @@ This repository owns the AutoCAD MCP provider runtime only. `CDT_Engineer` is th
 
 - Source repo: `SlncTrZ/CDT_Engineer`
 - Pinned commit: `643019c`
-- Read first: `docs/SPEC_BASELINE.md`, `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/ROADMAP.md`, `docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`, `docs/SEMANTIC_STATE_PROTOCOL.md`, `docs/ARCHITECTURE_UPGRADE_PLAN.md`, `docs/NATIVE_BRIDGE_ACCEPTANCE.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`.
+- Read first: `docs/CURRENT_CHECKPOINT.md`, `docs/SPEC_BASELINE.md`, `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/ROADMAP.md`, `docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`, `docs/SEMANTIC_STATE_PROTOCOL.md`, `docs/ARCHITECTURE_UPGRADE_PLAN.md`, `docs/NATIVE_BRIDGE_ACCEPTANCE.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`.
 - Do not edit files under `specs/`; they are pinned snapshots. Contract changes must be proposed in `CDT_Engineer` and synced here only after approval.
 
 ## Ownership boundary
@@ -33,16 +33,16 @@ Forbidden unless explicitly assigned:
 - A3.1 ACIS backend: live-verified on AutoCAD 2027; remains staged/private until explicit promotion.
 - A3.2 advanced dimensions: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
 - A3.3 analysis: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
-- Extraction baseline: 54 tests PASS, 2 live-Windows/AutoCAD tests SKIP before repository split.
-- Current regression checkpoint: Linux full suite 141 PASS / 4 SKIP; Windows `.171` full suite 140 PASS / 5 SKIP; native N2 P0–P10 PASS; native N3 read-only bridge acceptance PASS on real AutoCAD 2027.
+- Historical pre-split extraction baseline: 54 tests PASS, 2 live-Windows/AutoCAD tests SKIP; this is not the current regression count.
+- Current regression checkpoint (`2245ebd`): Linux full suite 141 PASS / 4 SKIP; Windows `.171` full suite 140 PASS / 5 SKIP; focused N3 27 PASS; native N2 P0–P10 PASS; native N3 read-only bridge acceptance PASS on real AutoCAD 2027; C# bridge build 0 errors with three documented unsuppressed `MSB3277` warning families.
 
 ## Current delivery gates
 
 1. Preserve the live-verified current `ezdxf + COM` baseline and public 50-tool contract during migration.
 2. `N0` documentation freeze is complete; preserve its architecture boundary.
 3. `N1` semantic contract models/canonical fingerprint engine are implemented and regression-verified; preserve golden fingerprints/state-chain invariants.
-4. `N2` persistent PID storage/clone policy is live-verified on AutoCAD 2027 and closed; preserve NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID, mandatory clone reconciliation, and composite runtime-document + `expected_parent_fp` binding; raw DWG copies may share lineage PID.
-5. `N3` Managed .NET bridge skeleton + local typed IPC is CLOSED/LIVE PASS and remains staged/internal; `N4` native semantic extraction is next. No mutation endpoint is enabled.
+4. `N2` persistent PID storage/clone policy is live-verified on AutoCAD 2027 and closed; preserve NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID and mandatory clone reconciliation. Raw DWG copies may share lineage PID.
+5. `N3` Managed .NET bridge skeleton + local typed IPC is CLOSED/LIVE PASS and proves runtime-document disambiguation for read-only identity. `expected_parent_fp` remains a required future mutation guard but is **not yet enforced through the native bridge**. `N4` native read-only SemanticSnapshot extraction is the only current architecture implementation frontier; no native mutation endpoint is enabled or authorized in N4.
 6. Every mutation architecture must preserve the two pillars: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting.
 7. Continue A3/public capability promotion only through explicit contract/version changes; native implementation or verification alone does not publish tools.
 8. Any reference-driven/user-reviewed drawing must satisfy both Semantic State integrity and `docs/DRAWING_QUALITY_ACCEPTANCE.md`.
@@ -67,7 +67,7 @@ For every semantically required technical condition, use the correct linetype ro
 
 Drawing checkpoints progress through `TECHNICAL_PASS -> GEOMETRY_PASS -> DOMAIN_PASS -> VISUAL_PASS -> USER_ACCEPTED`. Only `USER_ACCEPTED` is a completed user-reviewed checkpoint. If the reviewer cannot access the actual screenshot/file, keep the state `PENDING_USER_VISUAL_ACCEPTANCE`.
 
-Execution must follow `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: decompose work into small semantic steps; after every step extract native semantic state, verify PID/fingerprints, compute the semantic delta, run deterministic validation, and either commit a verified state or restore the verified predecessor state. Screenshots are supplemental visual evidence, not the geometry oracle. At major gates compare SemanticSnapshot data against the SourceSemanticModel and previous accepted state. Never run the next dependent step after failed, drifted, uncertain, or unverified state.
+Execution must follow `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: decompose work into small semantic steps and prefer structured state over screenshots. The target invariant is native extraction -> PID/fingerprint -> semantic delta -> deterministic validation -> commit-or-verified-rollback. **Current N3 does not yet provide full native SemanticSnapshot/rollback enforcement; until N4+ closes those gates, use available structured COM/ezdxf/N3 identity evidence and never label a step full native `COMMITTED_VERIFIED`/`ROLLED_BACK_VERIFIED` unless the required native proof exists.** Screenshots are supplemental visual evidence, not the geometry oracle. Never run the next dependent step after failed, drifted, uncertain, or unverified state.
 
 ## Architecture-upgrade invariants
 

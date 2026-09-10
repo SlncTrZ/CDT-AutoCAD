@@ -1,7 +1,7 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-10
-> Scope: current COM/A3 native baseline; future .NET bridge acceptance is defined separately
+> Updated: 2026-09-10 11:56 +07:00
+> Scope: current COM/A3 native baseline; staged .NET bridge acceptance is defined separately
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
 
 ## 1. Certification policy
@@ -174,13 +174,13 @@ provider extension contract intentionally adds the analysis tools. Until then,
 
 ## 11. Architecture migration acceptance
 
-The current COM lane remains the migration baseline. The accepted target architecture is an in-process AutoCAD Managed .NET bridge plus the provider-level Semantic State Loop. Its acceptance is intentionally separate in `docs/NATIVE_BRIDGE_ACCEPTANCE.md`.
+The current COM lane remains the public/runtime migration baseline. The accepted target architecture is an in-process AutoCAD Managed .NET bridge plus the provider-level Semantic State Loop. N3 bridge identity/local IPC/document-binding acceptance has already passed; the remaining semantic, rollback, parity and promotion gates are defined in `docs/NATIVE_BRIDGE_ACCEPTANCE.md`.
 
-The new live lane must prove, on real AutoCAD 2027, both non-negotiable pillars:
+The native architecture lane must ultimately prove, on real AutoCAD 2027, both non-negotiable pillars:
 
 1. **Data Integrity / Rollback** — injected failures/timeout uncertainty cannot advance state; native abort or recovery must be followed by read-back proving the exact predecessor fingerprint.
 2. **Precise Identity / PID + Fingerprinting** — document/entity PID persistence, clone/remap behavior, duplicate detection, deterministic content fingerprints and `expected_parent_fp` state-drift blocking.
 
-The .NET bridge is not promoted merely because it loads or can create geometry. Migration requires read-only semantic stability, transaction rollback tests, PID persistence tests, fingerprint determinism, state-drift tests, post-commit integrity tests and COM parity evidence.
+The .NET bridge is not promoted merely because N3 loads and answers read-only identity requests. Migration still requires N4 read-only semantic stability, native transaction rollback tests, PID/fingerprint integration, state-drift tests, post-commit integrity tests and COM parity evidence before any native mutation or public-backend promotion.
 
 AutoCAD 2027 installs Microsoft .NET 10 when needed; the bridge build/runtime target must follow the AutoCAD 2027 Managed .NET compatibility requirements and secure loading policy.

@@ -1,7 +1,7 @@
 # PLAN — AutoCAD Provider
 
-> Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-10
-> Governing docs: `MCP_PROVIDER_STANDARD.md`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
+> Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-10 11:56 +07:00
+> Governing docs: `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/CURRENT_CHECKPOINT.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
 
 ## 1. Objective
 
@@ -337,7 +337,7 @@ Execution is step-gated by `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: one small se
 
 ## 11. Current Status / Next Step
 
-**A0 + A1 are CLOSED. A2 is release-candidate complete and live-verified on AutoCAD 2027; RC identity is retained pending explicit promotion. A3.1/A3.2/A3.3 are live-verified but staged. The next development lane is the N-series Native Bridge + Semantic State architecture upgrade.**
+**A0 + A1 are CLOSED. A2 is release-candidate complete and live-verified on AutoCAD 2027; RC identity is retained pending explicit promotion. A3.1/A3.2/A3.3 are native live-verified but staged/non-public. N0–N3 of the Native Bridge + Semantic State migration are CLOSED; N4 native read-only SemanticSnapshot extraction is the current development frontier.**
 
 Current public runtime identity:
 
@@ -351,19 +351,19 @@ public MCP tools: 50
 
 ### N-series — Native Bridge + Semantic State architecture upgrade
 
-The detailed plan is `docs/ARCHITECTURE_UPGRADE_PLAN.md`; acceptance is `docs/NATIVE_BRIDGE_ACCEPTANCE.md`.
+The detailed plan is `docs/ARCHITECTURE_UPGRADE_PLAN.md`; acceptance is `docs/NATIVE_BRIDGE_ACCEPTANCE.md`; authoritative current-state summary is `docs/CURRENT_CHECKPOINT.md`.
 
 - `N0` documentation/architecture freeze — **CLOSED**.
-- `N1` typed semantic models + canonical fingerprint engine — **CLOSED / PASS** (`31` focused semantic tests; Windows full regression `113 passed, 5 skipped`).
+- `N1` typed semantic models + canonical fingerprint engine — **CLOSED / PASS** (historical N1 closure: `31` focused semantic tests; Windows `113 passed, 5 skipped`).
 - `N2` persistent document/entity PID prototype and clone policy — **CLOSED / LIVE PASS** (AutoCAD 2027 P0–P10; evidence `docs/evidence/n2-pid-native-2026-09-10.json`).
-- `N3` C# Managed .NET bridge + local typed IPC skeleton — **NEXT**.
-- `N4` native read-only semantic extractor.
-- `N5` native transactional executor + verified rollback.
-- `N6` deterministic validator + semantic delta + state-chain engine.
-- `N7` two-phase commit integrity and independent post-commit read-back.
-- `N8` incremental COM-to-.NET operation-family migration with parity evidence.
-- `N9` reference-driven drawing workflow migration to Data-first Semantic State Loop.
-- `N10` explicit public promotion/contract decision.
+- `N3` C# Managed .NET bridge + local typed IPC skeleton — **CLOSED / LIVE PASS** (evidence `docs/evidence/n3-native-bridge-readonly-2026-09-10.json`).
+- `N4` native read-only SemanticSnapshot extractor — **NEXT / NOT STARTED**.
+- `N5` native transactional executor + verified rollback — **NOT STARTED**.
+- `N6` deterministic validator + semantic delta + state-chain engine — **NOT STARTED**.
+- `N7` two-phase commit integrity and independent post-commit read-back — **NOT STARTED**.
+- `N8` incremental COM-to-.NET operation-family migration with parity evidence — **NOT STARTED**.
+- `N9` reference-driven drawing workflow migration to Data-first Semantic State Loop — **NOT STARTED**.
+- `N10` explicit public promotion/contract decision — **NOT STARTED**.
 
 Non-negotiable N-series gates:
 

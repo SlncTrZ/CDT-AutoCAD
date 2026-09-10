@@ -1,13 +1,13 @@
 # AutoCAD Native Bridge IPC Research — N3
 
 > Ngày lập: 2026-09-10
-> Loại: nghiên cứu / kiến trúc / tiền nghiệm thu N3
+> Loại: nghiên cứu / kiến trúc / N3 acceptance record
 > Phạm vi: local IPC, AutoCAD-safe dispatch, document binding, secure deployment và read-only bridge skeleton
 > Nguồn: Microsoft .NET 10 Named Pipes documentation; Autodesk AutoCAD 2027 Managed .NET Developer Guide/Reference
 
 ## 1. Executive Summary
 
-- N3 dùng **Windows Named Pipe**, không dùng localhost HTTP/TCP. Initial server dùng `PipeOptions.CurrentUserOnly` để Windows giới hạn pipe cho đúng user đang chạy AutoCAD.
+- N3 dùng **Windows Named Pipe**, không dùng localhost HTTP/TCP. Final accepted boundary dùng `PipeOptions.CurrentUserOnly` cộng explicit local-computer check và same-Windows-session check; same-user Session 0 bị từ chối.
 - Wire protocol là **length-prefixed UTF-8 JSON**, versioned và bounded; không dùng newline framing, không nhận arbitrary C#/LISP/AutoCAD command text.
 - Pipe accept/read chạy background thread, nhưng **không thread nền nào được gọi AutoCAD API**. Request được queue và xử lý từ AutoCAD `Application.Idle` callback; đây là N3 dispatcher ban đầu, read-only.
 - Runtime document identity là bridge-owned `runtime_document_id` theo vòng đời `Document` trong một `bridge_instance_id`. `document_pid` của N2 chỉ là semantic-lineage identity; mutation về sau bắt buộc bind `runtime_document_id + document_pid + expected_parent_fp`.
@@ -202,7 +202,7 @@ Trước khi có mutation, phải chứng minh:
 
 Chốt N3.0 theo mô hình **Named Pipe current-user-only + bounded typed protocol + Idle-thread native dispatcher + runtime document registry**.
 
-Không thêm mutation endpoint trong cùng checkpoint. Chỉ sau khi read-only transport/document binding gate pass trên AutoCAD 2027 mới mở phần tiếp theo của N3 hoặc N4.
+Không thêm mutation endpoint trong N3. Read-only transport/document binding đã PASS trên AutoCAD 2027; bước tiếp theo là N4 native semantic extraction, vẫn read-only.
 
 ## 11. Kết luận
 
