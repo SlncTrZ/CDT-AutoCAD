@@ -1,8 +1,8 @@
 # Drawing Quality Acceptance Standard
 
-> Updated: 2026-09-10 11:56 +07:00
+> Updated: 2026-09-10 +07:00
 > Scope: CDT-AutoCAD reference-driven drafting, architectural/site/landscape/technical drawings
-> Status: Project acceptance invariant · full native semantic enforcement pending N4+
+> Status: Project acceptance invariant · N4–N6 + O1 semantic enforcement accepted for bounded native families · N7 recovery pending
 
 ## 1. Purpose
 
@@ -362,7 +362,7 @@ Do not place the complete drawing on a single default layer for convenience.
 
 ## 9. Human-visible execution and checkpoint discipline
 
-All reference-driven/user-reviewed execution must also follow `docs/DRAWING_EXECUTION_QA_WORKFLOW.md` and `docs/SEMANTIC_STATE_PROTOCOL.md`. Quality acceptance does not authorize monolithic execution. The target architecture requires every small semantic step to be verified through native semantic extraction, PID/fingerprinting, deterministic diff/validation and commit-or-verified-rollback before the next dependent step. **At the current N3 checkpoint, full native semantic extraction/rollback is not yet implemented; therefore current workflows must use available structured COM/ezdxf/N3 identity evidence and must not claim a full native Semantic State PASS until N4+ provides the missing gates.** Major gates compare structured state against the SourceSemanticModel. Vision is supplemental, not the geometry oracle.
+All reference-driven/user-reviewed execution must also follow `docs/DRAWING_EXECUTION_QA_WORKFLOW.md` and `docs/SEMANTIC_STATE_PROTOCOL.md`. Quality acceptance does not authorize monolithic execution. The target architecture requires every small semantic step to be verified through native semantic extraction, PID/fingerprinting, deterministic diff/validation and commit-or-verified-rollback before the next dependent step. **At the current checkpoint, N4–N6 + O1 provide this accepted loop only for their bounded native semantic/mutation families; N7 post-commit R1/R2 recovery remains unaccepted because the R2 active-document lifecycle still has a crash blocker.** Workflows must not claim broader full-native recovery or migration than `docs/CURRENT_CHECKPOINT.md` declares. Major gates compare structured state against the SourceSemanticModel. Vision is supplemental, not the geometry oracle.
 
 For live visual stress tests where the user is watching AutoCAD:
 

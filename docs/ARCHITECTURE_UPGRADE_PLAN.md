@@ -1,7 +1,7 @@
 # Architecture Upgrade Plan — Native Bridge + Semantic State Loop
 
-> Updated: 2026-09-10 17:30 +07:00
-> Status: N0–N6 CLOSED · O1 CLOSED / LIVE PASS · N7 NOT STARTED
+> Updated: 2026-09-10 +07:00
+> Status: N0–N6 CLOSED · O1 CLOSED / LIVE PASS · N7 IN PROGRESS / NOT CLOSED
 > Current runtime remains `ezdxf + COM` until migration gates close.
 > Acceptance companion: `docs/NATIVE_BRIDGE_ACCEPTANCE.md`
 
@@ -316,24 +316,40 @@ Gate — **PASS**:
 
 ### N7 — Two-phase native commit integrity
 
-**Status: NOT STARTED.**
+**Status: IN PROGRESS / NOT CLOSED.** Detailed working handoff: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
 
-Implement:
+Implemented on the current working tree:
 
-1. provisional extraction + deterministic validation inside transaction;
-2. commit;
-3. independent read transaction;
-4. persisted-state fingerprint comparison.
+1. provisional semantic extraction inside the same native write transaction;
+2. deterministic native validation before commit;
+3. commit;
+4. independent persisted-state read-back and provisional-vs-persisted fingerprint comparison;
+5. provider-owned recovery checkpoint + manifest + artifact SHA-256 binding;
+6. typed recovery list/resolve/finalize protocol;
+7. R0 transaction abort, deterministic R1 compensation and R2 checkpoint restore;
+8. Python semantic executor recovery orchestration that attempts R1 then R2 and advances no state-chain entry for recovered failures;
+9. corrupt recovery manifests fail closed and block later mutation.
 
-Gate:
+Development verification has reached 10/10 combined N7 recovery contract tests, 45/45 N7+N6 focused recovery/state-chain tests, 86/86 broader native/semantic focused tests and repeated 0-error C# candidate builds. Real AutoCAD 2027 Session 1 runs have exercised R0, provisional-abort, post-commit mismatch, R1 exact restore, R2 exact restore/runtime rebound, executor R1→R2 recovery and restart-persisted recovery metadata.
 
-- post-commit mismatch becomes `COMMIT_INTEGRITY_FAIL`;
-- automatic continuation is blocked;
-- rollback/restore path returns to verified predecessor or explicitly stops at `ROLLBACK_FAILED`.
+**Current blocker:** final R2-after-restart acceptance exposed an AutoCAD `FATAL ERROR: Unhandled Access Violation` while the bridge closed/restored the active document from application context. Earlier semantic R2 success is therefore not sufficient to close N7.
+
+Required fix/gate:
+
+- R2 must make the checkpoint/temp document active before closing the original, and must close only inactive documents;
+- restored original must be reopened, activated and rebound to a new `runtime_document_id` before cleanup of the temporary checkpoint document;
+- restored `document_pid` and exact predecessor `document_fp` must be independently re-read;
+- any activation/close/reopen ambiguity remains `ROLLBACK_FAILED` and retains recovery evidence;
+- no AutoCAD crash, Drawing Recovery dependency or hidden modal-dialog intervention may be required for the accepted path;
+- final Linux/Windows regressions, C# build, review, canonical N7 evidence and separate implementation commit/push remain outstanding.
 
 ### N8 — Migrate current live operations
 
 **Status: NOT STARTED as the formal COM-to-.NET/public migration phase.** O1 has staged three additional internal native mutation families, but no public MCP routing/capability has changed.
+
+**Mandatory prerequisite added 2026-09-10:** the Python MCP/provider must have a supported fail-safe hot-reload lifecycle before deep N8 migration. Hot reload must drain or deterministically refuse in-flight work, expose one authoritative runtime generation, verify health after reload, preserve the previous healthy generation on reload failure, and keep auth/path policy/public contract identity fail-closed. This requirement is not yet implemented.
+
+The Windows `.171` host has `cloudflared` available per operator infrastructure and can be inspected over SSH for endpoint/tunnel deployment. Tunnel hostname/ingress/credential/service changes remain separate infrastructure work and must be audited/documented before modification.
 
 Move current COM-backed public functionality incrementally to the native bridge while keeping public MCP semantics stable.
 
@@ -453,6 +469,8 @@ The architecture documentation may lead implementation; runtime claims must cont
 
 ## 7. Current implementation frontier
 
-**N0 through N6 and the separately authorized O1 operation-family expansion are complete for their documented bounded scopes. N7 remains NOT STARTED.**
+**N0 through N6 and O1 are complete for their documented bounded scopes. N7 is now actively implemented but remains NOT CLOSED.**
 
-The staged native executor now covers LINE, CIRCLE, ARC and simple LWPOLYLINE under the same PID/parent-fingerprint/R0/N6 state-chain integrity model while the public runtime remains unchanged. Future operation-family expansion may proceed only as separately bounded and accepted work; TEXT/MTEXT, ELLIPSE/SPLINE, BLOCK/DIM/HATCH and formal N8 migration/promotion remain open. No N7 recovery claim follows from O1.
+The accepted staged native executor remains O1 (`0.4.0-o1`) for LINE, CIRCLE, ARC and simple LWPOLYLINE. The working `0.5.0-n7` candidate adds two-phase validation/checkpoint/recovery machinery, but the R2 active-document lifecycle crash blocks acceptance and commit. N8/N9/N10 remain unopened.
+
+Python MCP hot reload is now a mandatory prerequisite before deep formal migration. It is not yet implemented. Future operation-family expansion may proceed only as separately bounded and accepted work; TEXT/MTEXT, ELLIPSE/SPLINE, BLOCK/DIM/HATCH remain open.

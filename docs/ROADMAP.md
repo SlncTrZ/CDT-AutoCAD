@@ -1,6 +1,6 @@
 # PLAN — AutoCAD Provider
 
-> Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-10 17:30 +07:00
+> Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-10 +07:00
 > Governing docs: `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/CURRENT_CHECKPOINT.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
 
 ## 1. Objective
@@ -337,7 +337,7 @@ Execution is step-gated by `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: one small se
 
 ## 11. Current Status / Next Step
 
-**A0 + A1 are CLOSED. A2 is release-candidate complete and live-verified on AutoCAD 2027; RC identity is retained pending explicit promotion. A3.1/A3.2/A3.3 are native live-verified but staged/non-public. N0–N6 are CLOSED for their documented scopes and O1 has separately live-verified internal CIRCLE/ARC/simple-LWPOLYLINE native mutation expansion. N7 remains NOT STARTED and the public runtime is unchanged.**
+**A0 + A1 are CLOSED. A2 is release-candidate complete and live-verified on AutoCAD 2027; RC identity is retained pending explicit promotion. A3.1/A3.2/A3.3 are native live-verified but staged/non-public. N0–N6 and O1 are CLOSED for their documented scopes. N7 two-phase recovery is IN PROGRESS / NOT CLOSED; its current blocker is an AutoCAD active-document lifecycle crash in R2-after-restart. The public runtime remains unchanged.**
 
 Current public runtime identity:
 
@@ -361,7 +361,7 @@ The detailed plan is `docs/ARCHITECTURE_UPGRADE_PLAN.md`; acceptance is `docs/NA
 - `N5` native transactional executor + verified R0 rollback — **CLOSED / LIVE PASS** for fixed-schema LINE create/update/delete (evidence `docs/evidence/n5-native-mutation-2026-09-10.json`).
 - `N6` deterministic validator + semantic delta + state-chain engine — **CLOSED / LIVE PASS** (evidence `docs/evidence/n6-semantic-state-chain-2026-09-10.json`).
 - `O1` internal basic-shape native mutation expansion — **CLOSED / LIVE PASS** for CIRCLE/ARC/simple-LWPOLYLINE create/update/delete over the N5/N6 integrity model (evidence `docs/evidence/o1-native-shape-mutation-2026-09-10.json`).
-- `N7` two-phase commit integrity and independent post-commit recovery — **NOT STARTED / UNOPENED**.
+- `N7` two-phase commit integrity and independent post-commit recovery — **IN PROGRESS / NOT CLOSED**; working candidate `0.5.0-n7`, blocked on crash-safe R2 document replacement/rebinding.
 - `N8` incremental COM-to-.NET operation-family migration with parity evidence — **NOT STARTED**.
 - `N9` reference-driven drawing workflow migration to Data-first Semantic State Loop — **NOT STARTED**.
 - `N10` explicit public promotion/contract decision — **NOT STARTED**.
@@ -480,7 +480,11 @@ Current verification on the O1 closure tree:
 
 ### Next gates
 
-O1 is closed without opening N7 or changing the public runtime. Any further native operation-family expansion should remain one bounded family at a time with its own typed contract, TDD, AutoCAD Session 1 acceptance, COM parity where relevant, semantic-chain evidence and separate commit. Candidate future order is TEXT/MTEXT → ELLIPSE/SPLINE → BLOCK/DIM/HATCH, while N7 recovery, journal resume, topology extraction and formal N8/public migration remain separately gated work. Existing Autodesk-reference warning debt and pre-existing repository lint debt remain tracked separately.
+Immediate gate: finish N7 with activation-safe R2 replacement/rebind, exact predecessor PID/fingerprint verification after restart, full regressions, review, canonical evidence and a separate N7 implementation commit. The accepted O1/public runtime remains unchanged until that gate closes.
+
+Before deep N8/N9/N10 migration, the Python MCP/provider must gain mandatory fail-safe hot reload. Required behavior includes deterministic in-flight drain/refusal, a single authoritative generation, health-proven generation switch, rollback/preservation of the previous healthy generation on failed reload, and unchanged auth/path-policy/public-contract invariants. `.171` has `cloudflared` available for endpoint deployment; tunnel/service configuration remains unaudited/unmodified in this checkpoint.
+
+Any further native operation-family expansion should remain one bounded family at a time with its own typed contract, TDD, AutoCAD Session 1 acceptance, COM parity where relevant, semantic-chain evidence and separate commit. Candidate future order remains TEXT/MTEXT → ELLIPSE/SPLINE → BLOCK/DIM/HATCH. Journal resume, topology extraction and formal N8/public migration remain separately gated work. Existing Autodesk-reference warning debt and pre-existing repository lint debt remain tracked separately.
 
 See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared
 runtime from this lane; reusable infrastructure still requires Rule-of-Two cross-provider evidence.

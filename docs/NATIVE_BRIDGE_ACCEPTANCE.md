@@ -1,12 +1,12 @@
 # Native Bridge + Semantic Integrity Acceptance
 
-> Updated: 2026-09-10 17:30 +07:00
-> Status: N3/NB0 PASS · N4/NB1 PASS · N5/NB4 PASS · N6/NB6 PASS · O1 CIRCLE/ARC/simple-LWPOLYLINE bounded PASS · NB5 recovery and later promotion gates OPEN
+> Updated: 2026-09-10 +07:00
+> Status: N3/NB0 PASS · N4/NB1 PASS · N5/NB4 PASS · N6/NB6 PASS · O1 bounded PASS · N7/NB5 IN PROGRESS / NOT CLOSED · later promotion gates OPEN
 > Target: AutoCAD 2027 full / Windows x64 / Managed .NET
 
 ## 1. Purpose
 
-This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0, N4/NB1, bounded N5/NB4, N6 semantic state-chain/drift validation and O1 basic-shape mutation expansion have live-passed for their declared scopes. Post-commit recovery and formal public migration gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
+This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0, N4/NB1, bounded N5/NB4, N6 semantic state-chain/drift validation and O1 basic-shape mutation expansion have live-passed for their declared scopes. N7/NB5 post-commit recovery is now actively implemented but remains open because final R2 document-lifecycle acceptance has exposed an AutoCAD crash. Formal public migration gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
 
 The upgrade is not accepted unless both core pillars are proven under fault injection:
 
@@ -110,7 +110,17 @@ Measured properties:
 - bridge DLL SHA-256 is `4ad2d4138d6e71a8fa91281ea5482c592e2a0c04cb5d41ec5f2452b7cff31484`; final raw acceptance summary SHA-256 is `b8a3fadf952f1d5f13ce351e41657a0ae10d5a66a2b1c0a22680c6feda800ccf`;
 - focused O1/N5/N6 regression is 76 PASS; Linux full regression is 195 PASS / 4 SKIP; Windows `.171` is 194 PASS / 5 SKIP; changed-file Ruff, compileall and `git diff --check` pass.
 
-O1 therefore extends the already-accepted NB3/NB4/NB7 mechanisms to three additional bounded entity families. It does **not** close NB5 post-commit recovery, NB8 file-level promotion, NB9 default COM replacement or NB10 drawing stress-test gates, and N7 remains NOT STARTED.
+O1 therefore extends the already-accepted NB3/NB4/NB7 mechanisms to three additional bounded entity families. It does **not** close NB5 post-commit recovery, NB8 file-level promotion, NB9 default COM replacement or NB10 drawing stress-test gates. N7 was opened after O1 and is now tracked separately below.
+
+### N7 development checkpoint — IN PROGRESS / NOT CLOSED (2026-09-10)
+
+Detailed handoff: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
+
+Current working candidate `0.5.0-n7` adds provisional semantic extraction/validation inside the write transaction, independent persisted-state comparison after commit, provider-owned checkpoint manifests + artifact SHA-256, typed recovery list/resolve/finalize, R1 compensation and R2 checkpoint restore. Python executor recovery attempts R1 then R2 and does not advance the accepted state chain for recovered failures.
+
+Development acceptance has demonstrated R0 exact restore, provisional-validation abort, post-commit mismatch detection, R1 exact restore, R2 exact restore/runtime rebinding, executor R1→R2 recovery, restart-persisted recovery metadata and corrupt-manifest fail-closed behavior. Focused checkpoints have reached 10/10 combined N7 recovery contract tests, 45/45 N7+N6 recovery/state-chain tests and 86/86 broader native/semantic tests; native C# candidate builds remain 0 errors.
+
+**N7/NB5 is still OPEN.** Final R2-after-restart testing produced `FATAL ERROR: Unhandled Access Violation` while recovery closed/restored an active AutoCAD document from application context. Earlier semantic R2 success does not override this crash. The accepted R2 sequence must switch activation first and close only inactive documents, then re-open/rebind/read back the restored original and prove exact predecessor PID/fingerprint with no crash or modal-recovery dependency.
 
 ## 2. Gate families
 
@@ -194,7 +204,7 @@ Target status: `ROLLED_BACK_VERIFIED`.
 
 **N5/O1 result:** PASS for deterministic pre-commit R0 abort on the staged typed surface. N5 proves LINE create/update; O1 additionally live-proves CIRCLE create, ARC update and LWPOLYLINE delete abort paths with independent post-abort semantic read-back and exact v2 predecessor fingerprint restoration. This does not claim R1/R2 or post-commit recovery; those remain later gates.
 
-### NB5 — Post-commit integrity / recovery — **OPEN**
+### NB5 — Post-commit integrity / recovery — **IN PROGRESS / OPEN (N7)**
 
 Inject mismatches after commit and prove:
 
@@ -206,6 +216,8 @@ Inject mismatches after commit and prove:
 - rollback success requires `actual_restore_fp == expected_parent_fp`.
 
 If restoration cannot be proven, result must remain `ROLLBACK_FAILED` / `STATE_UNCERTAIN`.
+
+**Current N7 result:** the working candidate has passed the semantic portions of NB5 in development runs—post-commit mismatch detection, R1 exact restoration, R2 exact restoration/runtime rebound and restart-persisted recovery metadata—but the gate remains OPEN because an R2 active-document lifecycle path can crash `acad.exe`. NB5 cannot close until the crash-safe inactive-document replacement sequence passes the full native run, regressions and review on one final tree.
 
 ### NB6 — State drift — **PASS (N6 mechanism; O1 preserves the same pre-write parent guard)**
 
@@ -233,7 +245,7 @@ Examples:
 
 Unexpected effects must fail validation and invoke rollback/recovery.
 
-**N6/O1 result:** the validation half passes for LINE/CIRCLE/ARC/simple-LWPOLYLINE: unexpected type/identity effects, wrong requested geometry, unrequested target layer/style/hierarchy change, document resource change and newly introduced duplicate geometry are deterministic failures. O1 also rejects complex LWPOLYLINE target geometry before write. When a broader semantic violation is discovered only after native commit, N6 latches `STATE_UNCERTAIN`, records the failed step and blocks continuation. Automatic R1/R2 recovery is intentionally not claimed and remains coupled to NB5/N7.
+**N6/O1 accepted result:** the validation half passes for LINE/CIRCLE/ARC/simple-LWPOLYLINE: unexpected type/identity effects, wrong requested geometry, unrequested target layer/style/hierarchy change, document resource change and newly introduced duplicate geometry are deterministic failures. O1 also rejects complex LWPOLYLINE target geometry before write. On the accepted O1/N6 baseline, a broader semantic violation discovered only after native commit latches `STATE_UNCERTAIN` and blocks continuation. The working N7 candidate moves deterministic validation into the native transaction where possible and supplies R1/R2 post-commit recovery, but that recovery remains unaccepted until NB5 closes.
 
 ### NB8 — File-level integrity — **OPEN**
 

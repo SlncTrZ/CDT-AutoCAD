@@ -1,8 +1,8 @@
 # Drawing Execution & QA Workflow
 
-> Updated: 2026-09-10 11:56 +07:00
+> Updated: 2026-09-10 +07:00
 > Scope: all CDT-AutoCAD user-facing drawing/reconstruction workflows
-> Status: Project execution invariant; N3 transport/identity exists, full native Semantic State enforcement pending N4+
+> Status: Project execution invariant; N0–N6 + O1 native semantic foundation accepted, N7 recovery in progress/not closed
 
 ## 1. Purpose
 
@@ -262,19 +262,19 @@ Screenshots may be captured at major visual gates or debugging points, but they 
 
 ## 15. Current migration rule
 
-The N3 Managed .NET bridge is implemented and live-verified, but it is intentionally read-only and currently exposes only health/document identity. N4 full native semantic extraction and N5+ native mutation/rollback integration do not exist yet. During this migration phase:
+The staged Managed .NET bridge has advanced beyond the original N3 read-only foundation. N4 native semantic extraction, N5 transactional LINE mutation/R0 rollback, N6 semantic validation/state-chain orchestration and O1 LINE/CIRCLE/ARC/simple-LWPOLYLINE typed mutations are live-verified for their bounded scopes. N7 two-phase post-commit recovery is under development but not accepted. During this migration phase:
 
 - keep COM/ezdxf as the supported drawing/runtime baseline;
 - use existing structured query/measurement APIs as much as possible;
-- use the N3 bridge only for its verified internal read-only identity/transport scope;
+- use only the native capabilities explicitly marked accepted in `docs/CURRENT_CHECKPOINT.md`; working N7 recovery behavior is not an accepted drawing-workflow guarantee yet;
 - do not claim that current COM/native-identity checks equal the full target Semantic State Loop;
-- a drawing step cannot be labeled full native `COMMITTED_VERIFIED`/`ROLLED_BACK_VERIFIED` until the required N4+ snapshot/fingerprint/rollback path exists;
+- a drawing step may be labeled native `COMMITTED_VERIFIED`/`ROLLED_BACK_VERIFIED` only for an accepted bounded path whose snapshot/fingerprint/rollback gate has passed; post-commit R1/R2 recovery is not accepted until N7 closes;
 - COM timeout remains integrity-uncertain and requires read-back before retry;
 - old screenshot-heavy stress-test scripts are prototypes, not the target execution architecture.
 
 ## 16. Target native step runner
 
-N3 provides the transport/document-binding foundation only. The N4+ runner must execute one ActionSpec at a time and return structured evidence, conceptually:
+The accepted N4–N6 + O1 runner executes one ActionSpec at a time and returns structured evidence. N7 is extending the same loop with provisional in-transaction validation and checkpoint-backed recovery, but drawing workflows must continue to treat N7 as unavailable until its crash-safe R2 lifecycle passes acceptance. Conceptually:
 
 ```text
 semantic_step(action_spec)

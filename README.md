@@ -1,11 +1,10 @@
 # CDT AutoCAD Provider
 
-> Status: A2 release candidate · N0–N3 closed · N4 next · native mutation disabled · Version: 0.3.0rc1 · Updated: 2026-09-10 11:56 +07:00
+> Status: A2 release candidate · N0–N6 + O1 closed/live-pass · N7 in progress/not closed · Version: 0.3.0rc1 · Updated: 2026-09-10 +07:00
 
 This provider is the first CDT_Engineer reference implementation. The default backend remains
-`ezdxf`; the public release-candidate contract is now a bounded 50-tool `autocad-a2-v1-rc1` surface.
-The current `com` backend adds live Windows AutoCAD, native DWG, viewport management, live zoom and screenshot
-capture while preserving typed refusal on the headless backend. A staged in-process C# Managed .NET native bridge now provides read-only health/document identity over local typed Named Pipe IPC; current COM/ezdxf behavior remains the public migration baseline until native semantic parity and integrity gates pass.
+`ezdxf`; the public release-candidate contract is a bounded 50-tool `autocad-a2-v1-rc1` surface.
+The current `com` backend adds live Windows AutoCAD, native DWG, viewport management, live zoom and screenshot capture while preserving typed refusal on the headless backend. A staged in-process C# Managed .NET native bridge now provides persistent PID-aware semantic snapshots plus internal typed LINE/CIRCLE/ARC/simple-LWPOLYLINE create/update/delete over local Named Pipe IPC. N7 two-phase post-commit recovery is actively under development but is not yet accepted; current COM/ezdxf behavior therefore remains the public migration baseline.
 
 ## Current public scope
 
@@ -27,7 +26,7 @@ capture while preserving typed refusal on the headless backend. A staged in-proc
 A2 viewport create/list/scale/lock/delete, live zoom and native-window PNG capture are public MCP
 release-candidate tools and are **live-verified** on the primary AutoCAD 2027 Windows lane. Mock/Linux verification remains regression evidence only and does not substitute for native acceptance.
 
-## Target architecture — N1/N2/N3 implemented; N3 bridge staged and read-only
+## Target architecture — N0–N6 + O1 accepted; N7 recovery in progress
 
 The accepted target architecture is:
 
@@ -59,7 +58,7 @@ Two invariants are non-negotiable: **Data Integrity / Rollback** and **Precise I
 
 Screenshots/Vision are not the geometry oracle. Native semantic data drives step validation; Vision remains useful for raster-source ingestion and final visual/user review.
 
-Architecture status: `N0 CLOSED`, `N1 CLOSED/PASS`, `N2 CLOSED/LIVE PASS`, `N3 CLOSED/LIVE PASS`, `N4 NEXT`. N1 provides internal typed semantic contracts, versioned tolerance-aware canonical JSON, domain-separated SHA-256 fingerprints, duplicate PID/geometry helpers, rollback receipts and a tamper-evident state-chain. N2 live P0–P10 probes selected NOD/XRecord for document-lineage PID and Extension-Dictionary/XRecord for managed DBObject PID, with mandatory clone reconciliation because deep/cross/WBLOCK/INSERT paths copy entity PID metadata. N3 now supplies a staged read-only `net10.0-windows` bridge inside `acad.exe`, versioned bounded Named Pipe IPC, same-user/local/same-session enforcement, runtime-document IDs and native N2 document-PID readback. Raw file copies with the same lineage PID are distinguished by runtime document ID. `expected_parent_fp` remains intentionally deferred until native SemanticSnapshot/fingerprint extraction exists in N4/N6; there is still no native mutation endpoint.
+Architecture status: `N0–N6 CLOSED`, `O1 CLOSED/LIVE PASS`, `N7 IN PROGRESS / NOT CLOSED`. N1 supplies typed semantic contracts/fingerprints/state-chain primitives; N2 persistent document/entity PID policy; N3 the in-process `net10.0-windows` bridge and bounded same-user/local/same-session Named Pipe transport; N4 authoritative native semantic snapshot/fingerprint extraction; N5 typed transactional mutation with parent-fingerprint binding and R0 rollback; N6 deterministic semantic validation/state-chain orchestration; O1 expands the accepted internal mutation surface to LINE/CIRCLE/ARC/simple-LWPOLYLINE create/update/delete. The working N7 candidate adds provisional in-transaction validation and checkpoint-backed R1/R2 recovery, but final acceptance is blocked by an AutoCAD active-document lifecycle crash in R2-after-restart. See `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
 
 Current implementation status is canonical in [`docs/CURRENT_CHECKPOINT.md`](docs/CURRENT_CHECKPOINT.md). Architecture details are in [`docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`](docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md), [`docs/SEMANTIC_STATE_PROTOCOL.md`](docs/SEMANTIC_STATE_PROTOCOL.md), [`docs/N2_PID_ACCEPTANCE.md`](docs/N2_PID_ACCEPTANCE.md), [`docs/NATIVE_BRIDGE_ACCEPTANCE.md`](docs/NATIVE_BRIDGE_ACCEPTANCE.md) and [`docs/ARCHITECTURE_UPGRADE_PLAN.md`](docs/ARCHITECTURE_UPGRADE_PLAN.md).
 
@@ -87,6 +86,10 @@ out COM mutation is treated as uncertain because the abandoned STA call may stil
 verify the drawing before retrying to avoid double-applying an operation.
 
 Credentials must be supplied by deployment/runtime configuration. Do not commit them.
+
+### Python MCP hot reload requirement
+
+A supported Python MCP/provider hot-reload lifecycle is now mandatory before deep N8/N9/N10 migration. Reload must drain or deterministically reject in-flight work, expose one authoritative generation, verify the new generation through health/status, retain the previous healthy generation on reload failure, and preserve authentication/path-policy/public-contract invariants. This is not yet implemented. The `.171` Windows host has `cloudflared` available for a stable externally reachable endpoint; tunnel/service configuration remains separate infrastructure work and has not yet been changed for CDT-AutoCAD.
 
 ## AutoCAD version policy
 

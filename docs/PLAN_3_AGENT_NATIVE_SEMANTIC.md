@@ -2,7 +2,8 @@
 
 > Prepared: 2026-09-10
 > Baseline: `main@f0b4dce` · N4–N6 CLOSED
-> Status: **PLAN ONLY · NO N7 IMPLEMENTATION AUTHORIZED**
+> Historical status: **PLAN ONLY at preparation time**
+> Supersession note: later operator authorization opened O1 and then N7; current authority is `docs/CURRENT_CHECKPOINT.md` and `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`
 > Audit input: `docs/N4_N6_AUDIT_2026-09-10.md`
 
 ## 1. Goal
@@ -139,7 +140,7 @@ Gate: A/B can implement without editing the same contract or production file.
 
 ### Wave 1 — Recovery foundation in two parallel lanes
 
-Potential future target: the unresolved post-commit/restart integrity boundary identified by the N4–N6 audit. This is conceptually related to N7 but is **not started by this plan**.
+Historical planning target: the unresolved post-commit/restart integrity boundary identified by the N4–N6 audit. This plan itself did not start N7; N7 was subsequently opened by explicit operator authorization and is now tracked in the current checkpoint documents.
 
 Agent A candidate lane:
 
@@ -293,4 +294,4 @@ Escalate the contract or scope first, then resume from a new explicit wave bound
 
 Start from a clean `origin/main` containing the N6 closure and this plan. Re-read `AGENTS.md`, `docs/CURRENT_CHECKPOINT.md`, this plan and the N4–N6 audit. Create the three isolated worktrees, freeze the first future contract, then send A/B their non-overlapping task briefs. Agent C should receive the acceptance matrix before A/B begin so the completion criteria cannot drift to match the implementation afterward.
 
-Until that explicit authorization arrives: **do not open N7, do not broaden the native mutation allowlist, and do not promote the staged bridge.**
+Historical boundary at plan creation: **do not open N7, broaden the native mutation allowlist, or promote the staged bridge without explicit authorization.** That authorization later arrived for O1 and N7. This historical plan does not override the current implementation boundary; use `docs/CURRENT_CHECKPOINT.md` for live status. Public promotion remains separately gated and has not occurred.

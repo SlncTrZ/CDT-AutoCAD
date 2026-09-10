@@ -1,5 +1,7 @@
 # Initial Handoff — Agent A / AutoCAD
 
+> Historical bootstrap document updated with current handoff pointer on 2026-09-10. For implementation status, use `docs/CURRENT_CHECKPOINT.md`; for unfinished N7 work, use `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
+
 ## Repository
 
 - Path: `/mnt/pc-dev/CDT-AutoCAD`
@@ -22,10 +24,11 @@
 11. `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
 12. `docs/DRAWING_QUALITY_ACCEPTANCE.md`
 13. `specs/MCP_PROVIDER_STANDARD.md`
-14. `specs/ARCHITECTURE.md`
-15. `specs/CONTRACTS.md`
+14. `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`
+15. `specs/ARCHITECTURE.md`
+16. `specs/CONTRACTS.md`
 
-## Starting state
+## Historical starting state
 
 The repository was extracted with Git history from `CDT_Engineer/servers/autocad` rather than copied as a new snapshot.
 
@@ -45,9 +48,11 @@ Known implementation state:
 
 ## Current handoff task
 
-Architecture phases **N1**, **N2**, and **N3** are complete. N2 native P0–P10 on AutoCAD 2027 selected NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID with mandatory clone reconciliation. N3 then live-verified a staged read-only Managed .NET bridge using bounded local Named Pipe IPC, same-user/local/same-session enforcement and runtime-document disambiguation. The next task is **N4 — native semantic extractor**; native mutation remains prohibited until later transactional/state-integrity gates.
+N0–N6 and O1 are complete for their bounded scopes; accepted implementation baseline is `main@04ff820`. N7 two-phase commit/recovery is open and implemented on an uncommitted working tree. The current blocker is crash-safe R2 document replacement: final R2-after-restart acceptance exposed an AutoCAD active-document access-violation crash. Continue from `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`; do not call N7 closed until activation-safe R2, full regressions, review and canonical evidence pass.
 
-The current COM/ezdxf runtime remains the comparison baseline. New implementation must not weaken or silently replace current public behavior until real AutoCAD parity/integrity gates pass.
+The Python MCP/provider also has a new mandatory hot-reload requirement before deep N8/N9/N10 migration. `.171` has `cloudflared` available for later endpoint/tunnel deployment, but tunnel/service configuration has not yet been audited or changed for CDT-AutoCAD.
+
+The current COM/ezdxf runtime remains the comparison/public baseline. New implementation must not weaken or silently replace current public behavior until real AutoCAD parity/integrity and explicit promotion gates pass.
 
 ## Restrictions
 
