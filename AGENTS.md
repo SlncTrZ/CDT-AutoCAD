@@ -8,7 +8,7 @@ This repository owns the AutoCAD MCP provider runtime only. `CDT_Engineer` is th
 
 - Source repo: `SlncTrZ/CDT_Engineer`
 - Pinned commit: `643019c`
-- Read first: `docs/SPEC_BASELINE.md`, `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/ROADMAP.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`.
+- Read first: `docs/SPEC_BASELINE.md`, `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/ROADMAP.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`.
 - Do not edit files under `specs/`; they are pinned snapshots. Contract changes must be proposed in `CDT_Engineer` and synced here only after approval.
 
 ## Ownership boundary
@@ -65,6 +65,8 @@ Before generating or reconstructing a user-facing drawing, classify it into one 
 For every semantically required technical condition, use the correct linetype role and lineweight hierarchy. In particular, hidden/overhead/underground geometry, centerlines/axes, cutting planes, boundaries/easements, existing/proposed/removal states and major/minor contours must not be collapsed into `Continuous` when their drawing profile requires a distinct convention. Missing a required dashed/hidden/center/chain/break/other semantic line is a drawing defect even when coordinates are correct.
 
 Drawing checkpoints progress through `TECHNICAL_PASS -> GEOMETRY_PASS -> DOMAIN_PASS -> VISUAL_PASS -> USER_ACCEPTED`. Only `USER_ACCEPTED` is a completed user-reviewed checkpoint. If the reviewer cannot access the actual screenshot/file, keep the state `PENDING_USER_VISUAL_ACCEPTANCE`.
+
+Execution must follow `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: decompose work into small semantic steps; after every step save a new native checkpoint, run machine checks, capture/review a screenshot, and append an immutable step log. At major gates compare the current drawing against the source/brief and the previous accepted gate. Never run the next dependent step automatically after a failed/unreviewed step.
 
 ## Native-verification rule
 

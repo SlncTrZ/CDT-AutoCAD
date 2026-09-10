@@ -1,7 +1,7 @@
 # PLAN — AutoCAD Provider
 
 > Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-09
-> Governing docs: `MCP_PROVIDER_STANDARD.md`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`
+> Governing docs: `MCP_PROVIDER_STANDARD.md`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
 
 ## 1. Objective
 
@@ -285,6 +285,8 @@ A successful COM/API call, entity count, valid DWG save or agent-readable screen
 Linetypes and lineweights are semantic requirements. Continuous thick/medium/thin, dashed/hidden, dashed-overhead, center/chain, cutting-plane, phantom, break, hatch, property/boundary, setback/easement, underground utility, existing/proposed/removal, contour and demolition conventions must be used whenever the drawing condition requires them. A semantically required dashed/hidden/center/other line that is missing or visually collapses to continuous because of linetype scale is a drawing defect.
 
 For live user-observed stress tests, preserve native DWG + screenshot evidence, verify the final displayed/plotted appearance, and keep the checkpoint pending until the reviewer can actually access the evidence and approves it.
+
+Execution is step-gated by `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: one small semantic change per invocation/checkpoint, machine + visual verification after every step, append-only failure/pass logs, immutable prior accepted DWGs, and explicit source/previous-state comparison at major gates before the next stage.
 
 ## 9. Security
 

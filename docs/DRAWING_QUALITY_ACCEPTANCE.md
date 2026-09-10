@@ -350,6 +350,8 @@ Do not place the complete drawing on a single default layer for convenience.
 
 ## 9. Human-visible execution and checkpoint discipline
 
+All reference-driven/user-reviewed execution must also follow `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`. Quality acceptance in this document does not authorize monolithic execution; each small semantic step must be saved, machine-checked, visually checked, and logged before the next dependent step, with explicit source comparison at major gates.
+
 For live visual stress tests where the user is watching AutoCAD:
 
 - pace visible drawing operations at approximately `0.5–0.8 s` unless a different pace is requested;
