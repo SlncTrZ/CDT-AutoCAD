@@ -10,3 +10,6 @@ prototypes/**/obj/
 native/**/bin/
 native/**/obj/
 native/**/*.bundle/Contents/
+
+# Local planning and audit notes
+/_private/
