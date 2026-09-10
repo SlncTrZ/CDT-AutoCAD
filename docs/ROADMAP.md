@@ -353,9 +353,9 @@ public MCP tools: 50
 
 The detailed plan is `docs/ARCHITECTURE_UPGRADE_PLAN.md`; acceptance is `docs/NATIVE_BRIDGE_ACCEPTANCE.md`.
 
-- `N0` documentation/architecture freeze.
-- `N1` typed semantic models + canonical fingerprint engine.
-- `N2` persistent document/entity PID prototype and clone policy.
+- `N0` documentation/architecture freeze — **CLOSED**.
+- `N1` typed semantic models + canonical fingerprint engine — **CLOSED / PASS** (`31` focused semantic tests; Windows full regression `113 passed, 5 skipped`).
+- `N2` persistent document/entity PID prototype and clone policy — **NEXT**.
 - `N3` C# Managed .NET bridge + local typed IPC skeleton.
 - `N4` native read-only semantic extractor.
 - `N5` native transactional executor + verified rollback.
@@ -476,12 +476,11 @@ Current verification on the final hardening tree:
 
 ### Next gates
 
-1. Complete `N0` documentation freeze and keep current runtime claims honest.
-2. Start `N1`: semantic contract models, canonicalization/tolerance profiles, fingerprint golden tests and state-chain models.
-3. Prototype `N2` PID persistence/clone semantics on real AutoCAD 2027 before committing to a metadata carrier.
-4. Only then build `N3` Managed .NET bridge/IPC; do not let IPC payloads define semantics ad hoc.
-5. Keep COM as live comparison/fallback until `NATIVE_BRIDGE_ACCEPTANCE.md` gates close.
-6. Promote A3 or any new public semantic tools only through explicit contract/version decisions.
+1. Start `N2`: prototype persistent document/entity PID storage and clone/remap semantics on real AutoCAD 2027.
+2. Verify save/reopen, ordinary edits, COPY/clone/deep-clone/WBLOCK/INSERT, erase/undo/redo and duplicate-PID handling before choosing the final metadata carrier.
+3. Only after N2 closes, build `N3` Managed .NET bridge/IPC against the already-tested N1 semantic contract; do not let IPC payloads define semantics ad hoc.
+4. Keep COM as live comparison/fallback until `NATIVE_BRIDGE_ACCEPTANCE.md` gates close.
+5. Promote A3 or any new public semantic tools only through explicit contract/version decisions.
 
 See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared
 runtime from this lane; reusable infrastructure still requires Rule-of-Two cross-provider evidence.

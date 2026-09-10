@@ -94,6 +94,10 @@ Gate:
 
 ### N1 — Semantic contract models in Python
 
+**Status: IMPLEMENTED / GATE PASS — 2026-09-10.**
+
+Implemented under `src/cdt_autocad/semantic/` with focused Linux tests and full Windows project regression. Evidence at this checkpoint: `31 passed` focused semantic tests; Windows `.171` full suite `113 passed, 5 skipped`; Python compile pass; `git diff --check` pass. The server-side global Python environment lacks the repo's optional/runtime dependencies for a full Linux suite, so the existing Windows project venv remains the complete regression lane for this checkpoint.
+
 Implement internal typed models for:
 
 - `SourceSemanticModel`;
@@ -108,14 +112,19 @@ Implement internal typed models for:
 
 Implement versioned canonical JSON serialization and tolerance profiles.
 
-Gate:
+Gate — **PASS**:
 
 - deterministic serialization;
-- stable golden fingerprints;
-- float-quantization tests;
-- duplicate-detection tests;
-- state-chain tests;
-- no AutoCAD dependency required yet.
+- stable golden geometry/action fingerprints;
+- integer/float normalization and tolerance quantization tests;
+- domain-separated fingerprints and tolerance-profile identity;
+- duplicate PID and duplicate-geometry detection tests;
+- deep immutable action payloads and arbitrary-execution-field guard;
+- entity-enumeration-independent document fingerprints;
+- semantic-delta set-order independence;
+- tamper-evident state-chain verification and parent drift guard;
+- rollback receipt invariant tests;
+- no AutoCAD dependency required for the semantic core itself.
 
 ### N2 — PID design prototype
 
@@ -362,8 +371,8 @@ Each semantic step records:
 
 The architecture documentation may lead implementation; runtime claims must continue to describe what is actually shipped today.
 
-## 7. First implementation task after this documentation phase
+## 7. Current implementation frontier
 
-Start **N1 — Semantic contract models + canonical fingerprint engine** before creating the .NET bridge.
+**N1 is complete. Next: N2 — persistent PID design prototype on real AutoCAD 2027.**
 
-Reason: the native bridge must target a stable data contract. Building IPC/native mutation first would hard-code AutoCAD-specific payload shapes before the semantic invariants are defined and tested.
+N2 must validate the native persistence carrier and clone/remap semantics before N3 IPC/native bridge code is allowed to depend on a PID storage choice. The N1 semantic contract remains the data boundary that N2/N3 must target rather than inventing AutoCAD-specific payload shapes ad hoc.

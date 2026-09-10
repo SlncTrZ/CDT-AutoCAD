@@ -39,10 +39,10 @@ Forbidden unless explicitly assigned:
 ## Current delivery gates
 
 1. Preserve the live-verified current `ezdxf + COM` baseline and public 50-tool contract during migration.
-2. Complete architecture phase `N0` documentation freeze before implementation.
-3. Implement `N1` semantic contract models/canonical fingerprint engine first; do not let IPC/native code invent ad-hoc semantics.
-4. Prototype `N2` persistent PID storage and clone/remap behavior on real AutoCAD 2027 before choosing the final metadata carrier.
-5. Build `N3+` Managed .NET bridge only behind staged/internal capability boundaries until `docs/NATIVE_BRIDGE_ACCEPTANCE.md` gates pass.
+2. `N0` documentation freeze is complete; preserve its architecture boundary.
+3. `N1` semantic contract models/canonical fingerprint engine are implemented and regression-verified; preserve golden fingerprints/state-chain invariants.
+4. `N2` is next: prototype persistent PID storage and clone/remap behavior on real AutoCAD 2027 before choosing the final metadata carrier.
+5. Build `N3+` Managed .NET bridge only after N2 closes and only behind staged/internal capability boundaries until `docs/NATIVE_BRIDGE_ACCEPTANCE.md` gates pass.
 6. Every mutation architecture must preserve the two pillars: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting.
 7. Continue A3/public capability promotion only through explicit contract/version changes; native implementation or verification alone does not publish tools.
 8. Any reference-driven/user-reviewed drawing must satisfy both Semantic State integrity and `docs/DRAWING_QUALITY_ACCEPTANCE.md`.

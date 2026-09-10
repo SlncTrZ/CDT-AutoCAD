@@ -44,9 +44,9 @@ Known implementation state:
 
 ## First task
 
-Begin architecture phase **N1 — Semantic contract models + canonical fingerprint engine** defined in `docs/ARCHITECTURE_UPGRADE_PLAN.md`. Do not start with IPC or mutation code: stabilize the data contracts, canonicalization, tolerances, PID/fingerprint semantics and rollback/state-chain models first.
+Architecture phase **N1 — Semantic contract models + canonical fingerprint engine** is complete and regression-verified. The next task is **N2 — persistent PID design prototype on real AutoCAD 2027**: validate the native PID carrier plus save/reopen, ordinary edits, clone/deep-clone/WBLOCK/INSERT, erase/undo/redo and duplicate-PID behavior before N3 depends on that storage choice.
 
-The current COM/ezdxf runtime is the comparison baseline. New implementation must not weaken or silently replace current public behavior until real AutoCAD parity/integrity gates pass.
+The current COM/ezdxf runtime remains the comparison baseline. New implementation must not weaken or silently replace current public behavior until real AutoCAD parity/integrity gates pass.
 
 ## Restrictions
 
