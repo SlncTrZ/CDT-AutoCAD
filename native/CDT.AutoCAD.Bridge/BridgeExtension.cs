@@ -1,5 +1,5 @@
-// BridgeExtension — AutoCAD IExtensionApplication lifecycle for the staged N3 bridge.
-// Wing: code | Topic: native-bridge-n3 | Updated: 2026-09-10 10:58
+// BridgeExtension — AutoCAD IExtensionApplication lifecycle for the staged N5 bridge.
+// Wing: code | Topic: native-bridge-n5 | Updated: 2026-09-10 14:10
 
 using Autodesk.AutoCAD.ApplicationServices.Core;
 using Autodesk.AutoCAD.Runtime;
@@ -24,7 +24,7 @@ public sealed class BridgeExtension : IExtensionApplication
         int sessionId = Process.GetCurrentProcess().SessionId;
         string pipeName = $"SlncTrZ.CDT.AutoCAD.Bridge.v1.s{sessionId}";
         DocumentRegistry documents = new();
-        ReadOnlyBridgeService service = new(_bridgeInstanceId, pipeName, documents);
+        NativeBridgeService service = new(_bridgeInstanceId, pipeName, documents);
         _dispatcher = new BridgeDispatcher(service);
         _pipeHost = new PipeHost(pipeName, _dispatcher);
         _pipeHost.Start();

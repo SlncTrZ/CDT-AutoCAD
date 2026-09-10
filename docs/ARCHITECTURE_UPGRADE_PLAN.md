@@ -1,7 +1,7 @@
 # Architecture Upgrade Plan — Native Bridge + Semantic State Loop
 
-> Updated: 2026-09-10 13:25 +07:00
-> Status: IMPLEMENTATION IN PROGRESS · N0–N4 CLOSED · N5 NEXT
+> Updated: 2026-09-10 14:20 +07:00
+> Status: IMPLEMENTATION IN PROGRESS · N0–N5 CLOSED · N6 NEXT
 > Current runtime remains `ezdxf + COM` until migration gates close.
 > Acceptance companion: `docs/NATIVE_BRIDGE_ACCEPTANCE.md`
 
@@ -96,7 +96,7 @@ Gate:
 
 **Status: IMPLEMENTED / GATE PASS — 2026-09-10.**
 
-Implemented under `src/cdt_autocad/semantic/`. Historical N1 closure evidence was `31 passed` focused semantic tests and Windows `.171` full suite `113 passed, 5 skipped`. Those numbers belong to the N1 checkpoint; the current N4-closure regression is Linux `145 passed, 4 skipped`, Windows `.171` `144 passed, 5 skipped`, and focused N4/N1 semantic regression `58 passed`. See `docs/CURRENT_CHECKPOINT.md`.
+Implemented under `src/cdt_autocad/semantic/`. Historical N1 closure evidence was `31 passed` focused semantic tests and Windows `.171` full suite `113 passed, 5 skipped`. Those numbers belong to the N1 checkpoint; the current N5-closure regression is Linux `155 passed, 4 skipped`, Windows `.171` `154 passed, 5 skipped`, and focused N5/N4/native-semantic regression `68 passed`. See `docs/CURRENT_CHECKPOINT.md`.
 
 Implement internal typed models for:
 
@@ -223,38 +223,42 @@ Gate — **PASS**:
 
 ### N5 — Native transactional executor + rollback
 
-**Status: NEXT / NOT STARTED.**
+**Status: CLOSED / LIVE PASS — 2026-09-10.** Canonical evidence: `docs/evidence/n5-native-mutation-2026-09-10.json`.
 
-Implement typed mutations behind native transactions. N5 owns the first authoritative mutation-time `expected_parent_fp` guard: every request must bind runtime document + persistent document PID + expected parent document fingerprint and re-read N4 state before any write.
+N5 intentionally opens only a narrow fixed-schema mutation surface:
 
-Start with:
+- `entity.create.line`;
+- `entity.update.line`;
+- `entity.delete.line`;
+- document-safe `DocumentLock` + native transaction scope.
 
-- create basic entities;
-- property edits;
-- move/copy/rotate/scale;
-- layer operations;
-- delete;
-- document-safe transaction scope.
+Implemented precondition / rollback behavior:
 
-Required precondition / rollback behavior:
+- every mutation binds runtime document + persistent document PID + `expected_parent_fp`;
+- stale/mismatched parent fingerprint is rejected as `STATE_DRIFT` before write;
+- update/delete resolve by persistent semantic PID, never Handle/ObjectId as semantic target identity;
+- create assigns a fresh persistent PID; update preserves PID/Handle;
+- deterministic `after_apply_before_commit` fault injection proves R0 transaction abort and independent predecessor read-back;
+- rollback advances only as `ROLLED_BACK_VERIFIED` when the actual restore fingerprint equals the expected predecessor fingerprint;
+- document fingerprint schema v2 excludes volatile `saved/DBMOD` from semantic identity while retaining that lifecycle state in snapshots;
+- create is preflight-rejected with `SNAPSHOT_CAPACITY_EXCEEDED` when it would exceed the bounded N4 semantic extractor capacity.
 
-- reject stale/mismatched `expected_parent_fp` before opening the write transaction;
-- resolve entity targets by persistent semantic PID, not Handle/ObjectId alone;
+Gate — **PASS for the bounded LINE surface**:
 
-- R0 transaction abort before commit;
-- R1 verified compensation only where deterministic;
-- R2 immutable-checkpoint restore for uncertain/non-invertible committed state;
-- rollback read-back must exactly restore expected predecessor fingerprint before workflow resumes.
+- stale parent request mutates nothing;
+- create/update R0 fault injection restores the exact semantic predecessor fingerprint;
+- a subsequent mutation is allowed only after verified restoration;
+- create/update native state matches COM measurements;
+- PID survives update + save/reopen and runtime-document rebinding;
+- delete removes the target PID-bearing entity;
+- 32→33 capacity boundary refuses before mutation;
+- no arbitrary command/eval/shell surface is introduced.
 
-Gate:
-
-- intentionally injected validation failures leave predecessor semantic fingerprint unchanged;
-- timeout/fault injection never permits next step from unknown state;
-- rollback failure is explicit and blocks execution.
+N5 does **not** claim N6 allowed-effects/state-chain enforcement or N7 R1/R2/post-commit recovery.
 
 ### N6 — Deterministic validator + state-chain engine
 
-**Status: NOT STARTED.**
+**Status: NEXT / NOT STARTED.**
 
 Implement:
 
@@ -414,6 +418,6 @@ The architecture documentation may lead implementation; runtime claims must cont
 
 ## 7. Current implementation frontier
 
-**N0, N1, N2, N3 and N4 are complete. Next: N5 — typed native transactional mutation + verified rollback.**
+**N0, N1, N2, N3, N4 and N5 are complete. Next: N6 — deterministic semantic delta + state-chain orchestration.**
 
-N4 now provides authoritative read-only parent SemanticSnapshot data and native↔N1 document fingerprint parity without changing the public backend. The bridge remains staged/internal and current COM/ezdxf remains the supported public migration baseline. N5 may introduce only bounded typed mutation operations, must enforce `expected_parent_fp` before native writes, and must prove transaction abort/rollback by independent N4 read-back. N6 starts only after those N5 gates live-pass.
+N5 now provides a live-verified internal LINE mutation executor with composite parent binding, persistent PID targeting, semantic document-fingerprint schema v2, verified R0 rollback and pre-write semantic-capacity protection. The bridge remains staged/internal and current COM/ezdxf remains the supported public migration baseline. N6 must wrap this accepted surface with before/after semantic delta, allowed-effects validation, one-entry-per-accepted-step state chaining and manual-drift blocking without broadening the native operation allowlist. N7 remains closed until N6 is separately accepted.

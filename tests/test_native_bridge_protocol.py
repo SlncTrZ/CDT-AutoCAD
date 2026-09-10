@@ -21,7 +21,6 @@ from cdt_autocad.native_bridge.protocol import (
     encode_frame,
 )
 
-
 REQUEST_ID = "11111111-1111-4111-8111-111111111111"
 RUNTIME_DOCUMENT_ID = "22222222-2222-4222-8222-222222222222"
 
@@ -40,7 +39,7 @@ def test_protocol_version_is_frozen_for_n3():
     assert MAX_FRAME_BYTES == 65_536
 
 
-def test_request_accepts_only_read_only_n3_operations():
+def test_protocol_keeps_arbitrary_execution_forbidden_after_n5_mutation_addition():
     for operation in ("bridge.health", "bridge.documents.list"):
         request = BridgeRequest.from_dict(request_payload(operation))
         assert request.operation == operation
@@ -59,7 +58,6 @@ def test_request_accepts_only_read_only_n3_operations():
         "shell",
         "lisp.eval",
         "csharp.eval",
-        "entity.create.line",
     ):
         with pytest.raises(BridgeProtocolError, match="UNSUPPORTED_OPERATION"):
             BridgeRequest.from_dict(request_payload(forbidden))

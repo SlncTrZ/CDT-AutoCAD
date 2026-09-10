@@ -1,5 +1,5 @@
 // BridgeDispatcher — bounded queue drained only from AutoCAD Application.Idle.
-// Wing: code | Topic: native-bridge-n3 | Updated: 2026-09-10 10:58
+// Wing: code | Topic: native-bridge-n5 | Updated: 2026-09-10 14:10
 
 using System.Threading.Channels;
 
@@ -8,9 +8,9 @@ namespace CDT.AutoCAD.Bridge;
 internal sealed class BridgeDispatcher
 {
     private readonly Channel<PendingRequest> _queue;
-    private readonly ReadOnlyBridgeService _service;
+    private readonly NativeBridgeService _service;
 
-    internal BridgeDispatcher(ReadOnlyBridgeService service)
+    internal BridgeDispatcher(NativeBridgeService service)
     {
         _service = service;
         _queue = Channel.CreateBounded<PendingRequest>(
@@ -60,8 +60,8 @@ internal sealed class BridgeDispatcher
             {
                 response = BridgeResponse.Failure(
                     pending.Request.RequestId,
-                    "NATIVE_READ_FAILED",
-                    "native read operation failed"
+                    "NATIVE_OPERATION_FAILED",
+                    "native bridge operation failed"
                 );
             }
             pending.Completion.TrySetResult(response);

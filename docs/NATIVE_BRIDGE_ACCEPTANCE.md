@@ -1,12 +1,12 @@
 # Native Bridge + Semantic Integrity Acceptance
 
-> Updated: 2026-09-10 13:25 +07:00
-> Status: N3/NB0 LIVE PASS · N4/NB1 LIVE PASS · NB2 storage/policy PASS · NB3 N1 primitives + N4 document-fingerprint integration PASS · NB4–NB10 OPEN
+> Updated: 2026-09-10 14:20 +07:00
+> Status: N3/NB0 LIVE PASS · N4/NB1 LIVE PASS · N5/NB4 bounded R0 LIVE PASS · NB3 document-FP v2 parent binding PASS · NB5–NB10 otherwise OPEN
 > Target: AutoCAD 2027 full / Windows x64 / Managed .NET
 
 ## 1. Purpose
 
-This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0 and N4/NB1 have live-passed; native mutation and later integrity gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
+This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0, N4/NB1 and the bounded N5 R0 native-mutation subset have live-passed; N6 semantic delta/state-chain and later integrity gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
 
 The upgrade is not accepted unless both core pillars are proven under fault injection:
 
@@ -51,6 +51,25 @@ Measured properties:
 - Linux regression is 145 PASS / 4 SKIP; Windows `.171` regression is 144 PASS / 5 SKIP; native build is 0 errors with the same three unsuppressed `MSB3277` warning families.
 
 This closes **N4/NB1** and the native document-fingerprint integration required to make authoritative parent-state data available to N5. It does **not** enforce `expected_parent_fp` on mutation, because N4 exposes no mutation endpoint.
+
+### N5.0 measured checkpoint — LIVE PASS (2026-09-10)
+
+N5 adds only three fixed-schema native mutations: `entity.create.line`, `entity.update.line`, and `entity.delete.line`. Canonical evidence: `docs/evidence/n5-native-mutation-2026-09-10.json`.
+
+Measured properties:
+
+- every mutation requires `runtime_document_id + document_pid + expected_parent_fp`; update/delete additionally require persistent `semantic_pid` targeting;
+- stale parent fingerprint is refused as `STATE_DRIFT` before the write transaction and the semantic state remains unchanged;
+- create assigns a fresh PID; update preserves PID and native Handle; delete removes the target from the authoritative snapshot;
+- real AutoCAD/COM measurements match native semantic LINE geometry after create/update;
+- deterministic `after_apply_before_commit` fault injection proves R0 `Transaction.Abort()` for create and update; independent read-back returns the exact predecessor semantic fingerprint and allows the next mutation only after that verification;
+- AutoCAD `DBMOD` is not deterministic across otherwise exact abort restoration (measured create-abort `DBMOD=1`, update-abort `DBMOD=0`), so N5 introduces document fingerprint schema v2: `saved` remains observable but is excluded from semantic `document_fp`;
+- save/close/reopen preserves document lineage PID, target entity PID and semantic fingerprint for the saved updated drawing while runtime document ID changes;
+- at exactly 32 semantic objects, a create that would exceed the N4 extractor bound is refused before transaction with `SNAPSHOT_CAPACITY_EXCEEDED`; entity count and parent fingerprint remain unchanged;
+- arbitrary C#/AutoLISP/shell/macro/free-text command execution remains absent; `mutation_enabled=true` advertises only the exact three LINE operations;
+- Linux regression is 155 PASS / 4 SKIP; Windows `.171` regression is 154 PASS / 5 SKIP; focused N5/N4/native-semantic regression is 68 PASS; native build is 0 errors with the same three unsuppressed `MSB3277` warning families.
+
+This closes the **bounded N5/NB4 R0 transaction-abort gate for the accepted LINE surface** and proves mutation-time parent fingerprint enforcement. It does not close N6 allowed-effects/state-chain drift orchestration or N7/NB5 post-commit recovery.
 
 ## 2. Gate families
 
@@ -100,7 +119,7 @@ Prove on real DWG:
 
 AutoCAD `ObjectId` is not accepted as persistent identity. Native Handle may assist lookup but is not sufficient by itself.
 
-### NB3 — Canonical fingerprints — **N1 PRIMITIVES PASS · N4 NATIVE DOCUMENT-FP INTEGRATION PASS · MUTATION/STATE-CHAIN USE OPEN**
+### NB3 — Canonical fingerprints — **N1 PRIMITIVES PASS · N4 NATIVE INTEGRATION PASS · N5 DOCUMENT-FP V2 PARENT BINDING PASS · STATE-CHAIN USE OPEN**
 
 Golden tests must prove deterministic:
 
@@ -111,7 +130,7 @@ Golden tests must prove deterministic:
 - scope/document fingerprint;
 - step/state-chain fingerprint.
 
-N4 additionally proves native document-snapshot fingerprint parity with the N1 canonical engine for the accepted live fixture. Geometry/style/instance fingerprint primitives remain owned by N1; N5/N6 must prove their use across mutation, rollback, semantic delta and state-chain transitions.
+N4 proves native document-snapshot fingerprint parity with the canonical Python engine for the accepted live fixture. N5 advances the document domain to explicitly versioned schema v2 so volatile `saved/DBMOD` cannot create false semantic drift, and live-proves v2 as the mutation parent/rollback identity. Geometry/style/instance fingerprint primitives remain owned by N1; N6 must prove delta/state-chain transitions.
 
 Required adversarial cases:
 
@@ -121,7 +140,7 @@ Required adversarial cases:
 - different semantic PIDs can share geometry fingerprint without sharing instance fingerprint;
 - forbidden duplicate geometry is detected independently of native handle.
 
-### NB4 — Native transaction rollback — **OPEN**
+### NB4 — Native transaction rollback — **BOUNDED PASS (N5 LINE SURFACE)**
 
 Inject failures after each mutation stage and prove:
 
@@ -131,6 +150,8 @@ Inject failures after each mutation stage and prove:
 - next mutation is allowed only after predecessor state is re-read and verified.
 
 Target status: `ROLLED_BACK_VERIFIED`.
+
+**N5 result:** PASS for deterministic pre-commit R0 abort on the staged LINE create/update surface. The accepted proof requires independent post-abort semantic read-back and exact v2 predecessor fingerprint restoration. This does not claim R1/R2 or post-commit recovery; those remain later gates.
 
 ### NB5 — Post-commit integrity / recovery — **OPEN**
 

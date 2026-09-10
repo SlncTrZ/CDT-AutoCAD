@@ -14,6 +14,7 @@ from .models import EntitySemanticState, SemanticDelta, SemanticSnapshot
 
 _FINGERPRINT_NAMESPACE = "cdt-autocad-semantic"
 _FINGERPRINT_SCHEMA_VERSION = 1
+DOCUMENT_FINGERPRINT_SCHEMA_VERSION = 2
 
 
 def semantic_fingerprint(
@@ -22,6 +23,7 @@ def semantic_fingerprint(
     domain: str,
     profile: ToleranceProfile | None = None,
     float_kind: str = "linear",
+    schema_version: int = _FINGERPRINT_SCHEMA_VERSION,
 ) -> str:
     """Hash one canonical semantic payload using an explicit domain separator."""
 
@@ -31,7 +33,7 @@ def semantic_fingerprint(
     prefix = "\0".join(
         (
             _FINGERPRINT_NAMESPACE,
-            f"v{_FINGERPRINT_SCHEMA_VERSION}",
+            f"v{schema_version}",
             domain,
             selected.signature(),
             float_kind,
@@ -128,7 +130,6 @@ def _snapshot_document_payload(
         "document_pid": snapshot.document_pid,
         "units": snapshot.units,
         "current_space": snapshot.current_space,
-        "saved": snapshot.saved,
         "extents": snapshot.extents,
         "entities": entities,
         "relations": relations,
@@ -143,7 +144,13 @@ def fingerprint_document(value: Any, profile: ToleranceProfile | None = None) ->
         if isinstance(value, SemanticSnapshot)
         else value
     )
-    return semantic_fingerprint(payload, domain="document", profile=selected, float_kind="linear")
+    return semantic_fingerprint(
+        payload,
+        domain="document",
+        profile=selected,
+        float_kind="linear",
+        schema_version=DOCUMENT_FINGERPRINT_SCHEMA_VERSION,
+    )
 
 
 def fingerprint_action(value: Any, profile: ToleranceProfile | None = None) -> str:

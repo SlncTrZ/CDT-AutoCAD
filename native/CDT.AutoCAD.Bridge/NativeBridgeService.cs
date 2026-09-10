@@ -1,23 +1,25 @@
-// ReadOnlyBridgeService — staged read-only operation allowlist executed on AutoCAD Idle.
-// Wing: code | Topic: native-bridge-n4 | Updated: 2026-09-10 13:11
+// NativeBridgeService — staged N5 read + fixed-schema mutation allowlist executed on AutoCAD Idle.
+// Wing: code | Topic: native-bridge-n5 | Updated: 2026-09-10 14:08
 
 using Autodesk.AutoCAD.ApplicationServices;
 using AcApplication = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace CDT.AutoCAD.Bridge;
 
-internal sealed class ReadOnlyBridgeService
+internal sealed class NativeBridgeService
 {
     private readonly Guid _bridgeInstanceId;
     private readonly string _pipeName;
     private readonly DocumentRegistry _documents;
     private readonly NativeSemanticExtractor _semantic = new();
+    private readonly NativeMutationService _mutations;
 
-    internal ReadOnlyBridgeService(Guid bridgeInstanceId, string pipeName, DocumentRegistry documents)
+    internal NativeBridgeService(Guid bridgeInstanceId, string pipeName, DocumentRegistry documents)
     {
         _bridgeInstanceId = bridgeInstanceId;
         _pipeName = pipeName;
         _documents = documents;
+        _mutations = new NativeMutationService(_semantic);
     }
 
     internal object Handle(BridgeRequest request)
@@ -28,6 +30,9 @@ internal sealed class ReadOnlyBridgeService
             "bridge.documents.list" => new { documents = _documents.List() },
             "bridge.document.identity" => DocumentIdentity(request),
             "bridge.document.snapshot" => DocumentSnapshot(request),
+            "entity.create.line" => LineMutation(request),
+            "entity.update.line" => LineMutation(request),
+            "entity.delete.line" => LineMutation(request),
             _ => throw new BridgeServiceException(
                 "UNSUPPORTED_OPERATION",
                 "operation is not enabled"
@@ -51,7 +56,14 @@ internal sealed class ReadOnlyBridgeService
             current_user_only = true,
             local_computer_only = true,
             same_windows_session_only = true,
-            mutation_enabled = false,
+            mutation_enabled = true,
+            document_fp_schema_version = 2,
+            mutation_operations = new[]
+            {
+                "entity.create.line",
+                "entity.update.line",
+                "entity.delete.line",
+            },
             document_count = documents.Count,
             active_document = AcApplication.DocumentManager.MdiActiveDocument?.Name,
         };
@@ -62,6 +74,17 @@ internal sealed class ReadOnlyBridgeService
         DocumentIdentityParams parameters = request.DocumentIdentity
             ?? throw new BridgeServiceException("INVALID_PARAMS", "document identity params are required");
         return _documents.Resolve(parameters.RuntimeDocumentId, parameters.DocumentPid);
+    }
+
+    private object LineMutation(BridgeRequest request)
+    {
+        LineMutationParams parameters = request.LineMutation
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "line mutation params are required");
+        Document document = _documents.ResolveDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        return _mutations.Execute(document, request.Operation, parameters);
     }
 
     private object DocumentSnapshot(BridgeRequest request)

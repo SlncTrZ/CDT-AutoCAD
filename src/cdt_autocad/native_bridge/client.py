@@ -16,6 +16,8 @@ from .protocol import (
     BridgeProtocolError,
     BridgeRequest,
     DocumentIdentityParams,
+    LineCreateParams,
+    LineTargetParams,
 )
 from .semantic import parse_native_snapshot
 
@@ -98,6 +100,74 @@ class NativeBridgeClient:
             return parse_native_snapshot(result, verify_fingerprint=verify_fingerprint)
         except BridgeProtocolError as exc:
             raise BridgeClientProtocolError(exc.code, exc.safe_message) from exc
+
+    def create_line(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        start: tuple[float, float, float],
+        end: tuple[float, float, float],
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = LineCreateParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "start": list(start),
+                "end": list(end),
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            }
+        )
+        return self._request("entity.create.line", params.to_dict())
+
+    def update_line(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        semantic_pid: str,
+        start: tuple[float, float, float],
+        end: tuple[float, float, float],
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = LineTargetParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "semantic_pid": semantic_pid,
+                "start": list(start),
+                "end": list(end),
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            },
+            require_geometry=True,
+        )
+        return self._request("entity.update.line", params.to_dict())
+
+    def delete_line(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        semantic_pid: str,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = LineTargetParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "semantic_pid": semantic_pid,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            },
+            require_geometry=False,
+        )
+        return self._request("entity.delete.line", params.to_dict())
 
     def _request(self, operation: str, params: Mapping[str, Any]) -> dict[str, Any]:
         request_id = self.request_id_factory()

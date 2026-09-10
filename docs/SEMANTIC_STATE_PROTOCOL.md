@@ -1,7 +1,7 @@
 # Semantic State Protocol — CDT-AutoCAD Target Contract
 
-> Updated: 2026-09-10 11:56 +07:00
-> Status: CONTRACT BASELINE · N1 semantic primitives + N2 identity + N3 transport implemented · N4+ native semantic integration pending
+> Updated: 2026-09-10 14:20 +07:00
+> Status: CONTRACT BASELINE · N1–N5 implemented/accepted for their bounded scopes · N6 semantic delta/state-chain integration next
 > Scope: source semantics, native extraction, PID, canonicalization, fingerprinting, diff, rollback and deterministic validation
 
 ## 1. System invariant
@@ -19,15 +19,16 @@ The Semantic State Loop is the control architecture. AutoCAD .NET, COM, ezdxf an
 
 ### 1.1 Current implementation boundary
 
-As of the N3 closure checkpoint:
+As of the N5 closure checkpoint:
 
 - N1 implements the Python semantic models, canonicalization/fingerprint primitives, rollback receipts and state-chain primitives;
 - N2 live-verifies persistent PID carrier/clone semantics;
-- N3 live-verifies the read-only Managed .NET transport and runtime-document identity boundary;
-- N4 authoritative native `SemanticSnapshot` extraction is **not implemented yet**;
-- N5+ native mutation/rollback integration is **not implemented yet**.
+- N3 live-verifies the Managed .NET transport and runtime-document identity boundary;
+- N4 live-verifies bounded native `SemanticSnapshot` extraction;
+- N5 live-verifies fixed-schema LINE create/update/delete with composite parent binding, native transaction boundaries and independently verified R0 abort rollback;
+- N6 semantic delta/allowed-effects/state-chain orchestration and N7 post-commit recovery remain open.
 
-Accordingly, the protocol below is partly implemented and partly normative target contract. `expected_parent_fp` is a required future mutation invariant but cannot be claimed as enforced through the native bridge until N4 provides authoritative parent-state extraction and later mutation gates consume it. Current status authority: `docs/CURRENT_CHECKPOINT.md`.
+Accordingly, the protocol below is partly implemented and partly normative target contract. `expected_parent_fp` is now enforced by the staged N5 mutation surface, while state-chain advancement and allowed-effects enforcement remain N6 responsibilities. Current status authority: `docs/CURRENT_CHECKPOINT.md`.
 
 ## 2. Core protocol objects
 
@@ -234,7 +235,7 @@ The protocol must distinguish at least:
 - `topology_fp` — normalized relationships such as intersection, adjacency, containment and connectivity;
 - `instance_fp` — `document_pid + semantic_pid + geometry_fp + style_fp + topology_fp` as applicable;
 - `scope_fp` — deterministic digest of a selected semantic scope;
-- `document_fp` — deterministic whole-document semantic digest when required;
+- `document_fp` — deterministic semantic document digest for the extractor's declared scope; transport/lifecycle metadata such as transient dirty/saved state is not semantic identity;
 - `step_fp` — predecessor state + ActionSpec + delta + resulting state;
 - `artifact_fp` — hash of native DWG/export evidence when relevant.
 
@@ -254,6 +255,14 @@ Canonicalization requirements:
 - include schema version and canonicalization profile in the fingerprint domain separator.
 
 Example: `11.000000000002` and `10.999999999998` may canonicalize to the same coordinate under a declared `1e-6` tolerance.
+
+#### 6.5.1 Document fingerprint schema v2
+
+N5 introduces **document fingerprint schema v2** without changing the v1 geometry/action fingerprint domains. The version remains explicit in the document fingerprint domain separator and is advertised by the native bridge.
+
+`SemanticSnapshot.saved` remains observable state, but it is excluded from `document_fp` because AutoCAD `DBMOD` is volatile lifecycle metadata rather than drawing semantics. Native acceptance measured both behaviors after `Transaction.Abort()`: one create-abort left `DBMOD=1`, while an update-abort returned `DBMOD=0`, even though independent semantic read-back restored the exact same geometry/PID/style/extents state in both cases. Treating `saved` as semantic identity would therefore turn a verified R0 rollback into a false state-drift failure.
+
+Physical-file/checkpoint identity is separate and must use `artifact_fp` plus the file/checkpoint policy when required.
 
 ### 6.6 Duplicate detection
 
@@ -504,6 +513,7 @@ The semantic protocol must be versioned independently of transport and native ad
 During migration:
 
 - COM/ezdxf may populate a subset of semantic fields for parity tests;
-- the N3 .NET bridge currently provides only read-only transport/document identity; N4 is the target authoritative native extractor and N5+ introduces mutation only after its integrity gates;
+- the staged .NET bridge now provides N4 bounded native extraction and N5 fixed-schema LINE mutation, while N6+ integrity orchestration/promotion remains pending;
+- document fingerprint schema v1 evidence remains historical; N5+ parent-state binding uses schema v2, which excludes volatile `saved/DBMOD` from semantic identity;
 - missing semantic fields must be reported as unsupported/unknown, never fabricated;
 - old and new adapters should be dual-run on disposable drawings until parity/integrity gates close.

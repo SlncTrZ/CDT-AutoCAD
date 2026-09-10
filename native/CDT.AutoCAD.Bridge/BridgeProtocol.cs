@@ -9,10 +9,21 @@ namespace CDT.AutoCAD.Bridge;
 
 internal sealed record DocumentIdentityParams(Guid RuntimeDocumentId, string? DocumentPid);
 
+internal sealed record LineMutationParams(
+    Guid RuntimeDocumentId,
+    string DocumentPid,
+    string ExpectedParentFp,
+    string? SemanticPid,
+    double[]? Start,
+    double[]? End,
+    string? FaultStage
+);
+
 internal sealed record BridgeRequest(
     Guid RequestId,
     string Operation,
-    DocumentIdentityParams? DocumentIdentity
+    DocumentIdentityParams? DocumentIdentity,
+    LineMutationParams? LineMutation
 );
 
 internal sealed record BridgeResponse(
@@ -76,6 +87,9 @@ internal static class BridgeProtocol
         "bridge.documents.list",
         "bridge.document.identity",
         "bridge.document.snapshot",
+        "entity.create.line",
+        "entity.update.line",
+        "entity.delete.line",
     };
 
     private static readonly HashSet<string> EnvelopeFields = new(StringComparer.Ordinal)
@@ -90,6 +104,36 @@ internal static class BridgeProtocol
     {
         "runtime_document_id",
         "document_pid",
+    };
+
+    private static readonly HashSet<string> CreateLineFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "start",
+        "end",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> UpdateLineFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "semantic_pid",
+        "start",
+        "end",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> DeleteLineFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "semantic_pid",
+        "fault_stage",
     };
 
     private static readonly JsonSerializerOptions ResponseOptions = new()
@@ -169,6 +213,10 @@ internal static class BridgeProtocol
             }
 
             JsonElement parameters = RequireObject(root, "params", "INVALID_PARAMS", requestId);
+            if (operation.StartsWith("entity.", StringComparison.Ordinal))
+            {
+                return ParseLineMutation(requestId, operation, parameters);
+            }
             if (!string.Equals(operation, "bridge.document.identity", StringComparison.Ordinal)
                 && !string.Equals(operation, "bridge.document.snapshot", StringComparison.Ordinal))
             {
@@ -180,7 +228,7 @@ internal static class BridgeProtocol
                         requestId
                     );
                 }
-                return new BridgeRequest(requestId, operation, null);
+                return new BridgeRequest(requestId, operation, null, null);
             }
 
             ValidateExactOrSubsetFields(
@@ -228,9 +276,156 @@ internal static class BridgeProtocol
             return new BridgeRequest(
                 requestId,
                 operation,
-                new DocumentIdentityParams(runtimeDocumentId, documentPid)
+                new DocumentIdentityParams(runtimeDocumentId, documentPid),
+                null
             );
         }
+    }
+
+    private static BridgeRequest ParseLineMutation(
+        Guid requestId,
+        string operation,
+        JsonElement parameters
+    )
+    {
+        HashSet<string> allowed = operation switch
+        {
+            "entity.create.line" => CreateLineFields,
+            "entity.update.line" => UpdateLineFields,
+            "entity.delete.line" => DeleteLineFields,
+            _ => throw new BridgeProtocolException(
+                "UNSUPPORTED_OPERATION",
+                "operation is not enabled",
+                requestId
+            ),
+        };
+        ValidateExactOrSubsetFields(parameters, allowed, "INVALID_PARAMS", requestId);
+        Guid runtimeDocumentId = RequireCanonicalGuid(
+            parameters,
+            "runtime_document_id",
+            "INVALID_RUNTIME_DOCUMENT_ID",
+            requestId
+        );
+        string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
+        string expectedParentFp = RequireString(
+            parameters,
+            "expected_parent_fp",
+            "INVALID_PARAMS",
+            requestId
+        );
+        if (!IsCanonicalFingerprint(expectedParentFp))
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "expected_parent_fp must be a lowercase sha256 fingerprint",
+                requestId
+            );
+        }
+
+        string? semanticPid = null;
+        if (!string.Equals(operation, "entity.create.line", StringComparison.Ordinal))
+        {
+            semanticPid = RequireString(parameters, "semantic_pid", "INVALID_PARAMS", requestId);
+        }
+        double[]? start = null;
+        double[]? end = null;
+        if (!string.Equals(operation, "entity.delete.line", StringComparison.Ordinal))
+        {
+            start = RequirePoint3(parameters, "start", requestId);
+            end = RequirePoint3(parameters, "end", requestId);
+            if (start.SequenceEqual(end))
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "line start and end must differ",
+                    requestId
+                );
+            }
+        }
+
+        string? faultStage = null;
+        if (parameters.TryGetProperty("fault_stage", out JsonElement faultElement))
+        {
+            if (faultElement.ValueKind != JsonValueKind.String
+                || !string.Equals(
+                    faultElement.GetString(),
+                    "after_apply_before_commit",
+                    StringComparison.Ordinal
+                ))
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "fault_stage is not enabled",
+                    requestId
+                );
+            }
+            faultStage = "after_apply_before_commit";
+        }
+
+        return new BridgeRequest(
+            requestId,
+            operation,
+            null,
+            new LineMutationParams(
+                runtimeDocumentId,
+                documentPid,
+                expectedParentFp,
+                semanticPid,
+                start,
+                end,
+                faultStage
+            )
+        );
+    }
+
+    private static bool IsCanonicalFingerprint(string value)
+    {
+        if (!value.StartsWith("sha256:", StringComparison.Ordinal) || value.Length != 71)
+        {
+            return false;
+        }
+        return value.AsSpan(7).ToArray().All(
+            character => (character >= '0' && character <= '9')
+                || (character >= 'a' && character <= 'f')
+        );
+    }
+
+    private static double[] RequirePoint3(JsonElement element, string name, Guid requestId)
+    {
+        if (!element.TryGetProperty(name, out JsonElement value)
+            || value.ValueKind != JsonValueKind.Array)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"{name} must be a three-coordinate array",
+                requestId
+            );
+        }
+        JsonElement[] items = value.EnumerateArray().ToArray();
+        if (items.Length != 3)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"{name} must be a three-coordinate array",
+                requestId
+            );
+        }
+        double[] result = new double[3];
+        for (int index = 0; index < result.Length; index++)
+        {
+            if (items[index].ValueKind != JsonValueKind.Number
+                || !items[index].TryGetDouble(out double coordinate)
+                || !double.IsFinite(coordinate))
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    $"{name} coordinates must be finite numbers",
+                    requestId
+                );
+            }
+            result[index] = coordinate;
+        }
+        return result;
     }
 
     internal static byte[] SerializeResponse(BridgeResponse response)

@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from cdt_autocad.semantic.fingerprint import (
+    DOCUMENT_FINGERPRINT_SCHEMA_VERSION,
     fingerprint_document,
     fingerprint_geometry,
     fingerprint_instance,
@@ -110,6 +111,11 @@ def parse_native_snapshot(
     raw = _mapping(value, "snapshot")
     if raw.get("schema_version") != 1:
         raise BridgeProtocolError("INVALID_SNAPSHOT", "unsupported native snapshot schema_version")
+    if raw.get("document_fp_schema_version") != DOCUMENT_FINGERPRINT_SCHEMA_VERSION:
+        raise BridgeProtocolError(
+            "INVALID_SNAPSHOT",
+            "unsupported native document fingerprint schema version",
+        )
     runtime_document_id = _string(raw.get("runtime_document_id"), "runtime_document_id")
     document_pid = _string(raw.get("document_pid"), "document_pid")
     document = _mapping(raw.get("document"), "document")

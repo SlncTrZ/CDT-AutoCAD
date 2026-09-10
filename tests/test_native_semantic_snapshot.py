@@ -47,6 +47,7 @@ def _snapshot_result() -> dict:
         ],
         "relations": [],
         "styles": [{"kind": "layer", "name": "0", "is_off": False}],
+        "document_fp_schema_version": 2,
         "document_fp": "",
     }
 

@@ -15,6 +15,7 @@ from cdt_autocad.semantic.canonical import (
     canonical_json,
 )
 from cdt_autocad.semantic.fingerprint import (
+    DOCUMENT_FINGERPRINT_SCHEMA_VERSION,
     fingerprint_action,
     fingerprint_delta,
     fingerprint_document,
@@ -42,7 +43,6 @@ from cdt_autocad.semantic.state_chain import (
     verify_parent_state,
     verify_state_chain,
 )
-
 
 DEFAULT = ToleranceProfile()
 
@@ -387,6 +387,35 @@ def test_geometry_fingerprint_has_stable_golden_value():
     assert fingerprint_geometry(payload, DEFAULT) == (
         "sha256:01cdb32f1650693aed7049742176f136add6858e3da0140046361ea025d8a67b"
     )
+
+
+def test_document_fingerprint_v2_ignores_volatile_saved_flag():
+    assert DOCUMENT_FINGERPRINT_SCHEMA_VERSION == 2
+    entity = EntitySemanticState(
+        semantic_pid="pid:1",
+        native_handle="10",
+        entity_type="LINE",
+        layer="A-WALL",
+        geometry={"start": [0.0, 0.0], "end": [1.0, 0.0]},
+    )
+    clean = SemanticSnapshot(
+        snapshot_id="snap:clean",
+        document_pid="doc:1",
+        units="feet",
+        current_space="Model",
+        saved=True,
+        entities=(entity,),
+    )
+    dirty = SemanticSnapshot(
+        snapshot_id="snap:dirty",
+        document_pid="doc:1",
+        units="feet",
+        current_space="Model",
+        saved=False,
+        entities=(entity,),
+    )
+
+    assert fingerprint_document(clean, DEFAULT) == fingerprint_document(dirty, DEFAULT)
 
 
 def test_document_fingerprint_is_independent_of_entity_enumeration_order():

@@ -1,5 +1,5 @@
-// SemanticFingerprint — N1-compatible canonical document fingerprint for native parent-state checks.
-// Wing: code | Topic: native-bridge-n4 | Updated: 2026-09-10 12:50
+// SemanticFingerprint — versioned canonical document fingerprint for native parent-state checks.
+// Wing: code | Topic: native-bridge-n5 | Updated: 2026-09-10 14:15
 
 using System.Globalization;
 using System.Security.Cryptography;
@@ -26,7 +26,7 @@ internal static class SemanticFingerprint
         string prefix = string.Join(
             '\0',
             Namespace,
-            "v1",
+            "v2",
             "document",
             ProfileSignature,
             "linear",

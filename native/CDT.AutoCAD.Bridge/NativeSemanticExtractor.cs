@@ -9,7 +9,11 @@ namespace CDT.AutoCAD.Bridge;
 
 internal sealed class NativeSemanticExtractor
 {
-    internal object Extract(Document document, Guid runtimeDocumentId, string documentPid)
+    internal Dictionary<string, object?> Extract(
+        Document document,
+        Guid runtimeDocumentId,
+        string documentPid
+    )
     {
         if (!ReferenceEquals(document, AcApplication.DocumentManager.MdiActiveDocument))
         {
@@ -87,7 +91,6 @@ internal sealed class NativeSemanticExtractor
             ["document_pid"] = documentPid,
             ["units"] = units,
             ["current_space"] = currentSpace,
-            ["saved"] = saved,
             ["extents"] = extents,
             ["entities"] = entities.Select(RemoveNativeHandle).ToArray(),
             ["relations"] = Array.Empty<object>(),
@@ -110,6 +113,7 @@ internal sealed class NativeSemanticExtractor
             ["entities"] = entities,
             ["relations"] = Array.Empty<object>(),
             ["styles"] = styles,
+            ["document_fp_schema_version"] = 2,
             ["document_fp"] = documentFingerprint,
         };
     }
