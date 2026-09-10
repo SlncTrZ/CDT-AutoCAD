@@ -1,7 +1,7 @@
 # PLAN — AutoCAD Provider
 
 > Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-09
-> Governing docs: `MCP_PROVIDER_STANDARD.md`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`
+> Governing docs: `MCP_PROVIDER_STANDARD.md`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`
 
 ## 1. Objective
 
@@ -268,6 +268,24 @@ autocad.viewport.capture
 autocad.solid.acis
 ```
 
+### 8.1 Drawing-quality acceptance gate
+
+Reference-driven and user-reviewed drawings are governed by `docs/DRAWING_QUALITY_ACCEPTANCE.md` in addition to provider/runtime gates.
+
+The gate applies across architectural floor plans, site plans, parks, plazas, landscape plans, master/urban plans, parking/circulation plans, roads/access layouts, elevations, sections, details and source reproductions. Before drawing, select one or more drawing profiles and apply the profile-specific domain checks.
+
+Drawing acceptance is fail-closed and advances only through:
+
+```text
+TECHNICAL_PASS -> GEOMETRY_PASS -> DOMAIN_PASS -> VISUAL_PASS -> USER_ACCEPTED
+```
+
+A successful COM/API call, entity count, valid DWG save or agent-readable screenshot is not sufficient for final drawing acceptance.
+
+Linetypes and lineweights are semantic requirements. Continuous thick/medium/thin, dashed/hidden, dashed-overhead, center/chain, cutting-plane, phantom, break, hatch, property/boundary, setback/easement, underground utility, existing/proposed/removal, contour and demolition conventions must be used whenever the drawing condition requires them. A semantically required dashed/hidden/center/other line that is missing or visually collapses to continuous because of linetype scale is a drawing defect.
+
+For live user-observed stress tests, preserve native DWG + screenshot evidence, verify the final displayed/plotted appearance, and keep the checkpoint pending until the reviewer can actually access the evidence and approves it.
+
 ## 9. Security
 
 - Never expose arbitrary AutoLISP/command execution in A0/A1.
@@ -410,7 +428,7 @@ Current verification on the final hardening tree:
 
 1. Keep the A2 RC identity until an explicit release/promotion decision.
 2. Promote A3.1/A3.2/A3.3 capabilities/tools only through an explicit contract change backed by the retained native evidence.
-3. Use the live-verified hidden `pythonw.exe` interactive launcher for architectural stress tests and preserve DWG + screenshot checkpoints.
+3. Use the live-verified hidden `pythonw.exe` interactive launcher for user-observed drawing stress tests; classify the drawing profile, preserve DWG + screenshot checkpoints, and satisfy `docs/DRAWING_QUALITY_ACCEPTANCE.md` before calling a checkpoint complete.
 6. If the separate A3.2 native gate passes, intentionally version/promote the four advanced-dimension tools.
 7. If the separate A3.3 native gate passes, intentionally version/promote measurement/extents/intersection analysis tools.
 8. Continue A3 drafting/engineering families (mirror/array/offset, selection, trim/fillet and GDT)

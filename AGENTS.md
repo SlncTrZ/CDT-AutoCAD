@@ -8,7 +8,7 @@ This repository owns the AutoCAD MCP provider runtime only. `CDT_Engineer` is th
 
 - Source repo: `SlncTrZ/CDT_Engineer`
 - Pinned commit: `643019c`
-- Read first: `docs/SPEC_BASELINE.md`, `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/ROADMAP.md`.
+- Read first: `docs/SPEC_BASELINE.md`, `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/ROADMAP.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`.
 - Do not edit files under `specs/`; they are pinned snapshots. Contract changes must be proposed in `CDT_Engineer` and synced here only after approval.
 
 ## Ownership boundary
@@ -44,6 +44,7 @@ Forbidden unless explicitly assigned:
 4. A3.2: live-verify advanced dimensions before adding the four MCP tools or enabling `autocad.dimensions.advanced`.
 5. A3.3: live-verify measurement/extents/intersections before adding analysis MCP tools or enabling their capabilities.
 6. Continue advanced drafting/engineering only with capability-false staging until each native acceptance boundary is explicit.
+7. Any reference-driven or user-reviewed drawing/stress test must satisfy `docs/DRAWING_QUALITY_ACCEPTANCE.md`; provider success, valid entities, save success, object counts, or internal screenshot readability are insufficient to call the drawing PASS.
 
 ## Required workflow
 
@@ -56,6 +57,14 @@ Forbidden unless explicitly assigned:
 7. Every code/deploy change must be logged through CyberBrain `kb.knowledge_store`.
 8. End each work session with episodic save (`memory_store`/`conversation_save`) followed by `dream_enqueue`.
 9. Commit/push only this repository; branch convention is `main` unless the task explicitly defines a feature branch.
+
+## Drawing-quality invariant
+
+Before generating or reconstructing a user-facing drawing, classify it into one or more profiles from `docs/DRAWING_QUALITY_ACCEPTANCE.md` (for example `ARCHITECTURE_FLOOR_PLAN`, `SITE_PLAN`, `PARK_PLAN`, `PLAZA_PLAN`, `LANDSCAPE_PLAN`, `MASTER_PLAN`, `PARKING_PLAN`, `ROAD_ACCESS_PLAN`, `ELEVATION`, `SECTION`, `DETAIL`, `REFERENCE_REPRODUCTION`).
+
+For every semantically required technical condition, use the correct linetype role and lineweight hierarchy. In particular, hidden/overhead/underground geometry, centerlines/axes, cutting planes, boundaries/easements, existing/proposed/removal states and major/minor contours must not be collapsed into `Continuous` when their drawing profile requires a distinct convention. Missing a required dashed/hidden/center/chain/break/other semantic line is a drawing defect even when coordinates are correct.
+
+Drawing checkpoints progress through `TECHNICAL_PASS -> GEOMETRY_PASS -> DOMAIN_PASS -> VISUAL_PASS -> USER_ACCEPTED`. Only `USER_ACCEPTED` is a completed user-reviewed checkpoint. If the reviewer cannot access the actual screenshot/file, keep the state `PENDING_USER_VISUAL_ACCEPTANCE`.
 
 ## Native-verification rule
 
