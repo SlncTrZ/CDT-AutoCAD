@@ -1,7 +1,7 @@
 # Architecture Upgrade Plan — Native Bridge + Semantic State Loop
 
-> Updated: 2026-09-10  
-> Status: PRE-IMPLEMENTATION PLAN  
+> Updated: 2026-09-10
+> Status: IMPLEMENTATION IN PROGRESS · N0–N3 CLOSED · N4 NEXT
 > Current runtime remains `ezdxf + COM` until migration gates close.
 > Acceptance companion: `docs/NATIVE_BRIDGE_ACCEPTANCE.md`
 
@@ -163,7 +163,9 @@ This N2 evidence does **not** close NB4 full Semantic State rollback/fingerprint
 
 ### N3 — .NET bridge skeleton + IPC
 
-Create a version-pinned C# bridge project for AutoCAD 2027 Managed .NET.
+**Status: CLOSED / LIVE PASS — 2026-09-10.** Canonical evidence: `docs/evidence/n3-native-bridge-readonly-2026-09-10.json`.
+
+A version-pinned C# bridge project for AutoCAD 2027 Managed .NET is implemented and staged internally.
 
 Responsibilities:
 
@@ -176,14 +178,19 @@ Responsibilities:
 - execution queue/dispatcher into valid AutoCAD document context;
 - no arbitrary code/text-command endpoint.
 
-Preferred IPC candidate: Windows Named Pipe, subject to prototype verification.
+Selected IPC: Windows Named Pipe with `CurrentUserOnly`, explicit local-computer validation and same-Windows-session validation. Background I/O hands bounded typed requests to an `Application.Idle` dispatcher; no background thread touches AutoCAD API.
 
-Gate:
+Gate — **PASS**:
 
-- bridge can answer health/version/document identity from the interactive AutoCAD process;
-- concurrent requests are serialized safely;
-- malformed/unauthorized requests fail closed;
-- bridge crash/failure does not silently mutate a document.
+- bridge answers health/version/document identity from the interactive AutoCAD 2027 process;
+- one-request-per-connection transport serializes AutoCAD dispatch and bounds queued work/time/frame size;
+- malformed/oversized/unsupported requests fail closed and the bridge remains alive;
+- same-user client in Windows Session 0 is rejected; Session 1 succeeds;
+- duplicate open lineage PIDs are disambiguated by bridge-instance runtime document IDs, while PID-only targeting is rejected;
+- tested read-only calls do not dirty drawings;
+- no arbitrary C#/AutoLISP/shell/free-text AutoCAD command surface and no native mutation endpoint exists.
+
+Known build debt: three Autodesk product-reference `MSB3277` warning families remain documented and unsuppressed. Build succeeds with 0 errors and the final binary passes live AutoCAD 2027 acceptance.
 
 ### N4 — Native semantic extractor
 
@@ -386,6 +393,6 @@ The architecture documentation may lead implementation; runtime claims must cont
 
 ## 7. Current implementation frontier
 
-**N0, N1 and N2 are complete. Next: N3 — Managed .NET bridge skeleton + local typed IPC.**
+**N0, N1, N2 and N3 are complete. Next: N4 — native semantic extractor.**
 
-N3 must consume the frozen N1 semantic contract and the live-verified N2 PID policy. It may not invent alternate PID storage or clone semantics ad hoc. The bridge remains staged/internal until NB0/NB3 and later acceptance gates pass; current COM/ezdxf remains the supported migration baseline.
+N3 consumes the frozen N1 semantic contract and live-verified N2 document-lineage PID policy without changing clone semantics. The bridge remains staged/internal even after NB0 PASS; current COM/ezdxf remains the supported public migration baseline. N4 must stay read-only and add authoritative native SemanticSnapshot families before N5 may introduce typed mutation transactions. `expected_parent_fp` must not be claimed as enforced until the required native snapshot/fingerprint integration exists.

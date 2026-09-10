@@ -1,11 +1,11 @@
 # CDT AutoCAD Provider
 
-> Status: A2 release candidate · AutoCAD 2027 COM live-verified · architecture upgrade prepared · Version: 0.3.0rc1 · Updated: 2026-09-10
+> Status: A2 release candidate · AutoCAD 2027 COM live-verified · N3 native bridge live-verified/staged · Version: 0.3.0rc1 · Updated: 2026-09-10
 
 This provider is the first CDT_Engineer reference implementation. The default backend remains
 `ezdxf`; the public release-candidate contract is now a bounded 50-tool `autocad-a2-v1-rc1` surface.
 The current `com` backend adds live Windows AutoCAD, native DWG, viewport management, live zoom and screenshot
-capture while preserving typed refusal on the headless backend. The next architecture phase introduces an in-process C# Managed .NET native bridge plus a provider-level Semantic State Loop; current COM/ezdxf behavior remains the migration baseline until native parity and integrity gates pass.
+capture while preserving typed refusal on the headless backend. A staged in-process C# Managed .NET native bridge now provides read-only health/document identity over local typed Named Pipe IPC; current COM/ezdxf behavior remains the public migration baseline until native semantic parity and integrity gates pass.
 
 ## Current public scope
 
@@ -27,7 +27,7 @@ capture while preserving typed refusal on the headless backend. The next archite
 A2 viewport create/list/scale/lock/delete, live zoom and native-window PNG capture are public MCP
 release-candidate tools and are **live-verified** on the primary AutoCAD 2027 Windows lane. Mock/Linux verification remains regression evidence only and does not substitute for native acceptance.
 
-## Target architecture — N1 semantic core + N2 PID policy implemented; native bridge not yet implemented
+## Target architecture — N1/N2/N3 implemented; N3 bridge staged and read-only
 
 The accepted target architecture is:
 
@@ -59,9 +59,9 @@ Two invariants are non-negotiable: **Data Integrity / Rollback** and **Precise I
 
 Screenshots/Vision are not the geometry oracle. Native semantic data drives step validation; Vision remains useful for raster-source ingestion and final visual/user review.
 
-Architecture status: `N0 CLOSED`, `N1 CLOSED/PASS`, `N2 CLOSED/LIVE PASS`, `N3 NEXT`. N1 provides internal typed semantic contracts, versioned tolerance-aware canonical JSON, domain-separated SHA-256 fingerprints, duplicate PID/geometry helpers, rollback receipts and a tamper-evident state-chain. N2 live P0–P10 probes selected NOD/XRecord for document-lineage PID and Extension-Dictionary/XRecord for managed DBObject PID, with mandatory clone reconciliation because deep/cross/WBLOCK/INSERT paths copy entity PID metadata. Raw file copy preserves lineage PID, so N3 document targeting must also bind runtime document context + `expected_parent_fp`, with artifact fingerprints for physical checkpoint identity. The production C#/.NET bridge/IPC remains deliberately unimplemented until N3.
+Architecture status: `N0 CLOSED`, `N1 CLOSED/PASS`, `N2 CLOSED/LIVE PASS`, `N3 CLOSED/LIVE PASS`, `N4 NEXT`. N1 provides internal typed semantic contracts, versioned tolerance-aware canonical JSON, domain-separated SHA-256 fingerprints, duplicate PID/geometry helpers, rollback receipts and a tamper-evident state-chain. N2 live P0–P10 probes selected NOD/XRecord for document-lineage PID and Extension-Dictionary/XRecord for managed DBObject PID, with mandatory clone reconciliation because deep/cross/WBLOCK/INSERT paths copy entity PID metadata. N3 now supplies a staged read-only `net10.0-windows` bridge inside `acad.exe`, versioned bounded Named Pipe IPC, same-user/local/same-session enforcement, runtime-document IDs and native N2 document-PID readback. Raw file copies with the same lineage PID are distinguished by runtime document ID. `expected_parent_fp` remains intentionally deferred until native SemanticSnapshot/fingerprint extraction exists in N4/N6; there is still no native mutation endpoint.
 
-See [`docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`](docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md), [`docs/SEMANTIC_STATE_PROTOCOL.md`](docs/SEMANTIC_STATE_PROTOCOL.md), [`docs/N2_PID_ACCEPTANCE.md`](docs/N2_PID_ACCEPTANCE.md) and [`docs/ARCHITECTURE_UPGRADE_PLAN.md`](docs/ARCHITECTURE_UPGRADE_PLAN.md).
+See [`docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`](docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md), [`docs/SEMANTIC_STATE_PROTOCOL.md`](docs/SEMANTIC_STATE_PROTOCOL.md), [`docs/N2_PID_ACCEPTANCE.md`](docs/N2_PID_ACCEPTANCE.md), [`docs/NATIVE_BRIDGE_ACCEPTANCE.md`](docs/NATIVE_BRIDGE_ACCEPTANCE.md) and [`docs/ARCHITECTURE_UPGRADE_PLAN.md`](docs/ARCHITECTURE_UPGRADE_PLAN.md).
 
 ## Runtime configuration
 

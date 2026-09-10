@@ -7,3 +7,6 @@ __pycache__/
 artifacts/
 prototypes/**/bin/
 prototypes/**/obj/
+native/**/bin/
+native/**/obj/
+native/**/*.bundle/Contents/

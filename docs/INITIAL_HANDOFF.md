@@ -38,13 +38,13 @@ Known implementation state:
 - A3.2 angular/radial/diametric/ordinate dimensions implemented backend-side, capability-false and non-public pending native verification;
 - A3.3 object measurement/current-space WCS extents + native COM intersections implemented backend-side, capability-false and non-public pending native verification;
 - source profile preservation for region-based 3D operations uses Copy -> temporary Region -> solid -> cleanup.
-- target architecture migration is in progress: N1 Python Semantic Core and N2 persistent PID policy are implemented/live-verified; N3 local typed IPC + in-process C# Managed .NET bridge is next;
+- target architecture migration is in progress: N1 Python Semantic Core, N2 persistent PID policy, and N3 local typed IPC + in-process C# Managed .NET bridge are implemented/live-verified; N4 native semantic extraction is next;
 - the two architecture pillars are Data Integrity/Rollback and Precise Identity/PID+Fingerprinting;
 - Semantic State Loop is mandatory for future engineering automation; screenshots are supplemental, not per-step geometry proof.
 
 ## First task
 
-Architecture phases **N1** and **N2** are complete. N2 native P0–P10 on AutoCAD 2027 selected NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID with mandatory clone reconciliation. The next task is **N3 — Managed .NET bridge skeleton + local typed IPC** against the frozen N1/N2 contracts; start read-only (health/version/document identity), enforce local user/session and bounded typed requests, and do not add mutation endpoints until the bridge safety gate passes.
+Architecture phases **N1**, **N2**, and **N3** are complete. N2 native P0–P10 on AutoCAD 2027 selected NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID with mandatory clone reconciliation. N3 then live-verified a staged read-only Managed .NET bridge using bounded local Named Pipe IPC, same-user/local/same-session enforcement and runtime-document disambiguation. The next task is **N4 — native semantic extractor**; native mutation remains prohibited until later transactional/state-integrity gates.
 
 The current COM/ezdxf runtime remains the comparison baseline. New implementation must not weaken or silently replace current public behavior until real AutoCAD parity/integrity gates pass.
 

@@ -466,8 +466,10 @@ Current verification on the final hardening tree:
 - AutoCAD 2027 hidden native A3.1: `11 passed`;
 - AutoCAD 2027 hidden native A3.2: `6 passed`;
 - AutoCAD 2027 hidden native A3.3: `8 passed`;
-- Linux full regression: `83 passed, 4 skipped`;
-- Windows `.171` full Python regression after N1/N2 documentation closure: `113 passed, 5 skipped`; native N2 P0–P10 is a separate real-AutoCAD acceptance lane;
+- Linux full regression after N3: `141 passed, 4 skipped`;
+- Windows `.171` full Python regression after N3: `140 passed, 5 skipped`;
+- focused N3 Python protocol/client/transport: `27 passed`;
+- native N2 P0–P10 remains PASS and native N3 read-only bridge acceptance is PASS on real AutoCAD 2027;
 - `python -m compileall src tests` and `git diff --check` pass;
 - application version parsing identifies AutoCAD 2027 as COM `26.0`; usable live ProgID is `AutoCAD.Application.26`;
 - native PDF plotting retries bounded busy COM boundaries while restoring `BACKGROUNDPLOT` and prior layout state;
@@ -476,11 +478,11 @@ Current verification on the final hardening tree:
 
 ### Next gates
 
-1. Start `N3`: build a staged Managed .NET bridge skeleton with protocol/version identity and local typed IPC against the frozen N1 semantic contract.
-2. Consume the N2 PID carrier/policy exactly: NOD/XRecord document-lineage PID, Extension-Dictionary/XRecord DBObject PID, explicit clone reconciliation, duplicate-PID fail-closed validation, and runtime-document + `expected_parent_fp` composite binding.
-3. Prove local IPC user/session restriction, bounded request size/time, request correlation, serialized AutoCAD document-context dispatch and read-only health/document-identity response before adding mutation operations.
-4. Resolve or explicitly document the current AutoCAD/.NET build-reference warning set before NB0 promotion.
-5. Keep COM as live comparison/fallback until `NATIVE_BRIDGE_ACCEPTANCE.md` gates close.
+1. Start `N4`: implement native read-only SemanticSnapshot extraction for document/units/current space/extents, layers/linetypes/styles, core entities, blocks/references, dimensions/hatches, metrics/bounds and persistent PIDs.
+2. Prove repeated native snapshot stability, save/reopen semantic stability where semantics are unchanged, and COM-vs-.NET parity for supported measurements.
+3. Keep N3 transport read-only; do not add native mutation endpoints until the N4 extractor is authoritative enough to support parent-state validation and later N5 rollback gates.
+4. Carry the documented three Autodesk product-reference `MSB3277` warning families as explicit build debt; do not suppress them without resolving the reference model.
+5. Keep COM as live comparison/fallback until the broader `NATIVE_BRIDGE_ACCEPTANCE.md` gates close.
 6. Promote A3 or any new public semantic tools only through explicit contract/version decisions.
 
 See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared

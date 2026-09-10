@@ -12,7 +12,7 @@ A2 is code-complete and **live-verified** on the primary AutoCAD 2027 Windows Ac
 
 ## Architecture-upgrade notice
 
-This guide documents the **current public 50-tool runtime**, not the not-yet-implemented target bridge. The accepted next architecture adds a C# Managed .NET native bridge under the Python provider and a mandatory Semantic State Loop. Public tool semantics remain unchanged during migration.
+This guide documents the **current public 50-tool runtime**. A staged/internal C# Managed .NET bridge now exists and is live-verified for N3 read-only health/document identity over local typed IPC, but it is not a public MCP backend and exposes no mutation endpoint. The next architecture phase adds native semantic extraction while public tool semantics remain unchanged during migration.
 
 The two target invariants are **Data Integrity / Rollback** and **Precise Identity / PID + Fingerprinting**. Future engineering mutation steps must verify the parent state, execute transactionally, extract native semantic state, validate/fingerprint/diff, and end only in `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`.
 

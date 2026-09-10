@@ -1,7 +1,7 @@
 # Native Bridge + Semantic Integrity Acceptance
 
-> Updated: 2026-09-10  
-> Status: PRE-IMPLEMENTATION ACCEPTANCE PLAN  
+> Updated: 2026-09-10
+> Status: N3/NB0 LIVE PASS · NB1–NB10 remain staged/open
 > Target: AutoCAD 2027 full / Windows x64 / Managed .NET
 
 ## 1. Purpose
@@ -12,6 +12,25 @@ The upgrade is not accepted unless both core pillars are proven under fault inje
 
 1. **Data Integrity / Rollback**
 2. **Precise Identity / PID + Fingerprinting**
+
+### N3.0 measured checkpoint — LIVE PASS (2026-09-10)
+
+The Managed .NET bridge skeleton is now implemented and live-verified in full AutoCAD 2027 on Windows `.171`. Canonical evidence: `docs/evidence/n3-native-bridge-readonly-2026-09-10.json`.
+
+Measured properties:
+
+- `net10.0-windows` in-process bundle autoloads inside interactive `acad.exe` Session 1;
+- protocol `cdt-autocad-native-v1`, 65,536-byte frame limit and request correlation are enforced;
+- only `bridge.health`, `bridge.documents.list`, and `bridge.document.identity` are enabled; `mutation_enabled=false`;
+- Windows Named Pipe is current-user-only and additionally rejects remote-computer and different-Windows-session clients; same-user SSH Session 0 is refused with `CLIENT_SESSION_MISMATCH`;
+- pipe I/O never calls AutoCAD API; queued reads are drained from `Application.Idle`;
+- two simultaneously open raw-copy P10 DWGs with the same lineage `document_pid` receive distinct `runtime_document_id` values; PID-only targeting is rejected;
+- malformed JSON, invalid UTF-8, bad request IDs, oversized frames, unsupported operations, lineage mismatch and stale runtime IDs fail typed/closed and the server survives;
+- eight simultaneous health clients complete against one bridge instance through serialized AutoCAD `Application.Idle` dispatch;
+- read-only bridge calls leave tested drawings at `DBMOD=0`;
+- public MCP contract remains 50 tools and current COM/ezdxf remains the supported migration baseline.
+
+This closes **N3 and NB0 only** plus the document-identity/non-dirtying subset needed to start N4. It does **not** close NB1 full semantic extraction, NB3 fingerprints, NB4+ rollback/state-chain integration, or any native mutation capability. The three existing Autodesk product-reference `MSB3277` warning families are documented rather than suppressed; native build is 0 errors and live runtime acceptance passes.
 
 ## 2. Gate families
 

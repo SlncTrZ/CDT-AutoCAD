@@ -118,4 +118,4 @@ These warnings are **not silently waived for N3**. The production bridge project
 
 **N2 is CLOSED.** The accepted next-phase PID policy is NOD/XRecord document **lineage** identity plus Extension-Dictionary/XRecord DBObject identity, always paired with clone-result reconciliation, duplicate-PID fail-closed validation, and composite runtime-document/state binding.
 
-**Next phase: N3 — Managed .NET bridge skeleton + local typed IPC.** N3 may consume this PID contract but may not change it ad hoc without reopening N2 evidence.
+**Follow-on status:** N3 Managed .NET bridge skeleton + local typed IPC is now CLOSED/LIVE PASS. N3 consumed this PID contract without changing it. **Next phase: N4 — native semantic extractor.** Any later change to the N2 carrier/clone policy still requires reopening N2 evidence.

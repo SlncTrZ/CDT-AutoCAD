@@ -34,7 +34,7 @@ Forbidden unless explicitly assigned:
 - A3.2 advanced dimensions: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
 - A3.3 analysis: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
 - Extraction baseline: 54 tests PASS, 2 live-Windows/AutoCAD tests SKIP before repository split.
-- Current Python regression checkpoint: focused semantic core 31 PASS on Linux; Windows `.171` full suite 113 PASS / 5 SKIP; native N2 P0–P10 PASS in real AutoCAD 2027.
+- Current regression checkpoint: Linux full suite 141 PASS / 4 SKIP; Windows `.171` full suite 140 PASS / 5 SKIP; native N2 P0–P10 PASS; native N3 read-only bridge acceptance PASS on real AutoCAD 2027.
 
 ## Current delivery gates
 
@@ -42,7 +42,7 @@ Forbidden unless explicitly assigned:
 2. `N0` documentation freeze is complete; preserve its architecture boundary.
 3. `N1` semantic contract models/canonical fingerprint engine are implemented and regression-verified; preserve golden fingerprints/state-chain invariants.
 4. `N2` persistent PID storage/clone policy is live-verified on AutoCAD 2027 and closed; preserve NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID, mandatory clone reconciliation, and composite runtime-document + `expected_parent_fp` binding; raw DWG copies may share lineage PID.
-5. `N3` is next: build the Managed .NET bridge + local typed IPC only behind staged/internal capability boundaries until `docs/NATIVE_BRIDGE_ACCEPTANCE.md` gates pass.
+5. `N3` Managed .NET bridge skeleton + local typed IPC is CLOSED/LIVE PASS and remains staged/internal; `N4` native semantic extraction is next. No mutation endpoint is enabled.
 6. Every mutation architecture must preserve the two pillars: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting.
 7. Continue A3/public capability promotion only through explicit contract/version changes; native implementation or verification alone does not publish tools.
 8. Any reference-driven/user-reviewed drawing must satisfy both Semantic State integrity and `docs/DRAWING_QUALITY_ACCEPTANCE.md`.

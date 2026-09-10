@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage
+  SchemaVersion="1.0"
+  AppVersion="0.1.0"
+  Author="SlncTrZ"
+  ProductCode="{4D415D51-4330-4D99-BABE-98F8A5C88A9B}"
+  UpgradeCode="{E24D03FB-C8BB-46F1-A53C-2DDDE636101C}"
+  Name="CDT AutoCAD Native Bridge">
+  <CompanyDetails Name="SlncTrZ" />
+  <RuntimeRequirements
+    Platform="AutoCAD"
+    SeriesMin="R26.0"
+    SeriesMax="R26.0"
+    OS="Win64"
+    SupportPath="./Contents/Windows" />
+  <Components>
+    <ComponentEntry
+      AppName="CDT.AutoCAD.Bridge"
+      ModuleName="./Contents/Windows/CDT.AutoCAD.Bridge.dll"
+      AppDescription="Internal staged N3 read-only native bridge"
+      LoadOnAutoCADStartup="true">
+    </ComponentEntry>
+  </Components>
+  <DisplayInAppManager>false</DisplayInAppManager>
+</ApplicationPackage>
