@@ -1,6 +1,6 @@
 # PLAN — AutoCAD Provider
 
-> Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-09
+> Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-10
 > Governing docs: `MCP_PROVIDER_STANDARD.md`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
 
 ## 1. Objective
@@ -17,21 +17,39 @@ Success means an MCP client can safely create/open a design, inspect geometry, c
 
 ## 2. Architecture
 
+### 2.1 Current runtime baseline
+
 ```text
 MCP tools
    ↓
-AutoCAD provider contract
+Python AutoCAD provider contract
    ↓
-┌──────────────────────┐
-│ backend abstraction  │
-└─────────┬────────────┘
-          ├── ezdxf backend — headless DXF, cross-platform
-          └── COM backend   — live AutoCAD, Windows, native DWG
+backend abstraction
+   ├── ezdxf backend — headless DXF, cross-platform
+   └── COM backend   — live AutoCAD, Windows, native DWG
 ```
 
-The provider exposes bare MCP tools. SlncTrZ-MCP canonicalizes them to `autocad.<tool>`.
+This remains the shipped/live-verified migration baseline.
 
-No AutoCAD business logic belongs in SlncTrZ-MCP.
+### 2.2 Accepted target architecture
+
+```text
+MCP / SlncTrZ Gateway
+        ↓
+Python Provider / Semantic Core
+  ActionSpec · SourceSemanticModel
+  PID/Fingerprint · Diff · Validation · Rollback/Audit
+        ↓ local typed IPC
+C# AutoCAD Managed .NET Native Bridge (in acad.exe)
+  Document/Database/ObjectId · Transactions · PID metadata
+  Semantic extraction · Event-assisted delta · Read-back
+        ↓
+AutoCAD Database / DWG
+```
+
+The target is governed by `ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md` and `SEMANTIC_STATE_PROTOCOL.md`. Two pillars are mandatory: **Data Integrity / Rollback** and **Precise Identity / PID + Fingerprinting**.
+
+The provider exposes bare MCP tools. SlncTrZ-MCP canonicalizes them to `autocad.<tool>`. No AutoCAD business logic belongs in SlncTrZ-MCP. The .NET bridge is an in-process native adapter, not the MCP server.
 
 ## 3. Contract Mapping
 
@@ -286,12 +304,13 @@ Linetypes and lineweights are semantic requirements. Continuous thick/medium/thi
 
 For live user-observed stress tests, preserve native DWG + screenshot evidence, verify the final displayed/plotted appearance, and keep the checkpoint pending until the reviewer can actually access the evidence and approves it.
 
-Execution is step-gated by `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: one small semantic change per invocation/checkpoint, machine + visual verification after every step, append-only failure/pass logs, immutable prior accepted DWGs, and explicit source/previous-state comparison at major gates before the next stage.
+Execution is step-gated by `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: one small semantic change at a time; native semantic extraction, PID/fingerprinting, deterministic diff/validation and commit-or-verified-rollback after every step; append-only state-chain logs; Data-vs-Data source comparison at major gates. Screenshot/Vision is supplemental rather than the geometry oracle.
 
 ## 9. Security
 
-- Never expose arbitrary AutoLISP/command execution in A0/A1.
-- If scripting is later needed, it must be a separately authorized capability with strict input policy.
+- Never expose arbitrary AutoLISP, C#, shell, macro or free-text AutoCAD command execution.
+- AutoLISP may remain an explicit compatibility/user-extension mechanism, but not the core execution backend and never a substitute for independent semantic read-back.
+- Native bridge IPC accepts typed operations only and must be local/policy-constrained by default.
 - All file paths resolve against configured roots.
 - Write/destructive tools document side effects.
 - Original files are not overwritten by default unless the operation explicitly targets the current document and policy permits it.
@@ -318,7 +337,7 @@ Execution is step-gated by `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: one small se
 
 ## 11. Current Status / Next Step
 
-**A0 + A1 are CLOSED. A2 implementation is release-candidate complete; A2 live acceptance is blocked by environment. A3 3D ACIS implementation is now staged.**
+**A0 + A1 are CLOSED. A2 is release-candidate complete and live-verified on AutoCAD 2027; RC identity is retained pending explicit promotion. A3.1/A3.2/A3.3 are live-verified but staged. The next development lane is the N-series Native Bridge + Semantic State architecture upgrade.**
 
 Current public runtime identity:
 
@@ -328,6 +347,35 @@ contract_version: autocad-a2-v1-rc1
 default_backend: ezdxf
 public MCP tools: 50
 ```
+
+
+### N-series — Native Bridge + Semantic State architecture upgrade
+
+The detailed plan is `docs/ARCHITECTURE_UPGRADE_PLAN.md`; acceptance is `docs/NATIVE_BRIDGE_ACCEPTANCE.md`.
+
+- `N0` documentation/architecture freeze.
+- `N1` typed semantic models + canonical fingerprint engine.
+- `N2` persistent document/entity PID prototype and clone policy.
+- `N3` C# Managed .NET bridge + local typed IPC skeleton.
+- `N4` native read-only semantic extractor.
+- `N5` native transactional executor + verified rollback.
+- `N6` deterministic validator + semantic delta + state-chain engine.
+- `N7` two-phase commit integrity and independent post-commit read-back.
+- `N8` incremental COM-to-.NET operation-family migration with parity evidence.
+- `N9` reference-driven drawing workflow migration to Data-first Semantic State Loop.
+- `N10` explicit public promotion/contract decision.
+
+Non-negotiable N-series gates:
+
+```text
+mutation -> COMMITTED_VERIFIED
+       or -> ROLLED_BACK_VERIFIED
+anything else -> BLOCK
+
+current_parent_fp must equal expected_parent_fp before every mutation
+```
+
+`ObjectId` is transient runtime identity and native Handle alone is not sufficient semantic identity. The target design uses provider-owned persistent document/entity PID plus versioned content fingerprints and explicit clone/duplicate policy.
 
 ### A2 release-candidate status
 
@@ -428,13 +476,12 @@ Current verification on the final hardening tree:
 
 ### Next gates
 
-1. Keep the A2 RC identity until an explicit release/promotion decision.
-2. Promote A3.1/A3.2/A3.3 capabilities/tools only through an explicit contract change backed by the retained native evidence.
-3. Use the live-verified hidden `pythonw.exe` interactive launcher for user-observed drawing stress tests; classify the drawing profile, preserve DWG + screenshot checkpoints, and satisfy `docs/DRAWING_QUALITY_ACCEPTANCE.md` before calling a checkpoint complete.
-6. If the separate A3.2 native gate passes, intentionally version/promote the four advanced-dimension tools.
-7. If the separate A3.3 native gate passes, intentionally version/promote measurement/extents/intersection analysis tools.
-8. Continue A3 drafting/engineering families (mirror/array/offset, selection, trim/fillet and GDT)
-   without weakening native acceptance gates.
+1. Complete `N0` documentation freeze and keep current runtime claims honest.
+2. Start `N1`: semantic contract models, canonicalization/tolerance profiles, fingerprint golden tests and state-chain models.
+3. Prototype `N2` PID persistence/clone semantics on real AutoCAD 2027 before committing to a metadata carrier.
+4. Only then build `N3` Managed .NET bridge/IPC; do not let IPC payloads define semantics ad hoc.
+5. Keep COM as live comparison/fallback until `NATIVE_BRIDGE_ACCEPTANCE.md` gates close.
+6. Promote A3 or any new public semantic tools only through explicit contract/version decisions.
 
 See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared
 runtime from this lane; reusable infrastructure still requires Rule-of-Two cross-provider evidence.

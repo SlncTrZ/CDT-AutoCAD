@@ -29,3 +29,18 @@ This provider repository implements AutoCAD runtime behavior against a pinned sn
 - History-preserving subtree split head: `11adadb`.
 - Expected provider identity: `0.3.0rc1 / autocad-a2-v1-rc1`.
 - Expected pre-extraction generic regression: `54 passed, 2 skipped`.
+
+## Local architecture overlay
+
+The pinned common specifications remain authoritative for the currently published provider contract, but CDT-AutoCAD now has a provider-local target-architecture overlay for the next development phase:
+
+- `docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`;
+- `docs/SEMANTIC_STATE_PROTOCOL.md`;
+- `docs/ARCHITECTURE_UPGRADE_PLAN.md`;
+- `docs/NATIVE_BRIDGE_ACCEPTANCE.md`;
+- `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`;
+- `docs/DRAWING_QUALITY_ACCEPTANCE.md`.
+
+The overlay makes two local target-architecture invariants explicit: **Data Integrity / Rollback** and **Precise Identity / PID + Fingerprinting**.
+
+This overlay does **not** mutate the pinned `specs/` snapshots or silently change common CDT semantics. Cross-provider semantic-state abstractions must be proposed to `CDT_Engineer` through an explicit spec/pin update after sufficient Rule-of-Two evidence.

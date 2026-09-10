@@ -1,11 +1,11 @@
 # CDT AutoCAD Provider
 
-> Status: A2 release candidate · primary AutoCAD 2027 live acceptance pending · Version: 0.3.0rc1 · Updated: 2026-09-09
+> Status: A2 release candidate · AutoCAD 2027 COM live-verified · architecture upgrade prepared · Version: 0.3.0rc1 · Updated: 2026-09-10
 
 This provider is the first CDT_Engineer reference implementation. The default backend remains
 `ezdxf`; the public release-candidate contract is now a bounded 50-tool `autocad-a2-v1-rc1` surface.
-The `com` backend adds live Windows AutoCAD, native DWG, viewport management, live zoom and screenshot
-capture while preserving typed refusal on the headless backend.
+The current `com` backend adds live Windows AutoCAD, native DWG, viewport management, live zoom and screenshot
+capture while preserving typed refusal on the headless backend. The next architecture phase introduces an in-process C# Managed .NET native bridge plus a provider-level Semantic State Loop; current COM/ezdxf behavior remains the migration baseline until native parity and integrity gates pass.
 
 ## Current public scope
 
@@ -24,9 +24,42 @@ capture while preserving typed refusal on the headless backend.
 - Allowed-root path containment and bounded backend calls.
 - Typed MCP errors for unsupported capabilities, state conflicts and timeouts.
 
-A2 viewport create/list/scale/lock/delete, live zoom and native-window PNG capture are now public MCP
-release-candidate tools. They remain **live-unverified** until the primary AutoCAD 2027 Windows gate
-passes. Mock/Linux verification does not substitute for that acceptance gate.
+A2 viewport create/list/scale/lock/delete, live zoom and native-window PNG capture are public MCP
+release-candidate tools and are **live-verified** on the primary AutoCAD 2027 Windows lane. Mock/Linux verification remains regression evidence only and does not substitute for native acceptance.
+
+## Target architecture — prepared, not yet implemented
+
+The accepted target architecture is:
+
+```text
+MCP / SlncTrZ Gateway
+        |
+        v
+Python Provider / Semantic Core
+  - policy/orchestration
+  - SourceSemanticModel / ActionSpec
+  - canonicalization + PID/fingerprinting
+  - semantic diff + deterministic validation
+  - rollback/state-chain audit
+        |
+        | local typed IPC
+        v
+C# AutoCAD Managed .NET Native Bridge
+  - in-process in acad.exe
+  - Document/Database/ObjectId access
+  - native transactions
+  - persistent PID metadata
+  - semantic extraction + event-assisted deltas
+        |
+        v
+AutoCAD DWG
+```
+
+Two invariants are non-negotiable: **Data Integrity / Rollback** and **Precise Identity / PID + Fingerprinting**. Every engineering mutation must end in either a verified committed state or a verified restoration of the predecessor state. The next step is blocked on drift, uncertainty, commit-integrity failure or rollback failure.
+
+Screenshots/Vision are not the geometry oracle. Native semantic data drives step validation; Vision remains useful for raster-source ingestion and final visual/user review.
+
+See [`docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`](docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md), [`docs/SEMANTIC_STATE_PROTOCOL.md`](docs/SEMANTIC_STATE_PROTOCOL.md) and [`docs/ARCHITECTURE_UPGRADE_PLAN.md`](docs/ARCHITECTURE_UPGRADE_PLAN.md).
 
 ## Runtime configuration
 

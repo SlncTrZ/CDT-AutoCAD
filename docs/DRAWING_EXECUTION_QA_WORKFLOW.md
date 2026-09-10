@@ -1,188 +1,217 @@
 # Drawing Execution & QA Workflow
 
-> Updated: 2026-09-10 08:17 +07:00  
-> Scope: all CDT-AutoCAD user-facing drawing/reconstruction workflows  
-> Status: Project execution invariant
+> Updated: 2026-09-10
+> Scope: all CDT-AutoCAD user-facing drawing/reconstruction workflows
+> Status: Project execution invariant; target semantic architecture defined in `SEMANTIC_STATE_PROTOCOL.md`
 
 ## 1. Purpose
 
-This workflow defines HOW a drawing must be built and verified. `docs/DRAWING_QUALITY_ACCEPTANCE.md` defines WHAT quality is required; this document defines the mandatory execution loop that prevents late discovery of errors.
+This document defines HOW a drawing is built and verified. `DRAWING_QUALITY_ACCEPTANCE.md` defines the quality bar; `SEMANTIC_STATE_PROTOCOL.md` defines the authoritative state model.
 
-> **Build small -> verify -> log -> compare at major gates -> continue only from a known-good checkpoint.**
+> **Build small -> extract native semantic state -> fingerprint/diff -> validate -> commit or verified rollback -> log -> continue only from a known-good state.**
 
-A long uninterrupted drawing script that creates most of a drawing before any visual verification is non-compliant for user-observed/reference-driven work.
+A long uninterrupted drawing script is non-compliant. A screenshot-driven correctness loop is also non-compliant when native structured state is available.
 
-## 2. Core execution invariant
+## 2. Two mandatory pillars
 
-Every meaningful drawing operation shall be decomposed into small semantic steps. Each step must complete this loop before the next dependent step starts:
+Every workflow must preserve:
 
-```text
-PLAN STEP
-  -> APPLY SMALL CHANGE
-  -> SAVE NEW STEP CHECKPOINT
-  -> MACHINE VERIFY
-  -> CAPTURE SCREENSHOT
-  -> VISUAL VERIFY
-  -> APPEND STEP LOG
-  -> PASS ? CONTINUE : STOP/ROLL BACK
-```
+1. **Data Integrity / Rollback** — a failed or uncertain mutation cannot advance. The system must prove either the expected post-state or restoration of the predecessor fingerprint.
+2. **Precise Identity / PID + Fingerprinting** — every managed document/object/state is deterministically identifiable; runtime handles alone are not sufficient proof.
 
-At defined major gates, add a source/brief comparison before continuing:
+## 3. Mandatory Semantic State Loop
+
+Each small semantic step follows:
 
 ```text
-LAST SMALL-STEP PASS
-  -> MAJOR-GATE COMPARISON AGAINST SOURCE / PREVIOUS ACCEPTED STATE
-  -> COMPARISON LOG
-  -> PASS ? CONTINUE : STOP/ROLL BACK
+VERIFY CURRENT PARENT STATE
+  -> DEFINE ActionSpec + expected effects + validation rules
+  -> EXECUTE ONE SMALL NATIVE MUTATION
+  -> EXTRACT PROVISIONAL SEMANTIC STATE
+  -> DETERMINISTIC VALIDATION
+       FAIL -> ABORT / ROLLBACK -> READ BACK -> VERIFY PARENT FP
+       PASS -> COMMIT
+  -> INDEPENDENT POST-COMMIT READ-BACK
+  -> CANONICALIZE + PID/FINGERPRINT + SEMANTIC DIFF
+  -> VERIFY PERSISTED STATE
+  -> APPEND STATE-CHAIN / EXECUTION LOG
+  -> PASS ? NEXT STEP : STOP
 ```
 
-No later drawing work may be used to hide, compensate for, or obscure an unresolved earlier defect.
+The next step must include and verify the previous step's `post_state_fp` as `expected_parent_fp`.
 
-## 3. Atomic step definition
+## 4. Atomic step definition
 
-A small step should change one coherent semantic unit only. Examples:
+One step changes one coherent semantic unit only. Examples:
 
-- create drawing units/styles/layers;
-- create exterior envelope;
-- add one façade/opening group;
-- add one partition group;
-- add one room/zone;
-- add one door group;
-- add one window group;
-- add one linetype/hidden/centerline system;
-- add one fixture/furniture family;
-- add one annotation/dimension group;
-- add one hatch/material/landscape zone;
-- add one road/path segment family;
-- add one utility/system layer.
+- units/styles/layers;
+- one exterior-envelope segment group;
+- one partition/room boundary group;
+- one opening group;
+- one semantic linetype system;
+- one fixture/furniture family;
+- one annotation/dimension group;
+- one hatch/material/landscape zone;
+- one road/path segment family;
+- one utility/system family.
 
-Avoid combining unrelated wall geometry, furniture, labels, dimensions, and plotting changes into one step.
+Do not combine unrelated walls, furniture, labels, dimensions and plotting changes into one mutation step.
 
-## 4. Checkpoint immutability
+## 5. Expected-state-first rule
 
-For traceability, each successful small step produces a new native checkpoint rather than repeatedly overwriting the only copy.
+Before mutation, define:
 
-Recommended naming:
+- predecessor state fingerprint;
+- target semantic PID(s);
+- requested geometry/style/topology change;
+- allowed create/modify/delete effects;
+- deterministic validation rules;
+- tolerances;
+- rollback/recovery expectation.
+
+The AI may decide design intent and which invariants matter, but deterministic measurements and object checks must be performed by code/native data whenever possible.
+
+## 6. Semantic extraction after every step
+
+Do not ask Vision whether geometry is correct when the CAD API can report it.
+
+Extract as applicable:
+
+- document PID, units, space and saved state;
+- entity semantic PIDs and native handles;
+- class/type;
+- coordinates/vertices/bulges;
+- bounding boxes;
+- length/area/volume/radius/centroid;
+- layer/linetype/lineweight/style;
+- block/hierarchy/ownership;
+- intersections;
+- adjacency/connectivity/containment;
+- created/modified/deleted delta;
+- duplicate PID/geometry conditions.
+
+For target .NET execution, native database events may assist delta capture, but post-action extraction remains the authority.
+
+## 7. PID / Fingerprint verification after every step
+
+At minimum validate:
+
+- `expected_parent_fp == current_parent_fp` before mutation;
+- semantic PID uniqueness;
+- geometry/content fingerprint of the affected scope;
+- expected create/modify/delete set;
+- no unexpected sibling mutations;
+- post-state fingerprint after independent read-back.
+
+If any current state differs from the expected parent state before mutation, return `STATE_DRIFT` and do not execute.
+
+## 8. Rollback after every failed/uncertain mutation
+
+Preferred recovery hierarchy:
+
+- `R0_ABORT` — abort native transaction before commit;
+- `R1_COMPENSATE` — verified inverse/undo only when deterministic and safe;
+- `R2_CHECKPOINT_RESTORE` — restore previous immutable accepted native checkpoint.
+
+A rollback is accepted only when read-back proves:
 
 ```text
-<job>/steps/
-  s00-preflight.dwg
-  s00-preflight.png
-  s00-preflight.json
-  s01-envelope.dwg
-  s01-envelope.png
-  s01-envelope.json
-  s02-openings.dwg
-  s02-openings.png
-  s02-openings.json
-  ...
+actual_restored_state_fp == expected_parent_state_fp
 ```
 
-The previous accepted DWG remains untouched. If step `s07` fails, resume from accepted `s06`, not from a partially mutated `s07` document.
+If not, state is `ROLLBACK_FAILED`/`STATE_UNCERTAIN` and all later mutations stop.
 
-A final user-facing DWG may be copied/saved from the last accepted step only after all internal gates pass.
+Blind retry is forbidden after timeout/uncertain completion.
 
-## 5. Append-only execution log
+## 9. Checkpoint policy
 
-Every job keeps an append-only event log, for example:
+Semantic state-chain entries are mandatory after each successful step.
+
+Native DWG checkpoints are required at major gates and before/after risky or non-invertible file-level operations. They may also be produced per small step during stress-test/debug lanes.
+
+Recommended job layout:
 
 ```text
-<job>/execution-log.jsonl
+<job>/
+  source-model.json
+  execution-log.jsonl
+  state-chain.jsonl
+  steps/
+    s01-action.json
+    s01-pre-state.json
+    s01-post-state.json
+    s01-validation.json
+    s01-rollback.json       # only when needed
+  gates/
+    g01-state.json
+    g01-comparison.json
+    g01-checkpoint.dwg
+  evidence/
+    final.png
 ```
 
-Each step event records at minimum:
+Do not overwrite the last accepted recovery checkpoint before the new state is verified.
 
-- `step_id` and semantic name;
-- start/end timestamp;
-- input checkpoint;
-- output DWG/screenshot/report paths;
-- requested operation summary;
-- expected invariants;
-- actual object/layer/style counts where useful;
-- units and relevant display variables;
-- machine-check results;
-- visual-check result;
-- source-comparison result when applicable;
-- assumptions added/changed (`GROUND_TRUTH`, `DERIVED`, `INFERRED`);
-- status: `PASS`, `FAIL`, or `BLOCKED`;
-- failure/exception detail and rollback checkpoint when failed.
+## 10. Append-only logs
 
-Never rewrite history to make a failed step disappear. A corrected retry gets a new attempt record.
+Every attempt, including failed attempts, remains in the log.
 
-## 6. Machine verification after every small step
+Each step records:
 
-The exact checks depend on the step, but each small step must verify the invariants it could break.
+- action/step ID and timestamps;
+- expected parent fingerprint;
+- document/entity PIDs;
+- ActionSpec hash;
+- mutation receipt;
+- provisional validation result;
+- semantic delta;
+- post-commit fingerprint;
+- rollback receipt if any;
+- status;
+- failure detail;
+- native artifact hashes where relevant.
 
-Typical checks:
+A corrected retry is a new attempt; never rewrite failure history.
 
-- AutoCAD document still attached and responsive;
-- expected object count delta;
-- expected entity types/layers exist;
-- geometry has non-zero length/area where applicable;
-- expected boundaries are closed;
-- expected endpoints/intersections/offsets match tolerances;
-- no duplicate or zero-length entity introduced;
-- correct units;
-- correct linetype/lineweight assignment;
-- relevant `LTSCALE`, `CELTSCALE`, `MSLTSCALE`, `PSLTSCALE`, `LWDISPLAY` state;
-- saved clean after final state change for the step.
+## 11. Major-gate comparison
 
-A check must be tied to the semantic intent of the step. Object count alone is never sufficient.
+Small-step validation catches local defects. Major gates detect cumulative drift in layout, topology and domain logic.
 
-## 7. Visual verification after every small step
+At a major gate compare **Data vs Data**:
 
-Every small step must produce a screenshot of the actual AutoCAD state after save/regen/zoom as appropriate.
+1. current `SemanticSnapshot`;
+2. `SourceSemanticModel` / governing brief;
+3. previous accepted major-gate semantic state;
+4. declared `GROUND_TRUTH`, `DERIVED`, `INFERRED` constraints.
 
-Visual verification asks only the questions relevant to the current step, for example:
+Compare as applicable:
 
-- did the new wall/road/path appear in the intended location;
-- are openings actually cut rather than symbols drawn on top of continuous walls;
-- are curves/junctions clean;
-- are door swings/orientations plausible;
-- is a hidden/center/overhead line visibly non-continuous at review scale;
-- did a new fixture/annotation overlap existing geometry;
-- did the step damage an already accepted region.
+- dimensions/extents/proportions;
+- adjacency/topology/connectivity;
+- axes/alignment;
+- opening count/location/orientation;
+- required line/layer/style semantics;
+- missing/extra semantic features;
+- duplicate/gap/self-intersection conditions;
+- hierarchy/ownership;
+- allowed uncertainty.
 
-If visual verification fails, stop. Do not proceed hoping later steps will improve it.
+A failed semantic major gate cannot be overridden by a good-looking screenshot.
 
-## 8. Major-gate comparison
+## 12. Drawing-class major gates
 
-Small-step checks catch local defects. Major gates catch cumulative layout, proportion, topology, and composition drift.
+### Architecture floor plan / source reproduction
 
-At each major gate, compare:
+- `G0 SOURCE_AUDIT`
+- `G1 PRIMARY_GEOMETRY`
+- `G2 OPENINGS_CIRCULATION`
+- `G3 TECHNICAL_LINEWORK`
+- `G4 CONTENT`
+- `G5 ANNOTATION`
+- `G6 FINAL_SEMANTIC`
+- `G7 FINAL_VISUAL_USER`
 
-1. current screenshot;
-2. source/reference or governing brief;
-3. previous major-gate screenshot;
-4. declared ground-truth/derived/inferred data.
-
-Record a comparison result covering:
-
-- overall silhouette/envelope;
-- relative proportions;
-- adjacency/topology;
-- major axes/alignment;
-- missing/extra major features;
-- opening orientation/location;
-- semantic linetypes/lineweights;
-- visual density/readability;
-- source conflicts or uncertainties discovered.
-
-Major-gate status is fail-closed. A local machine pass cannot override a failed source comparison.
-
-## 9. Recommended major gates by drawing class
-
-### 9.1 Architecture floor plan / reference reproduction
-
-- `G0 SOURCE_AUDIT` — classify source, dimensions, contradictions, uncertainties.
-- `G1 PRIMARY_GEOMETRY` — outer envelope + major room/zone divisions.
-- `G2 OPENINGS_CIRCULATION` — doors, windows, passages, stairs, circulation.
-- `G3 TECHNICAL_LINEWORK` — hidden/overhead/center/cutting/reference conventions and lineweight hierarchy.
-- `G4 CONTENT` — fixtures, cabinetry, furniture, sanitary/laundry/garage content.
-- `G5 ANNOTATION` — labels, dimensions, symbols, notes.
-- `G6 FINAL_VISUAL` — complete source comparison, clean saved state, evidence delivery.
-
-### 9.2 Site / park / plaza / landscape / master plan
+### Site / park / plaza / landscape / master plan
 
 - `G0 SOURCE_AUDIT`
 - `G1 BOUNDARY_ORIENTATION`
@@ -191,9 +220,10 @@ Major-gate status is fail-closed. A local machine pass cannot override a failed 
 - `G4 TECHNICAL_LINEWORK_INFRASTRUCTURE`
 - `G5 LANDSCAPE_FURNITURE_FEATURES`
 - `G6 ANNOTATION_DIMENSIONS_LEGEND`
-- `G7 FINAL_VISUAL`
+- `G7 FINAL_SEMANTIC`
+- `G8 FINAL_VISUAL_USER`
 
-### 9.3 Elevation / section / detail
+### Elevation / section / detail
 
 - `G0 SOURCE_AUDIT`
 - `G1 PRIMARY_DATUMS_OUTLINE`
@@ -201,83 +231,69 @@ Major-gate status is fail-closed. A local machine pass cannot override a failed 
 - `G3 CUT_PROJECTION_HIDDEN_LINEWORK`
 - `G4 MATERIAL_DETAIL`
 - `G5 ANNOTATION_DIMENSIONS`
-- `G6 FINAL_VISUAL`
+- `G6 FINAL_SEMANTIC`
+- `G7 FINAL_VISUAL_USER`
 
-## 10. Source audit before drawing
+## 13. Source audit before drawing
 
-Before any geometry is created, explicitly inspect the source for internal conflicts.
-
-Examples:
-
-- written room dimensions disagree with raster proportions;
-- two dimensions cannot both be satisfied with a shared wall;
-- plan/elevation disagree;
-- a door swing or fixture conflicts with circulation;
-- an overall dimension chain is absent;
-- labels are unreadable or ambiguous.
+Before geometry creation, identify source truth and conflicts.
 
 Conflict policy:
 
-1. explicit readable dimensions/specification = `GROUND_TRUTH` unless the brief says otherwise;
-2. exact values mathematically implied by ground truth = `DERIVED`;
-3. raster/visual proportion used to place undimensioned geometry = `INFERRED`;
-4. when source facts conflict materially, log the conflict and select a governing rule before drawing;
-5. never claim that an inferred compromise is exact source truth.
+1. explicit readable dimension/specification = `GROUND_TRUTH` unless a governing brief says otherwise;
+2. exact mathematics from ground truth = `DERIVED`;
+3. raster proportion/domain judgment for missing information = `INFERRED`;
+4. material conflicts must be logged and resolved by an explicit governing rule before dependent geometry is created;
+5. inferred compromise is never presented as exact source truth.
 
-## 11. Step-runner contract
+If source is raster-only, Vision may be used here to create the structured SourceSemanticModel.
 
-For automated/live execution, prefer a step runner that accepts exactly one step per invocation, e.g.:
+## 14. Vision / screenshot boundary
+
+Per-step correctness is **not** based on screenshot interpretation.
+
+Vision is reserved for:
+
+- raster source ingestion;
+- aesthetic/presentation review when semantics cannot fully represent visual quality;
+- final user-facing evidence.
+
+Screenshots may be captured at major visual gates or debugging points, but they are supplemental evidence. They do not replace native semantic state.
+
+## 15. Current COM migration rule
+
+Until the .NET bridge is implemented, the current COM/ezdxf runtime remains operational. During this migration phase:
+
+- use existing structured query/measurement APIs as much as possible;
+- do not claim COM screenshot review is equivalent to the target Semantic State Loop;
+- COM timeout remains integrity-uncertain and requires read-back before retry;
+- old screenshot-heavy stress-test scripts are prototypes, not the target execution architecture.
+
+## 16. Target native step runner
+
+The future runner should execute one ActionSpec at a time and return structured evidence, conceptually:
 
 ```text
-python house_stepper.py --step s03
+semantic_step(action_spec)
+  -> parent_guard
+  -> native_transaction
+  -> provisional_snapshot
+  -> validation
+  -> commit/abort
+  -> post_commit_snapshot
+  -> fingerprint/diff
+  -> state_chain_entry
 ```
 
-The runner shall:
+It must never automatically execute the next action after a failed or unresolved step.
 
-- load only the last accepted checkpoint required by that step;
-- verify its expected predecessor identity/state;
-- apply only the requested step;
-- save to a new step DWG;
-- capture screenshot;
-- emit a step report;
-- append log event;
-- exit non-zero on any failed invariant;
-- never automatically execute the next step.
+## 17. Final acceptance handoff
 
-The controlling agent reviews the result and explicitly launches the next step only after acceptance of the current one.
+A completed engineering drawing requires both:
 
-## 12. Rollback and retry
+- semantic correctness/integrity gates; and
+- the visual/domain quality gates in `DRAWING_QUALITY_ACCEPTANCE.md`.
 
-When a step fails:
+For user-reviewed work, final status remains `PENDING_USER_VISUAL_ACCEPTANCE` until actual evidence is accessible and the reviewer approves it.
 
-1. record failure and traceback/error evidence;
-2. preserve the failed screenshot/report when useful;
-3. do not mutate the previous accepted DWG;
-4. diagnose from the failed step boundary;
-5. fix the step implementation;
-6. rerun from the previous accepted checkpoint;
-7. record retry as a new attempt.
-
-Do not blindly retry COM mutations after timeout/uncertain completion. Inspect live AutoCAD state first because the mutation may have completed after the caller timed out.
-
-## 13. User-observed pacing
-
-When the reviewer is watching AutoCAD, visible operations should normally remain approximately `0.5–0.8 s` apart unless the user requests another pace. Expensive native operations may take longer.
-
-Pacing does not replace checkpointing. A slowly executed monolithic script is still non-compliant.
-
-## 14. Final acceptance handoff
-
-The final drawing remains:
-
-`PENDING_USER_VISUAL_ACCEPTANCE`
-
-until all of the following are true:
-
-- all small steps have PASS logs;
-- all major-gate comparisons pass internally;
-- final native DWG is saved clean;
-- final screenshot/file evidence is actually accessible to the reviewer;
-- reviewer approves the result.
-
-Only then may the checkpoint be marked `USER_ACCEPTED`.
+Semantic PASS cannot be replaced by visual approval, and visual quality cannot be replaced by semantic correctness; both are required for final user acceptance.

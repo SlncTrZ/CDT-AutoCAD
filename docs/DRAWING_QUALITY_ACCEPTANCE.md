@@ -34,6 +34,15 @@ Every drawing checkpoint moves through the following states in order:
 
 Only `USER_ACCEPTED` is a completed checkpoint. Any missing stage leaves the checkpoint `PENDING` or `FAIL`.
 
+### 2.1 Semantic integrity prerequisite
+
+Before any drawing-quality stage can advance, the underlying engineering step must satisfy the Semantic State Protocol. The two mandatory prerequisites are:
+
+- **Data Integrity / Rollback:** current state is either `COMMITTED_VERIFIED` or a failed attempt has returned to `ROLLED_BACK_VERIFIED`; uncertain/failed rollback blocks acceptance.
+- **Precise Identity / PID + Fingerprinting:** affected objects/state are identified by managed PID/content fingerprints, predecessor drift is checked, and unexpected/duplicate mutations are rejected.
+
+A visually correct screenshot cannot override failed semantic integrity.
+
 ## 3. Core invariants for all drawing types
 
 ### 3.1 Source fidelity
@@ -111,14 +120,17 @@ If uncertainty materially affects acceptance, it must be surfaced before the che
 
 ### 3.7 Evidence-based acceptance
 
-Object counts, entity IDs, extents, successful API responses, and successful saves are technical evidence only. They do not replace visual inspection.
+Object counts, native handles, extents, successful API responses, and successful saves are technical evidence only. Geometry/domain correctness must be proven from the Semantic State Loop; visual inspection remains an additional presentation/user-acceptance gate.
 
 Each substantial checkpoint must preserve enough evidence to verify:
 
-- native DWG state;
-- geometry/measurements where relevant;
-- visual appearance in AutoCAD;
-- source/reference comparison when a reference exists;
+- native DWG/recovery state;
+- document/entity PID identity where managed by the semantic system;
+- pre/post SemanticSnapshot and semantic delta;
+- geometry/measurements/style/topology fingerprints where relevant;
+- deterministic validation and rollback receipt when applicable;
+- source/reference semantic comparison when a reference exists;
+- visual appearance in AutoCAD for presentation quality;
 - final saved state after the final view/style/annotation changes.
 
 ## 4. Drawing-type profiles
@@ -350,7 +362,7 @@ Do not place the complete drawing on a single default layer for convenience.
 
 ## 9. Human-visible execution and checkpoint discipline
 
-All reference-driven/user-reviewed execution must also follow `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`. Quality acceptance in this document does not authorize monolithic execution; each small semantic step must be saved, machine-checked, visually checked, and logged before the next dependent step, with explicit source comparison at major gates.
+All reference-driven/user-reviewed execution must also follow `docs/DRAWING_EXECUTION_QA_WORKFLOW.md` and `docs/SEMANTIC_STATE_PROTOCOL.md`. Quality acceptance does not authorize monolithic execution. Each small semantic step must be verified through native semantic extraction, PID/fingerprinting, deterministic diff/validation and commit-or-verified-rollback before the next dependent step. Major gates compare structured state against the SourceSemanticModel. Vision is supplemental, not the geometry oracle.
 
 For live visual stress tests where the user is watching AutoCAD:
 
@@ -359,8 +371,9 @@ For live visual stress tests where the user is watching AutoCAD:
 - save an independent DWG checkpoint after major phases;
 - perform final zoom/view adjustment before the final save for that checkpoint;
 - save again after any view/style/annotation change that dirties the drawing;
-- capture the actual AutoCAD window/state;
-- visually review the capture before advancing;
+- capture the actual AutoCAD window/state at visual/debug/major gates as appropriate;
+- use native semantic state, not screenshot interpretation, to decide geometric correctness and step continuation;
+- visually review final/presentation gates for readability and aesthetics;
 - keep the intended final checkpoint open when user inspection is expected.
 
 ## 10. Required checkpoint evidence
@@ -368,7 +381,8 @@ For live visual stress tests where the user is watching AutoCAD:
 For a substantial reference-driven drawing checkpoint, preserve as applicable:
 
 - native DWG path/name;
-- screenshot of the actual AutoCAD state;
+- SemanticSnapshot/state-chain evidence and rollback evidence where applicable;
+- screenshot of the actual AutoCAD state for final/visual evidence;
 - drawing type/profile;
 - units and scale assumptions;
 - ground-truth dimensions/data;

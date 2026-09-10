@@ -1,6 +1,6 @@
 # AutoCAD Provider Tool Guide
 
-> Contract version: `autocad-a2-v1-rc1` · Provider version: `0.3.0rc1` · Updated: 2026-09-09
+> Contract version: `autocad-a2-v1-rc1` · Provider version: `0.3.0rc1` · Updated: 2026-09-10
 
 ## Runtime scope
 
@@ -8,9 +8,15 @@ This is the **A2 release-candidate 50-tool surface**. `ezdxf` remains the defaul
 backend is selected explicitly on Windows for live AutoCAD, native DWG, native plotting, viewport
 management, live zoom and PNG capture.
 
-A2 implementation is code-complete but **not acceptance-closed** until the primary AutoCAD 2027
-Windows ActiveX lane passes. The provider reports this state explicitly rather than treating mock
-coverage as live verification.
+A2 is code-complete and **live-verified** on the primary AutoCAD 2027 Windows ActiveX lane. The provider remains release-candidate until explicit promotion; mock coverage is regression evidence, not native acceptance.
+
+## Architecture-upgrade notice
+
+This guide documents the **current public 50-tool runtime**, not the not-yet-implemented target bridge. The accepted next architecture adds a C# Managed .NET native bridge under the Python provider and a mandatory Semantic State Loop. Public tool semantics remain unchanged during migration.
+
+The two target invariants are **Data Integrity / Rollback** and **Precise Identity / PID + Fingerprinting**. Future engineering mutation steps must verify the parent state, execute transactionally, extract native semantic state, validate/fingerprint/diff, and end only in `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`.
+
+See `ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`, `SEMANTIC_STATE_PROTOCOL.md`, `ARCHITECTURE_UPGRADE_PLAN.md`, and `NATIVE_BRIDGE_ACCEPTANCE.md`.
 
 ## Recommended workflow
 
@@ -129,7 +135,7 @@ require `force=true` for deletion because ActiveX exposes no reliable main-viewp
 - `undo`
 - `redo`
 
-`ezdxf` uses compressed bounded snapshots. `com` uses native AutoCAD undo marks. COM additionally
+`ezdxf` uses compressed bounded snapshots. Current `com` uses native AutoCAD undo marks. The target .NET bridge will use native database transactions plus verified semantic rollback/read-back; this is not yet the public runtime. COM additionally
 tracks the active document: switching documents while a tracked transaction is open is refused, so a
 commit cannot accidentally close an undo mark in the wrong drawing.
 
@@ -173,6 +179,8 @@ capture.
 
 The A2 release candidate still does not publicly expose:
 
+- the staged Managed .NET native bridge / Semantic State Protocol;
+- PID/fingerprint/state-chain/verified-rollback public tools;
 - staged A3.1 ACIS 3D solid/view tools;
 - staged A3.2 angular/radial/diametric/ordinate dimension tools;
 - staged A3.3 object measurement, current-space extents and native COM intersection analysis;
@@ -180,8 +188,7 @@ The A2 release candidate still does not publicly expose:
 - trim/offset/fillet;
 - GDT.
 
-A2 acceptance remains OPEN until the opt-in AutoCAD 2027 Windows lane validates native DWG,
-A0/A1 parity, viewport operations, zoom, PNG capture and native PDF plotting. A3.1 is implemented
+A2 native acceptance has passed on the AutoCAD 2027 Windows lane for native DWG, A0/A1 parity, viewport operations, zoom, PNG capture and native PDF plotting. A3.1 is implemented
 behind capability-false staging and has a broader native solid test lane. A3.2 is also implemented
 backend-side for angular, radial, diametric and X/Y ordinate dimensions. A3.3 adds typed object
 measurement/current-space WCS extents on both backends and exact `IntersectWith` analysis on COM;

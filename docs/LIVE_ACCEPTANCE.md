@@ -1,7 +1,7 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-09
-> Scope: A2 COM acceptance + A3.1 native 3D verification
+> Updated: 2026-09-10
+> Scope: current COM/A3 native baseline; future .NET bridge acceptance is defined separately
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
 
 ## 1. Certification policy
@@ -171,3 +171,16 @@ provider extension contract intentionally adds the analysis tools. Until then,
 - Do not convert a live failure into a skip or mock PASS.
 - If a specific operation fails, record AutoCAD release/version, ProgID, failing operation, HRESULT/error text and whether the disposable document was modified.
 - Keep the RC/staged capability state unchanged until the failing native behavior is understood and retested.
+
+## 11. Architecture migration acceptance
+
+The current COM lane remains the migration baseline. The accepted target architecture is an in-process AutoCAD Managed .NET bridge plus the provider-level Semantic State Loop. Its acceptance is intentionally separate in `docs/NATIVE_BRIDGE_ACCEPTANCE.md`.
+
+The new live lane must prove, on real AutoCAD 2027, both non-negotiable pillars:
+
+1. **Data Integrity / Rollback** — injected failures/timeout uncertainty cannot advance state; native abort or recovery must be followed by read-back proving the exact predecessor fingerprint.
+2. **Precise Identity / PID + Fingerprinting** — document/entity PID persistence, clone/remap behavior, duplicate detection, deterministic content fingerprints and `expected_parent_fp` state-drift blocking.
+
+The .NET bridge is not promoted merely because it loads or can create geometry. Migration requires read-only semantic stability, transaction rollback tests, PID persistence tests, fingerprint determinism, state-drift tests, post-commit integrity tests and COM parity evidence.
+
+AutoCAD 2027 installs Microsoft .NET 10 when needed; the bridge build/runtime target must follow the AutoCAD 2027 Managed .NET compatibility requirements and secure loading policy.
