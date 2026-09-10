@@ -1,6 +1,6 @@
 # PLAN — AutoCAD Provider
 
-> Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-10 14:20 +07:00
+> Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-10 15:15 +07:00
 > Governing docs: `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/CURRENT_CHECKPOINT.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
 
 ## 1. Objective
@@ -337,7 +337,7 @@ Execution is step-gated by `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: one small se
 
 ## 11. Current Status / Next Step
 
-**A0 + A1 are CLOSED. A2 is release-candidate complete and live-verified on AutoCAD 2027; RC identity is retained pending explicit promotion. A3.1/A3.2/A3.3 are native live-verified but staged/non-public. N0–N5 of the Native Bridge + Semantic State migration are CLOSED; N6 deterministic semantic delta/state-chain orchestration is the current development frontier.**
+**A0 + A1 are CLOSED. A2 is release-candidate complete and live-verified on AutoCAD 2027; RC identity is retained pending explicit promotion. A3.1/A3.2/A3.3 are native live-verified but staged/non-public. N0–N6 of the Native Bridge + Semantic State migration are CLOSED for their documented scopes. Implementation stops at N6 for the current handoff; N7 remains NOT STARTED.**
 
 Current public runtime identity:
 
@@ -359,8 +359,8 @@ The detailed plan is `docs/ARCHITECTURE_UPGRADE_PLAN.md`; acceptance is `docs/NA
 - `N3` C# Managed .NET bridge + local typed IPC skeleton — **CLOSED / LIVE PASS** (evidence `docs/evidence/n3-native-bridge-readonly-2026-09-10.json`).
 - `N4` native read-only SemanticSnapshot extractor — **CLOSED / LIVE PASS** (evidence `docs/evidence/n4-native-semantic-2026-09-10.json`).
 - `N5` native transactional executor + verified R0 rollback — **CLOSED / LIVE PASS** for fixed-schema LINE create/update/delete (evidence `docs/evidence/n5-native-mutation-2026-09-10.json`).
-- `N6` deterministic validator + semantic delta + state-chain engine — **NEXT / NOT STARTED**.
-- `N7` two-phase commit integrity and independent post-commit read-back — **NOT STARTED**.
+- `N6` deterministic validator + semantic delta + state-chain engine — **CLOSED / LIVE PASS** over the N5 LINE surface (evidence `docs/evidence/n6-semantic-state-chain-2026-09-10.json`).
+- `N7` two-phase commit integrity and independent post-commit recovery — **NOT STARTED / UNOPENED**.
 - `N8` incremental COM-to-.NET operation-family migration with parity evidence — **NOT STARTED**.
 - `N9` reference-driven drawing workflow migration to Data-first Semantic State Loop — **NOT STARTED**.
 - `N10` explicit public promotion/contract decision — **NOT STARTED**.
@@ -460,17 +460,17 @@ new MCP tools are published despite the AutoCAD 2027 native PASS. Live evidence 
 
 ### Verification evidence
 
-Current verification on the final N5 hardening tree:
+Current verification on the final N6 hardening tree:
 
 - AutoCAD 2027 hidden native A2: `30 passed, 1 skipped`;
 - AutoCAD 2027 hidden native A3.1: `11 passed`;
 - AutoCAD 2027 hidden native A3.2: `6 passed`;
 - AutoCAD 2027 hidden native A3.3: `8 passed`;
-- Linux full regression after N5: `155 passed, 4 skipped`;
-- Windows `.171` full Python regression after N5: `154 passed, 5 skipped`;
-- focused N5/N4/native-semantic regression: `68 passed`;
-- native N2 P0–P10, N3 read-only bridge, N4 semantic snapshot and N5 typed LINE mutation/R0 rollback acceptance all PASS on real AutoCAD 2027;
-- `ruff check`, `python -m compileall src tests` and `git diff --check` pass;
+- Linux full regression after N6: `182 passed, 4 skipped`;
+- Windows `.171` full Python regression after N6: `181 passed, 5 skipped`;
+- focused N6 semantic delta/executor regression: `27 passed`;
+- native N2 P0–P10, N3 read-only bridge, N4 semantic snapshot, N5 typed LINE mutation/R0 rollback and N6 state-chain/drift acceptance all PASS on real AutoCAD 2027;
+- N6 changed-file `ruff check`, `python -m compileall src tests` and `git diff --check` pass; full-repository Ruff has 14 known pre-existing findings outside the N6 change set;
 - application version parsing identifies AutoCAD 2027 as COM `26.0`; usable live ProgID is `AutoCAD.Application.26`;
 - native PDF plotting retries bounded busy COM boundaries while restoring `BACKGROUNDPLOT` and prior layout state;
 - `SaveAs` remains single-shot mutation; only post-save `Name`/`FullName` reads receive bounded busy retry;
@@ -478,12 +478,7 @@ Current verification on the final N5 hardening tree:
 
 ### Next gates
 
-1. Start `N6`: wrap the accepted N5 LINE mutation surface with deterministic before/after semantic delta and explicit allowed-effects validation.
-2. Append exactly one tamper-evident state-chain entry for each accepted semantic step; do not advance the chain for rollback, validation failure, drift or uncertain state.
-3. Live-prove manual/external geometry drift between verified steps becomes `STATE_DRIFT` before the next native mutation and leaves the drawing unchanged by that refused request.
-4. Do not broaden the native mutation allowlist and do not open N7 two-phase post-commit recovery during N6.
-5. Carry the documented three Autodesk product-reference `MSB3277` warning families as explicit build debt; do not suppress them without resolving the reference model.
-6. Keep COM as live comparison/fallback until the broader `NATIVE_BRIDGE_ACCEPTANCE.md` gates close; promote A3 or any new public semantic tools only through explicit contract/version decisions.
+Implementation is intentionally stopped after N6. The next activity is an integrated N4–N6 audit followed by a separate 3-agent execution plan with explicit file ownership, dependency waves, independent review/acceptance and merge gates. N7, broader native mutation families, journal resume/recovery, topology extraction and public promotion are planning subjects only until a later explicit implementation authorization. Existing Autodesk-reference warning debt and the 14 pre-existing full-repository Ruff findings remain tracked separately from the N6 closure.
 
 See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared
 runtime from this lane; reusable infrastructure still requires Rule-of-Two cross-provider evidence.

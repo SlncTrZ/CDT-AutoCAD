@@ -1,8 +1,8 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-10 14:20 +07:00
-> Status: **N0–N5 CLOSED · N6 NEXT · typed native LINE mutation staged/internal**
-> Implementation checkpoint: N5 typed native transaction/rollback closure tree; N4 closure commit `ef5d947`
+> Updated: 2026-09-10 15:15 +07:00
+> Status: **N0–N6 CLOSED · IMPLEMENTATION STOP · N7 NOT STARTED**
+> Implementation checkpoint: N6 semantic delta/state-chain closure tree; N5 closure commit `9bcedd2`
 > Primary native target: AutoCAD 2027 full · Windows x64 · COM `26.0` · Managed .NET `net10.0-windows`
 
 ## 1. Public runtime
@@ -29,12 +29,12 @@ The N-series Managed .NET bridge is **not yet the public provider backend**.
 | N3 | **CLOSED / LIVE PASS** | staged in-process C# Managed .NET bridge, bounded local typed Named Pipe IPC, runtime-document binding and read-only document identity |
 | N4 | **CLOSED / LIVE PASS** | authoritative native read-only `SemanticSnapshot` extraction, persistent entity PID binding and native↔N1 document fingerprint parity |
 | N5 | **CLOSED / LIVE PASS** | fixed-schema native LINE create/update/delete, composite parent binding, semantic document-FP v2, R0 abort verification and pre-write capacity guard |
-| N6 | **NEXT / NOT STARTED** | semantic pre/post delta, allowed-effects validation, state-chain continuity and manual-drift blocking |
-| N7+ | **NOT STARTED** | two-phase post-commit integrity/recovery and later migration/promotion |
+| N6 | **CLOSED / LIVE PASS** | deterministic semantic delta, ActionSpec geometry/effect validation, duplicate detection, state-chain continuity, manual-drift blocking and post-dispatch uncertainty latch |
+| N7+ | **NOT STARTED / UNOPENED** | two-phase post-commit integrity/recovery and later migration/promotion |
 
-## 3. N5 runtime truth
+## 3. N6 runtime truth
 
-The staged bridge now adds the first bounded native mutation surface under `native/CDT.AutoCAD.Bridge/`; it remains internal and is not the public MCP backend.
+N6 adds a Python semantic orchestration layer over the accepted N5 native mutation surface. The C# bridge binary and native operation allowlist are unchanged; the bridge remains internal and is not the public MCP backend.
 
 Enabled internal operations:
 
@@ -76,7 +76,16 @@ Measured invariants:
 - deterministic fault injection `after_apply_before_commit` is a closed enum used only to prove R0 `Transaction.Abort()`; create/update aborts return `ROLLED_BACK_VERIFIED` only when independent read-back equals the predecessor semantic fingerprint;
 - AutoCAD `DBMOD` behavior after abort is lifecycle metadata rather than semantic identity: measured create-abort left `DBMOD=1`, while update-abort returned `DBMOD=0`; document fingerprint schema v2 therefore retains `saved` in the snapshot but excludes it from `document_fp`;
 - document fingerprint schema v2 is advertised by bridge health/snapshot and domain-separated as `document/v2`; N1 geometry/action fingerprint domains remain v1;
-- at the N4 semantic capacity boundary, create is rejected before opening the write transaction with `SNAPSHOT_CAPACITY_EXCEEDED`, preventing a committed object from becoming unreadable by the bounded extractor.
+- at the N4 semantic capacity boundary, create is rejected before opening the write transaction with `SNAPSHOT_CAPACITY_EXCEEDED`, preventing a committed object from becoming unreadable by the bounded extractor;
+- N6 computes deterministic created/modified/deleted PID sets from authoritative before/after snapshots and ignores transient Handle/fingerprint-cache changes;
+- create/update LINE geometry is independently matched against the `ActionSpec`; update additionally requires target type/layer/style/hierarchy to remain unchanged, and the fixed LINE surface may not alter document units/current space/style resources;
+- newly introduced exact duplicate geometry is detected even when PID/Handle differ; pre-existing duplicate groups are not retroactively rejected by unrelated mutations;
+- every accepted `COMMITTED_VERIFIED` semantic step appends exactly one tamper-evident `StateChainEntry`; verified R0 rollback does not advance the chain;
+- before every later step, current native `document_fp` must equal both the action parent and chain tip; measured manual COM geometry drift is refused as `STATE_DRIFT` before a new native mutation is dispatched;
+- any unverified condition after mutation dispatch begins—including malformed receipt, unknown transport completion, post-commit bridge error, independent read-back failure, validator failure or chain-construction failure—latches `STATE_UNCERTAIN` and blocks later mutation;
+- allowed-effects or duplicate-geometry failure discovered only after N5 has committed also latches `STATE_UNCERTAIN`; N6 deliberately performs no R1/R2 recovery because that belongs to N7/later work;
+- N6 records append-only JSONL evidence with `fsync`; journal write failure blocks execution, and non-empty journals are not silently resumed across a new executor process;
+- native relation extraction remains empty in the current bridge, so N6 does not claim topology validation beyond the semantic fields actually present.
 
 Acceptance deployment on Windows `.171` uses the per-user bundle:
 
@@ -92,6 +101,8 @@ Canonical N4 evidence: `docs/evidence/n4-native-semantic-2026-09-10.json`.
 
 Canonical N5 evidence: `docs/evidence/n5-native-mutation-2026-09-10.json`.
 
+Canonical N6 evidence: `docs/evidence/n6-semantic-state-chain-2026-09-10.json`.
+
 ## 4. Identity / rollback invariants
 
 Two pillars remain non-negotiable:
@@ -99,7 +110,7 @@ Two pillars remain non-negotiable:
 1. **Data Integrity / Rollback** — future native mutation may advance only from a known parent state and must end as `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`; uncertain state blocks later mutation.
 2. **Precise Identity / PID + Fingerprinting** — native `ObjectId`/Handle is insufficient semantic identity; persistent PID, runtime-document binding and deterministic fingerprints are required.
 
-N2 has proven PID carrier/storage and clone semantics. N3 has proven runtime-document disambiguation over IPC. N4 provides authoritative native parent-state snapshots. N5 now enforces composite runtime-document + lineage PID + semantic `expected_parent_fp` binding on the exact staged LINE mutation allowlist and proves R0 rollback by independent read-back. **N6 state-chain/delta enforcement and N7 post-commit recovery remain open.**
+N2 has proven PID carrier/storage and clone semantics. N3 has proven runtime-document disambiguation over IPC. N4 provides authoritative native parent-state snapshots. N5 enforces composite runtime-document + lineage PID + semantic `expected_parent_fp` binding and proves R0 rollback. N6 now independently validates semantic delta/effects and advances a tamper-evident state chain only for accepted steps. **N7 post-commit recovery remains NOT STARTED.**
 
 ## 5. Semantic State Loop implementation status
 
@@ -123,45 +134,39 @@ Current implementation coverage is partial:
 - N3: native read-only transport/document binding exists and is live-verified;
 - N4: native read-only semantic extraction + parent document fingerprinting is implemented and live-verified;
 - N5: bounded typed LINE mutation + `expected_parent_fp` + native transaction/R0 rollback is implemented and live-verified;
-- N6+: semantic delta/state-chain enforcement and later post-commit recovery are **not implemented yet**.
+- N6: deterministic semantic delta, requested-geometry/allowed-effects validation, duplicate detection, state-chain continuity, manual-drift blocking and uncertainty latching are implemented and live-verified over the N5 LINE surface;
+- N7+: two-phase post-commit recovery, R1/R2 restoration and broader migration are **not implemented yet**.
 
-Therefore a current drawing workflow may exercise the internal N5 LINE executor on disposable/controlled drawings, but it must **not claim full native Semantic State Loop completion** until N6 delta/state-chain gates and later integrity gates are accepted.
+Therefore the internal N5 LINE executor may now be wrapped by the accepted N6 semantic loop for controlled/disposable workflows, but this still does **not** constitute full native migration/promotion or N7 recovery capability.
 
 ## 6. Verification checkpoint
 
-Current regression/evidence on the N5 closure tree:
+Current regression/evidence on the N6 closure tree:
 
-- focused N5/N4/native protocol + semantic regression: **68 passed**;
-- Linux full Python suite: **155 passed / 4 skipped**;
-- Windows `.171` full Python suite: **154 passed / 5 skipped**;
+- focused N6 delta/executor regression: **27 passed**;
+- Linux full Python suite: **182 passed / 4 skipped**;
+- Windows `.171` full Python suite: **181 passed / 5 skipped**;
 - C# bridge build: **0 errors**;
 - documented unsuppressed build-warning families: `Microsoft.VisualBasic`, `System.Drawing`, `WindowsBase` (`MSB3277`);
 - native N2 P0–P10: PASS;
 - native N3 read-only acceptance: PASS;
 - native N4 semantic acceptance: PASS;
-- native N5 typed mutation/R0 rollback acceptance: **PASS on real AutoCAD 2027 Session 1**;
-- `ruff check`, `compileall` and `git diff --check`: PASS.
+- native N5 typed mutation/R0 rollback acceptance: PASS;
+- native N6 semantic delta/state-chain acceptance: **PASS on real AutoCAD 2027 Session 1 using the unchanged N5 bridge binary**;
+- N6 changed-file `ruff check`, `compileall` and `git diff --check`: PASS;
+- full-repository Ruff currently reports **14 pre-existing findings outside the N6 change set**; they remain separate lint debt and are not treated as N6 pass evidence.
 
-Final N5 bridge DLL recorded by canonical evidence:
+Native bridge DLL used unchanged for N6 acceptance:
 
 ```text
 SHA-256 1e3cfc1dfeb2080cf5d72b89ba435ea4419ab0a12a7cf353e90e8493d2d78ce1
 ```
 
-## 7. Next development gate
+## 7. Stop boundary / next activity
 
-**N6 is the only current N-series implementation frontier.**
+**Implementation stops at N6 for this handoff. N7 is explicitly NOT STARTED and must remain unopened.**
 
-N6 must wrap the accepted N5 mutation surface with deterministic semantic-state orchestration:
-
-- capture before/after `SemanticSnapshot` and compute created/modified/deleted PID sets;
-- validate those deltas against explicit allowed effects for each ActionSpec;
-- append exactly one tamper-evident state-chain entry per accepted semantic step;
-- re-read the current document before each later step and reject manual/external changes as `STATE_DRIFT`;
-- do not advance the chain for `ROLLED_BACK_VERIFIED`, failed validation, drift or uncertain state;
-- persist enough structured evidence to reconstruct the exact failed/accepted step.
-
-N6 must not broaden the native mutation allowlist or implement N7 two-phase post-commit recovery. N7 remains explicitly out of scope until N6 is separately accepted and committed.
+The next activity is audit/planning only: review N4–N6 as an integrated foundation, enumerate remaining integrity/scalability gaps, then produce a conflict-safe 3-agent execution plan for later work. No N7 code, protocol expansion, new native mutation operation, deployment or public promotion is authorized by this checkpoint.
 
 ## 8. Status authority
 

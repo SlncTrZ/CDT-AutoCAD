@@ -1,7 +1,7 @@
 # Architecture Upgrade Plan — Native Bridge + Semantic State Loop
 
-> Updated: 2026-09-10 14:20 +07:00
-> Status: IMPLEMENTATION IN PROGRESS · N0–N5 CLOSED · N6 NEXT
+> Updated: 2026-09-10 15:15 +07:00
+> Status: N0–N6 CLOSED · IMPLEMENTATION STOP FOR CURRENT HANDOFF · N7 NOT STARTED
 > Current runtime remains `ezdxf + COM` until migration gates close.
 > Acceptance companion: `docs/NATIVE_BRIDGE_ACCEPTANCE.md`
 
@@ -96,7 +96,7 @@ Gate:
 
 **Status: IMPLEMENTED / GATE PASS — 2026-09-10.**
 
-Implemented under `src/cdt_autocad/semantic/`. Historical N1 closure evidence was `31 passed` focused semantic tests and Windows `.171` full suite `113 passed, 5 skipped`. Those numbers belong to the N1 checkpoint; the current N5-closure regression is Linux `155 passed, 4 skipped`, Windows `.171` `154 passed, 5 skipped`, and focused N5/N4/native-semantic regression `68 passed`. See `docs/CURRENT_CHECKPOINT.md`.
+Implemented under `src/cdt_autocad/semantic/`. Historical N1 closure evidence was `31 passed` focused semantic tests and Windows `.171` full suite `113 passed, 5 skipped`. Those numbers belong to the N1 checkpoint; the current N6-closure regression is Linux `182 passed, 4 skipped`, Windows `.171` `181 passed, 5 skipped`, and focused N6 delta/executor regression `27 passed`. See `docs/CURRENT_CHECKPOINT.md`.
 
 Implement internal typed models for:
 
@@ -258,26 +258,32 @@ N5 does **not** claim N6 allowed-effects/state-chain enforcement or N7 R1/R2/pos
 
 ### N6 — Deterministic validator + state-chain engine
 
-**Status: NEXT / NOT STARTED.**
+**Status: CLOSED / LIVE PASS — 2026-09-10.** Canonical evidence: `docs/evidence/n6-semantic-state-chain-2026-09-10.json`.
 
-Implement:
+N6 is implemented in the Python semantic layer over the unchanged N5 bridge and remains bounded to the fixed-schema LINE surface. It provides:
 
-- semantic pre/post diff;
-- state-chain parent continuity and manual-drift detection;
-- allowed-effects enforcement;
-- geometry/style/topology fingerprinting;
-- PID uniqueness checks;
-- duplicate geometry detection;
-- deterministic rule engine;
-- append-only state-chain log;
-- state-drift detection after manual edits.
+- deterministic semantic pre/post PID delta while excluding transient native Handle/fingerprint-cache differences;
+- explicit allowed-effects enforcement by entity type plus persistent PID target scope;
+- independent create/update LINE geometry comparison against the `ActionSpec`;
+- geometry-only update envelope protection for target type/layer/style/hierarchy and invariant document units/current space/style resources;
+- detection of newly introduced exact duplicate geometry even when PID/Handle differ;
+- exactly one tamper-evident state-chain entry per accepted `COMMITTED_VERIFIED` step;
+- no chain advance for verified R0 rollback, validation failure, drift or uncertain completion;
+- manual/external parent drift refusal before native dispatch;
+- append-only per-run JSONL journal with `fsync` and explicit refusal to silently resume a non-empty journal;
+- fail-closed `STATE_UNCERTAIN` latching after any unverified post-dispatch condition.
 
-Gate:
+Gate — **PASS for the bounded N5 LINE surface**:
 
-- manual mutation between steps causes `STATE_DRIFT`;
-- duplicated object is detected even when native handle differs;
-- unexpected deletion/modification fails validation;
-- exact failed step can be reconstructed from logs.
+- live create/update/delete sequence produces exactly three verified chain entries;
+- verified R0 rollback produces no chain entry;
+- manual COM geometry mutation is detected as `STATE_DRIFT` before the next native mutation and the refused request leaks no change;
+- allowed-effects failure after commit is recorded, produces no chain entry and blocks later mutation as `STATE_UNCERTAIN`;
+- exact duplicate geometry with a fresh PID/Handle is detected and blocks chain advancement;
+- malformed receipts, unknown transport completion, post-commit native errors, read-back failure, validator failure and state-chain failure all latch uncertainty in focused TDD;
+- N6 does not change the N5 native bridge binary or operation allowlist.
+
+N6 does **not** claim topology validation because current native relation extraction is empty, does not resume journals across a fresh process, and does not implement R1/R2 or N7 two-phase post-commit recovery.
 
 ### N7 — Two-phase native commit integrity
 
@@ -418,6 +424,6 @@ The architecture documentation may lead implementation; runtime claims must cont
 
 ## 7. Current implementation frontier
 
-**N0, N1, N2, N3, N4 and N5 are complete. Next: N6 — deterministic semantic delta + state-chain orchestration.**
+**N0 through N6 are complete for their documented bounded scopes. Implementation stops here for the current handoff; N7 remains NOT STARTED.**
 
-N5 now provides a live-verified internal LINE mutation executor with composite parent binding, persistent PID targeting, semantic document-fingerprint schema v2, verified R0 rollback and pre-write semantic-capacity protection. The bridge remains staged/internal and current COM/ezdxf remains the supported public migration baseline. N6 must wrap this accepted surface with before/after semantic delta, allowed-effects validation, one-entry-per-accepted-step state chaining and manual-drift blocking without broadening the native operation allowlist. N7 remains closed until N6 is separately accepted.
+N6 now wraps the live-verified N5 LINE mutation executor with deterministic semantic delta, requested-geometry/allowed-effects validation, duplicate detection, state-chain continuity, manual-drift refusal and post-dispatch uncertainty latching without changing the native bridge binary or public runtime. The next authorized activity is an N4–N6 audit and a separate three-agent execution plan. No N7 code or promotion work should begin from this document until a later explicit implementation decision.

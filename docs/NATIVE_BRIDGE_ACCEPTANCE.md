@@ -1,12 +1,12 @@
 # Native Bridge + Semantic Integrity Acceptance
 
-> Updated: 2026-09-10 14:20 +07:00
-> Status: N3/NB0 LIVE PASS · N4/NB1 LIVE PASS · N5/NB4 bounded R0 LIVE PASS · NB3 document-FP v2 parent binding PASS · NB5–NB10 otherwise OPEN
+> Updated: 2026-09-10 15:15 +07:00
+> Status: N3/NB0 PASS · N4/NB1 PASS · N5/NB4 bounded R0 PASS · N6 state-chain/NB6 PASS · NB7 validation bounded PASS · NB5 recovery and later gates OPEN
 > Target: AutoCAD 2027 full / Windows x64 / Managed .NET
 
 ## 1. Purpose
 
-This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0, N4/NB1 and the bounded N5 R0 native-mutation subset have live-passed; N6 semantic delta/state-chain and later integrity gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
+This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0, N4/NB1, bounded N5/NB4 and the N6 semantic delta/state-chain/drift validation layer have live-passed for their declared scopes. Post-commit recovery and later migration gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
 
 The upgrade is not accepted unless both core pillars are proven under fault injection:
 
@@ -71,6 +71,26 @@ Measured properties:
 
 This closes the **bounded N5/NB4 R0 transaction-abort gate for the accepted LINE surface** and proves mutation-time parent fingerprint enforcement. It does not close N6 allowed-effects/state-chain drift orchestration or N7/NB5 post-commit recovery.
 
+### N6.0 measured checkpoint — LIVE PASS (2026-09-10)
+
+N6 adds deterministic Python semantic orchestration over the unchanged N5 bridge binary and exact three-operation LINE allowlist. Canonical evidence: `docs/evidence/n6-semantic-state-chain-2026-09-10.json`.
+
+Measured properties:
+
+- authoritative before/after native snapshots produce deterministic created/modified/deleted PID deltas while transient Handle changes are ignored;
+- create/update LINE geometry is independently matched to `ActionSpec`; update must preserve target type/layer/style/hierarchy and the fixed LINE surface may not change document units/current space/style resources;
+- newly introduced exact duplicate geometry is detected even when the new object has a different semantic PID and native Handle;
+- three live committed LINE steps produce exactly three verified state-chain entries; a verified R0 rollback produces no chain entry;
+- a manual COM geometry edit between steps changes the parent fingerprint and the next action is rejected as `STATE_DRIFT` before native mutation dispatch, with no mutation leakage from the refused action;
+- an allowed-effects violation discovered after native commit produces no accepted chain entry and latches `STATE_UNCERTAIN`; no later mutation is allowed;
+- malformed receipt, unknown transport completion, post-commit bridge error, read-back failure, validator exception or state-chain failure after dispatch all latch `STATE_UNCERTAIN` in focused TDD;
+- per-run JSONL evidence is append-only with `fsync`; failed journal append blocks execution and an existing non-empty journal is not silently resumed;
+- native relation extraction remains empty, so no topology-validation claim is made;
+- N6 changes no C# binary or native protocol operation surface; accepted live run uses bridge SHA-256 `1e3cfc1dfeb2080cf5d72b89ba435ea4419ab0a12a7cf353e90e8493d2d78ce1`;
+- focused N6 regression is 27 PASS; Linux full regression is 182 PASS / 4 SKIP; Windows `.171` is 181 PASS / 5 SKIP.
+
+This closes **N6 state-chain continuity and NB6 state-drift detection**, and provides a **bounded NB7 semantic-validation PASS for the N5 LINE surface**. It does not close the NB7 recovery half when an unexpected effect is discovered after commit; that depends on NB5/N7 R1/R2/two-phase recovery, which remains OPEN/NOT STARTED.
+
 ## 2. Gate families
 
 ### NB0 — Bridge identity / secure loading — **PASS (N3)**
@@ -119,7 +139,7 @@ Prove on real DWG:
 
 AutoCAD `ObjectId` is not accepted as persistent identity. Native Handle may assist lookup but is not sufficient by itself.
 
-### NB3 — Canonical fingerprints — **N1 PRIMITIVES PASS · N4 NATIVE INTEGRATION PASS · N5 DOCUMENT-FP V2 PARENT BINDING PASS · STATE-CHAIN USE OPEN**
+### NB3 — Canonical fingerprints — **N1 PRIMITIVES PASS · N4 NATIVE INTEGRATION PASS · N5 DOCUMENT-FP V2 PARENT BINDING PASS · N6 STATE-CHAIN USE BOUNDED PASS**
 
 Golden tests must prove deterministic:
 
@@ -130,7 +150,7 @@ Golden tests must prove deterministic:
 - scope/document fingerprint;
 - step/state-chain fingerprint.
 
-N4 proves native document-snapshot fingerprint parity with the canonical Python engine for the accepted live fixture. N5 advances the document domain to explicitly versioned schema v2 so volatile `saved/DBMOD` cannot create false semantic drift, and live-proves v2 as the mutation parent/rollback identity. Geometry/style/instance fingerprint primitives remain owned by N1; N6 must prove delta/state-chain transitions.
+N4 proves native document-snapshot fingerprint parity with the canonical Python engine for the accepted live fixture. N5 advances the document domain to explicitly versioned schema v2 so volatile `saved/DBMOD` cannot create false semantic drift, and live-proves v2 as the mutation parent/rollback identity. N6 live-proves deterministic delta/step fingerprints and parent-state/parent-step continuity across committed create/update/delete transitions on the fixed LINE surface.
 
 Required adversarial cases:
 
@@ -166,7 +186,7 @@ Inject mismatches after commit and prove:
 
 If restoration cannot be proven, result must remain `ROLLBACK_FAILED` / `STATE_UNCERTAIN`.
 
-### NB6 — State drift — **OPEN**
+### NB6 — State drift — **PASS (N6 LINE SURFACE)**
 
 After a verified step, manually modify the DWG before the next step.
 
@@ -177,7 +197,9 @@ Prove:
 - next mutation is refused with `STATE_DRIFT`;
 - no attempted mutation leaks into the document.
 
-### NB7 — Allowed-effects enforcement — **OPEN**
+**N6 result:** PASS on real AutoCAD 2027. A manual COM edit changed the authoritative semantic fingerprint; the next N6 action was refused before the native mutation call, the chain did not advance, and independent read-back proved the refusal itself introduced no change.
+
+### NB7 — Allowed-effects enforcement — **BOUNDED VALIDATION PASS · RECOVERY OPEN**
 
 For each ActionSpec, inject an unexpected sibling create/modify/delete and prove semantic delta catches it.
 
@@ -189,6 +211,8 @@ Examples:
 - duplicate the target object.
 
 Unexpected effects must fail validation and invoke rollback/recovery.
+
+**N6 result:** the validation half passes for the fixed LINE surface: unexpected type/identity effects, wrong requested geometry, unrequested target layer/style/hierarchy change, document resource change and newly introduced duplicate geometry are deterministic failures. When the violation is discovered only after N5 has already committed, N6 latches `STATE_UNCERTAIN`, records the failed step and blocks continuation. Automatic R1/R2 recovery is intentionally not claimed and remains coupled to NB5/N7.
 
 ### NB8 — File-level integrity — **OPEN**
 

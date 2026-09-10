@@ -1,7 +1,7 @@
 # Semantic State Protocol — CDT-AutoCAD Target Contract
 
-> Updated: 2026-09-10 14:20 +07:00
-> Status: CONTRACT BASELINE · N1–N5 implemented/accepted for their bounded scopes · N6 semantic delta/state-chain integration next
+> Updated: 2026-09-10 15:15 +07:00
+> Status: CONTRACT BASELINE · N1–N6 implemented/accepted for their bounded scopes · N7 recovery NOT STARTED
 > Scope: source semantics, native extraction, PID, canonicalization, fingerprinting, diff, rollback and deterministic validation
 
 ## 1. System invariant
@@ -19,16 +19,17 @@ The Semantic State Loop is the control architecture. AutoCAD .NET, COM, ezdxf an
 
 ### 1.1 Current implementation boundary
 
-As of the N5 closure checkpoint:
+As of the N6 closure checkpoint:
 
 - N1 implements the Python semantic models, canonicalization/fingerprint primitives, rollback receipts and state-chain primitives;
 - N2 live-verifies persistent PID carrier/clone semantics;
 - N3 live-verifies the Managed .NET transport and runtime-document identity boundary;
 - N4 live-verifies bounded native `SemanticSnapshot` extraction;
 - N5 live-verifies fixed-schema LINE create/update/delete with composite parent binding, native transaction boundaries and independently verified R0 abort rollback;
-- N6 semantic delta/allowed-effects/state-chain orchestration and N7 post-commit recovery remain open.
+- N6 live-verifies deterministic semantic delta, requested-geometry/allowed-effects validation, duplicate detection, state-chain continuity, manual-drift blocking and post-dispatch uncertainty latching over that fixed LINE surface;
+- N7 post-commit recovery/R1/R2 remains NOT STARTED.
 
-Accordingly, the protocol below is partly implemented and partly normative target contract. `expected_parent_fp` is now enforced by the staged N5 mutation surface, while state-chain advancement and allowed-effects enforcement remain N6 responsibilities. Current status authority: `docs/CURRENT_CHECKPOINT.md`.
+Accordingly, the protocol below is partly implemented and partly normative target contract. N6 may advance a state chain only from independently verified N5 LINE outcomes. If a semantic violation or uncertain completion is discovered after native dispatch, N6 blocks continuation rather than claiming recovery. Current status authority: `docs/CURRENT_CHECKPOINT.md`.
 
 ## 2. Core protocol objects
 
@@ -359,7 +360,7 @@ A delta is computed from pre/post semantic states, assisted by native database e
 
 Native events are evidence/optimization, not the sole truth source. Post-action extraction remains authoritative.
 
-`allowed_effects` in the ActionSpec is compared against this delta. Unexpected mutation blocks commit or triggers rollback according to phase.
+`allowed_effects` in the ActionSpec is compared against this delta. In the accepted N6 LINE scope, validation also independently checks requested geometry, target type/layer/style/hierarchy invariants, invariant document/style-resource state, affected-PID consistency and newly introduced duplicate geometry. Because N5 commits before N6 performs these broader semantic checks, an N6 failure after commit becomes `STATE_UNCERTAIN` and blocks continuation; automatic compensation/restore remains N7/later work.
 
 ## 9. Deterministic ValidationRuleSet
 
@@ -468,6 +469,8 @@ Verified steps form a tamper-evident semantic chain:
 
 Before the next step, current native state is read and compared with `post_state_fp`. A mismatch is `STATE_DRIFT`.
 
+N6 additionally records per-run append-only JSONL evidence for committed steps, verified rollback, drift, validation failure and uncertainty. Each append is flushed and `fsync`-ed. The current N6 implementation deliberately refuses to infer/resume execution from a pre-existing non-empty journal; explicit process-restart recovery remains future work.
+
 ## 14. Major-gate semantic comparison
 
 Major gates compare current semantic state to the SourceSemanticModel, not screenshots.
@@ -513,7 +516,9 @@ The semantic protocol must be versioned independently of transport and native ad
 During migration:
 
 - COM/ezdxf may populate a subset of semantic fields for parity tests;
-- the staged .NET bridge now provides N4 bounded native extraction and N5 fixed-schema LINE mutation, while N6+ integrity orchestration/promotion remains pending;
+- the staged .NET bridge provides N4 bounded native extraction and N5 fixed-schema LINE mutation; N6 now wraps that exact surface with deterministic delta/state-chain validation without changing the native binary;
 - document fingerprint schema v1 evidence remains historical; N5+ parent-state binding uses schema v2, which excludes volatile `saved/DBMOD` from semantic identity;
+- current native snapshots expose no relation/topology data, so N6 does not claim topology validation that is not present in authoritative extraction;
+- N7 post-commit recovery, R1/R2 and later public migration/promotion remain pending and are NOT STARTED by the N6 checkpoint;
 - missing semantic fields must be reported as unsupported/unknown, never fabricated;
 - old and new adapters should be dual-run on disposable drawings until parity/integrity gates close.
