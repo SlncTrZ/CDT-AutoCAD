@@ -355,8 +355,8 @@ The detailed plan is `docs/ARCHITECTURE_UPGRADE_PLAN.md`; acceptance is `docs/NA
 
 - `N0` documentation/architecture freeze — **CLOSED**.
 - `N1` typed semantic models + canonical fingerprint engine — **CLOSED / PASS** (`31` focused semantic tests; Windows full regression `113 passed, 5 skipped`).
-- `N2` persistent document/entity PID prototype and clone policy — **NEXT**.
-- `N3` C# Managed .NET bridge + local typed IPC skeleton.
+- `N2` persistent document/entity PID prototype and clone policy — **CLOSED / LIVE PASS** (AutoCAD 2027 P0–P10; evidence `docs/evidence/n2-pid-native-2026-09-10.json`).
+- `N3` C# Managed .NET bridge + local typed IPC skeleton — **NEXT**.
 - `N4` native read-only semantic extractor.
 - `N5` native transactional executor + verified rollback.
 - `N6` deterministic validator + semantic delta + state-chain engine.
@@ -467,7 +467,7 @@ Current verification on the final hardening tree:
 - AutoCAD 2027 hidden native A3.2: `6 passed`;
 - AutoCAD 2027 hidden native A3.3: `8 passed`;
 - Linux full regression: `83 passed, 4 skipped`;
-- Windows `.171` generic regression: `82 passed, 5 skipped`; four skips are the opt-in native lanes and one is the deliberate non-Windows capability-honesty test;
+- Windows `.171` full Python regression after N1/N2 documentation closure: `113 passed, 5 skipped`; native N2 P0–P10 is a separate real-AutoCAD acceptance lane;
 - `python -m compileall src tests` and `git diff --check` pass;
 - application version parsing identifies AutoCAD 2027 as COM `26.0`; usable live ProgID is `AutoCAD.Application.26`;
 - native PDF plotting retries bounded busy COM boundaries while restoring `BACKGROUNDPLOT` and prior layout state;
@@ -476,11 +476,12 @@ Current verification on the final hardening tree:
 
 ### Next gates
 
-1. Start `N2`: prototype persistent document/entity PID storage and clone/remap semantics on real AutoCAD 2027.
-2. Verify save/reopen, ordinary edits, COPY/clone/deep-clone/WBLOCK/INSERT, erase/undo/redo and duplicate-PID handling before choosing the final metadata carrier.
-3. Only after N2 closes, build `N3` Managed .NET bridge/IPC against the already-tested N1 semantic contract; do not let IPC payloads define semantics ad hoc.
-4. Keep COM as live comparison/fallback until `NATIVE_BRIDGE_ACCEPTANCE.md` gates close.
-5. Promote A3 or any new public semantic tools only through explicit contract/version decisions.
+1. Start `N3`: build a staged Managed .NET bridge skeleton with protocol/version identity and local typed IPC against the frozen N1 semantic contract.
+2. Consume the N2 PID carrier/policy exactly: NOD/XRecord document-lineage PID, Extension-Dictionary/XRecord DBObject PID, explicit clone reconciliation, duplicate-PID fail-closed validation, and runtime-document + `expected_parent_fp` composite binding.
+3. Prove local IPC user/session restriction, bounded request size/time, request correlation, serialized AutoCAD document-context dispatch and read-only health/document-identity response before adding mutation operations.
+4. Resolve or explicitly document the current AutoCAD/.NET build-reference warning set before NB0 promotion.
+5. Keep COM as live comparison/fallback until `NATIVE_BRIDGE_ACCEPTANCE.md` gates close.
+6. Promote A3 or any new public semantic tools only through explicit contract/version decisions.
 
 See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared
 runtime from this lane; reusable infrastructure still requires Rule-of-Two cross-provider evidence.

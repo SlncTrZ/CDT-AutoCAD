@@ -38,13 +38,13 @@ Known implementation state:
 - A3.2 angular/radial/diametric/ordinate dimensions implemented backend-side, capability-false and non-public pending native verification;
 - A3.3 object measurement/current-space WCS extents + native COM intersections implemented backend-side, capability-false and non-public pending native verification;
 - source profile preservation for region-based 3D operations uses Copy -> temporary Region -> solid -> cleanup.
-- target architecture upgrade is accepted but not yet implemented: Python Semantic Core + local typed IPC + in-process C# Managed .NET bridge;
+- target architecture migration is in progress: N1 Python Semantic Core and N2 persistent PID policy are implemented/live-verified; N3 local typed IPC + in-process C# Managed .NET bridge is next;
 - the two architecture pillars are Data Integrity/Rollback and Precise Identity/PID+Fingerprinting;
 - Semantic State Loop is mandatory for future engineering automation; screenshots are supplemental, not per-step geometry proof.
 
 ## First task
 
-Architecture phase **N1 — Semantic contract models + canonical fingerprint engine** is complete and regression-verified. The next task is **N2 — persistent PID design prototype on real AutoCAD 2027**: validate the native PID carrier plus save/reopen, ordinary edits, clone/deep-clone/WBLOCK/INSERT, erase/undo/redo and duplicate-PID behavior before N3 depends on that storage choice.
+Architecture phases **N1** and **N2** are complete. N2 native P0–P10 on AutoCAD 2027 selected NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID with mandatory clone reconciliation. The next task is **N3 — Managed .NET bridge skeleton + local typed IPC** against the frozen N1/N2 contracts; start read-only (health/version/document identity), enforce local user/session and bounded typed requests, and do not add mutation endpoints until the bridge safety gate passes.
 
 The current COM/ezdxf runtime remains the comparison baseline. New implementation must not weaken or silently replace current public behavior until real AutoCAD parity/integrity gates pass.
 

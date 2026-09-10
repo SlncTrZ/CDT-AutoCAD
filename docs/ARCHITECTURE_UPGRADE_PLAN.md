@@ -128,6 +128,12 @@ Gate — **PASS**:
 
 ### N2 — PID design prototype
 
+**Status: CLOSED / LIVE PASS — 2026-09-10.**
+
+Native P0–P10 probes executed inside real AutoCAD 2027 (`26.0s`) on Windows `.171` and closed the persistent-identity storage prototype. Canonical evidence: `docs/evidence/n2-pid-native-2026-09-10.json`; detailed runbook/result: `docs/N2_PID_ACCEPTANCE.md`.
+
+Selected carrier for N3+: document lineage PID in `SLNCTRZ_CDT/DOCUMENT_PID` XRecord under the Named Objects Dictionary; managed DBObject PID in `SLNCTRZ_CDT_PID` XRecord under the object's Extension Dictionary. This carrier is valid only together with clone reconciliation, duplicate-PID fail-closed policy, and composite runtime-document + parent-state binding because raw file copies preserve lineage PID.
+
 Prototype persistent identity on real AutoCAD 2027.
 
 Evaluate:
@@ -141,12 +147,19 @@ Evaluate:
 - block definition/reference behavior;
 - cross-document clone remapping.
 
-Gate:
+Gate — **PASS**:
 
 - documented clone/PID policy;
-- no duplicate PID ambiguity;
-- native roundtrip tests prove expected persistence;
-- selected carrier has explicit compatibility evidence.
+- no duplicate PID ambiguity after reconciliation;
+- native save/cold-reopen roundtrip proves document/entity persistence;
+- ordinary edit, erase/unerase and real UNDO/REDO preserve conceptual identity;
+- shallow clone receives fresh PID; deep clone, WblockClone, WBLOCK and INSERT are proven to require clone-result PID reconciliation in measured paths;
+- BlockTableRecord, block-definition content and BlockReference can carry distinct persistent PIDs;
+- native `Transaction.Abort()` restores an overwritten PID XRecord, geometry and entity count in the measured rollback probe;
+- selected carrier has explicit AutoCAD 2027 compatibility evidence;
+- P10 proves raw file copies preserve lineage PID, so N3 document targeting must be composite and fail closed on duplicate open lineage identity.
+
+This N2 evidence does **not** close NB4 full Semantic State rollback/fingerprint integration; that remains an N5 gate.
 
 ### N3 — .NET bridge skeleton + IPC
 
@@ -373,6 +386,6 @@ The architecture documentation may lead implementation; runtime claims must cont
 
 ## 7. Current implementation frontier
 
-**N1 is complete. Next: N2 — persistent PID design prototype on real AutoCAD 2027.**
+**N0, N1 and N2 are complete. Next: N3 — Managed .NET bridge skeleton + local typed IPC.**
 
-N2 must validate the native persistence carrier and clone/remap semantics before N3 IPC/native bridge code is allowed to depend on a PID storage choice. The N1 semantic contract remains the data boundary that N2/N3 must target rather than inventing AutoCAD-specific payload shapes ad hoc.
+N3 must consume the frozen N1 semantic contract and the live-verified N2 PID policy. It may not invent alternate PID storage or clone semantics ad hoc. The bridge remains staged/internal until NB0/NB3 and later acceptance gates pass; current COM/ezdxf remains the supported migration baseline.

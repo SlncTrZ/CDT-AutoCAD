@@ -192,13 +192,15 @@ Do not conflate runtime identity with persistent semantic identity.
 
 ### 6.2 Document PID
 
-Each managed document should have a provider-owned `document_pid`, stored persistently in the DWG using a native metadata mechanism such as the Named Objects Dictionary/XRecord after prototype validation.
+Each managed document has a provider-owned `document_pid` stored in the DWG Named Objects Dictionary under application-owned XRecord metadata. N2 native AutoCAD 2027 probes selected `SLNCTRZ_CDT/DOCUMENT_PID` as the carrier.
 
-The PID carrier is an implementation detail; the semantic contract is not.
+`document_pid` is **persistent semantic lineage identity**, not globally unique physical-file identity. A byte-for-byte DWG copy preserves it. Therefore mutation targeting must combine runtime document binding + `document_pid` + `expected_parent_fp`; checkpoint/file identity additionally uses `artifact_fp` when needed. If multiple open documents share one `document_pid` and the runtime target cannot be unambiguously resolved, the mutation fails closed before execution.
+
+The PID carrier is an implementation detail; lineage and targeting semantics are part of the contract.
 
 ### 6.3 Entity semantic PID
 
-Each semantically managed entity should receive a provider-owned PID, preferably a UUID-like opaque identifier persisted in native object metadata such as an Extension Dictionary/XRecord or another validated native mechanism.
+Each semantically managed DBObject receives a provider-owned PID. N2 native AutoCAD 2027 probes selected object Extension Dictionary + `SLNCTRZ_CDT_PID` XRecord as the carrier for N3+.
 
 Required behavior:
 
@@ -209,7 +211,7 @@ Required behavior:
 - deletion retires the PID in the state delta;
 - PID metadata must not be the only evidence that geometry is correct.
 
-The exact native metadata carrier and clone semantics require live AutoCAD prototype testing before finalization.
+N2 finalized the carrier/clone policy for N3+: shallow `Clone()` receives a fresh PID; deep/cross/WBLOCK/INSERT result scopes require reconciliation/remap because those measured paths copy entity PID metadata; unresolved duplicates block acceptance.
 
 ### 6.4 Fingerprint families
 

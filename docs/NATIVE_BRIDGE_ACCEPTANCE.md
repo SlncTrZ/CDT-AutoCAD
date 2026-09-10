@@ -42,16 +42,20 @@ Read-only extraction must not dirty or mutate the drawing.
 
 ### NB2 — Persistent identity / PID
 
+**Storage/policy prototype status: LIVE PASS in N2 (2026-09-10).** See `docs/N2_PID_ACCEPTANCE.md` and `docs/evidence/n2-pid-native-2026-09-10.json`. The production N3+ bridge must reuse this carrier/policy and re-prove it through bridge IPC before overall bridge promotion.
+
 Prove on real DWG:
 
-- document PID survives save/close/reopen;
+- document lineage PID survives save/close/reopen;
 - entity PID survives save/close/reopen;
 - ordinary geometry/style edits preserve conceptual PID;
 - copy intended as a new object gets a new PID;
 - duplicate PID corruption is detected;
 - erase/undo/redo behavior is defined and verified;
 - block clone/deep-clone/WBLOCK/INSERT behavior is documented and tested;
-- cross-document clone remapping cannot silently alias two conceptual instances.
+- cross-document clone remapping cannot silently alias two conceptual instances;
+- raw filesystem copies may preserve document lineage PID; the bridge must fail closed if multiple open documents share the PID and runtime target binding is ambiguous;
+- mutation requests bind runtime document context + document PID + expected parent fingerprint; artifact fingerprint is used when physical-file/checkpoint identity matters.
 
 AutoCAD `ObjectId` is not accepted as persistent identity. Native Handle may assist lookup but is not sufficient by itself.
 

@@ -34,15 +34,15 @@ Forbidden unless explicitly assigned:
 - A3.2 advanced dimensions: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
 - A3.3 analysis: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
 - Extraction baseline: 54 tests PASS, 2 live-Windows/AutoCAD tests SKIP before repository split.
-- Current generic staging checkpoint: Linux 83 PASS / 4 live SKIP; Windows `.171` 82 PASS / 5 SKIP (4 native gates + 1 non-Windows honesty test).
+- Current Python regression checkpoint: focused semantic core 31 PASS on Linux; Windows `.171` full suite 113 PASS / 5 SKIP; native N2 P0–P10 PASS in real AutoCAD 2027.
 
 ## Current delivery gates
 
 1. Preserve the live-verified current `ezdxf + COM` baseline and public 50-tool contract during migration.
 2. `N0` documentation freeze is complete; preserve its architecture boundary.
 3. `N1` semantic contract models/canonical fingerprint engine are implemented and regression-verified; preserve golden fingerprints/state-chain invariants.
-4. `N2` is next: prototype persistent PID storage and clone/remap behavior on real AutoCAD 2027 before choosing the final metadata carrier.
-5. Build `N3+` Managed .NET bridge only after N2 closes and only behind staged/internal capability boundaries until `docs/NATIVE_BRIDGE_ACCEPTANCE.md` gates pass.
+4. `N2` persistent PID storage/clone policy is live-verified on AutoCAD 2027 and closed; preserve NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID, mandatory clone reconciliation, and composite runtime-document + `expected_parent_fp` binding; raw DWG copies may share lineage PID.
+5. `N3` is next: build the Managed .NET bridge + local typed IPC only behind staged/internal capability boundaries until `docs/NATIVE_BRIDGE_ACCEPTANCE.md` gates pass.
 6. Every mutation architecture must preserve the two pillars: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting.
 7. Continue A3/public capability promotion only through explicit contract/version changes; native implementation or verification alone does not publish tools.
 8. Any reference-driven/user-reviewed drawing must satisfy both Semantic State integrity and `docs/DRAWING_QUALITY_ACCEPTANCE.md`.
@@ -76,7 +76,7 @@ The target architecture is `Python MCP/Semantic Core -> local typed IPC -> C# Au
 Two pillars are non-negotiable:
 
 1. **Data Integrity / Rollback:** every mutation must end as `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`; rollback itself must be proven by semantic read-back and predecessor fingerprint equality. `STATE_UNCERTAIN`, `ROLLBACK_FAILED`, `COMMIT_INTEGRITY_FAIL`, or timeout uncertainty block all later mutations.
-2. **Precise Identity / PID + Fingerprinting:** do not treat AutoCAD `ObjectId` or Handle as sufficient semantic identity. The target design requires provider-owned persistent document/entity PIDs plus versioned geometry/style/topology/instance/state fingerprints, clone/duplicate handling, and `expected_parent_fp` drift protection.
+2. **Precise Identity / PID + Fingerprinting:** do not treat AutoCAD `ObjectId` or Handle as sufficient semantic identity. The target design requires provider-owned persistent document-lineage/entity PIDs plus versioned geometry/style/topology/instance/state fingerprints, clone/duplicate handling, runtime-document disambiguation, artifact fingerprinting for physical checkpoints, and `expected_parent_fp` drift protection.
 
 The Semantic State Loop is mandatory for new engineering automation: `ActionSpec -> native execution -> semantic extraction -> canonicalize -> fingerprint/diff -> deterministic validation -> commit/verified rollback -> independent read-back -> state-chain log`.
 
