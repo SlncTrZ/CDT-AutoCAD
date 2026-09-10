@@ -13,11 +13,17 @@ from cdt_autocad.semantic.models import SemanticSnapshot
 
 from .protocol import (
     NATIVE_PROTOCOL_VERSION,
+    ArcCreateParams,
+    ArcTargetParams,
     BridgeProtocolError,
     BridgeRequest,
+    CircleCreateParams,
+    CircleTargetParams,
     DocumentIdentityParams,
     LineCreateParams,
     LineTargetParams,
+    PolylineCreateParams,
+    PolylineTargetParams,
 )
 from .semantic import parse_native_snapshot
 
@@ -168,6 +174,218 @@ class NativeBridgeClient:
             require_geometry=False,
         )
         return self._request("entity.delete.line", params.to_dict())
+
+    def create_circle(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        center: tuple[float, float, float],
+        radius: float,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = CircleCreateParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "center": list(center),
+                "radius": radius,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            }
+        )
+        return self._request("entity.create.circle", params.to_dict())
+
+    def update_circle(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        semantic_pid: str,
+        center: tuple[float, float, float],
+        radius: float,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = CircleTargetParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "semantic_pid": semantic_pid,
+                "center": list(center),
+                "radius": radius,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            },
+            require_geometry=True,
+        )
+        return self._request("entity.update.circle", params.to_dict())
+
+    def delete_circle(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        semantic_pid: str,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = CircleTargetParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "semantic_pid": semantic_pid,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            },
+            require_geometry=False,
+        )
+        return self._request("entity.delete.circle", params.to_dict())
+
+    def create_arc(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        center: tuple[float, float, float],
+        radius: float,
+        start_angle: float,
+        end_angle: float,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = ArcCreateParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "center": list(center),
+                "radius": radius,
+                "start_angle": start_angle,
+                "end_angle": end_angle,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            }
+        )
+        return self._request("entity.create.arc", params.to_dict())
+
+    def update_arc(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        semantic_pid: str,
+        center: tuple[float, float, float],
+        radius: float,
+        start_angle: float,
+        end_angle: float,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = ArcTargetParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "semantic_pid": semantic_pid,
+                "center": list(center),
+                "radius": radius,
+                "start_angle": start_angle,
+                "end_angle": end_angle,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            },
+            require_geometry=True,
+        )
+        return self._request("entity.update.arc", params.to_dict())
+
+    def delete_arc(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        semantic_pid: str,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = ArcTargetParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "semantic_pid": semantic_pid,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            },
+            require_geometry=False,
+        )
+        return self._request("entity.delete.arc", params.to_dict())
+
+    def create_lwpolyline(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        points: tuple[tuple[float, float], ...],
+        closed: bool,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = PolylineCreateParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "points": [list(point) for point in points],
+                "closed": closed,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            }
+        )
+        return self._request("entity.create.lwpolyline", params.to_dict())
+
+    def update_lwpolyline(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        semantic_pid: str,
+        points: tuple[tuple[float, float], ...],
+        closed: bool,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = PolylineTargetParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "semantic_pid": semantic_pid,
+                "points": [list(point) for point in points],
+                "closed": closed,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            },
+            require_geometry=True,
+        )
+        return self._request("entity.update.lwpolyline", params.to_dict())
+
+    def delete_lwpolyline(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        semantic_pid: str,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = PolylineTargetParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "semantic_pid": semantic_pid,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            },
+            require_geometry=False,
+        )
+        return self._request("entity.delete.lwpolyline", params.to_dict())
 
     def _request(self, operation: str, params: Mapping[str, Any]) -> dict[str, Any]:
         request_id = self.request_id_factory()

@@ -9,13 +9,19 @@ namespace CDT.AutoCAD.Bridge;
 
 internal sealed record DocumentIdentityParams(Guid RuntimeDocumentId, string? DocumentPid);
 
-internal sealed record LineMutationParams(
+internal sealed record EntityMutationParams(
     Guid RuntimeDocumentId,
     string DocumentPid,
     string ExpectedParentFp,
     string? SemanticPid,
     double[]? Start,
     double[]? End,
+    double[]? Center,
+    double? Radius,
+    double? StartAngle,
+    double? EndAngle,
+    double[][]? Points,
+    bool? Closed,
     string? FaultStage
 );
 
@@ -23,7 +29,7 @@ internal sealed record BridgeRequest(
     Guid RequestId,
     string Operation,
     DocumentIdentityParams? DocumentIdentity,
-    LineMutationParams? LineMutation
+    EntityMutationParams? Mutation
 );
 
 internal sealed record BridgeResponse(
@@ -90,6 +96,15 @@ internal static class BridgeProtocol
         "entity.create.line",
         "entity.update.line",
         "entity.delete.line",
+        "entity.create.circle",
+        "entity.update.circle",
+        "entity.delete.circle",
+        "entity.create.arc",
+        "entity.update.arc",
+        "entity.delete.arc",
+        "entity.create.lwpolyline",
+        "entity.update.lwpolyline",
+        "entity.delete.lwpolyline",
     };
 
     private static readonly HashSet<string> EnvelopeFields = new(StringComparer.Ordinal)
@@ -133,6 +148,73 @@ internal static class BridgeProtocol
         "document_pid",
         "expected_parent_fp",
         "semantic_pid",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> CreateCircleFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "center",
+        "radius",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> UpdateCircleFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "semantic_pid",
+        "center",
+        "radius",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> CreateArcFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "center",
+        "radius",
+        "start_angle",
+        "end_angle",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> UpdateArcFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "semantic_pid",
+        "center",
+        "radius",
+        "start_angle",
+        "end_angle",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> CreatePolylineFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "points",
+        "closed",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> UpdatePolylineFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "semantic_pid",
+        "points",
+        "closed",
         "fault_stage",
     };
 
@@ -215,7 +297,7 @@ internal static class BridgeProtocol
             JsonElement parameters = RequireObject(root, "params", "INVALID_PARAMS", requestId);
             if (operation.StartsWith("entity.", StringComparison.Ordinal))
             {
-                return ParseLineMutation(requestId, operation, parameters);
+                return ParseEntityMutation(requestId, operation, parameters);
             }
             if (!string.Equals(operation, "bridge.document.identity", StringComparison.Ordinal)
                 && !string.Equals(operation, "bridge.document.snapshot", StringComparison.Ordinal))
@@ -282,7 +364,7 @@ internal static class BridgeProtocol
         }
     }
 
-    private static BridgeRequest ParseLineMutation(
+    private static BridgeRequest ParseEntityMutation(
         Guid requestId,
         string operation,
         JsonElement parameters
@@ -293,6 +375,15 @@ internal static class BridgeProtocol
             "entity.create.line" => CreateLineFields,
             "entity.update.line" => UpdateLineFields,
             "entity.delete.line" => DeleteLineFields,
+            "entity.create.circle" => CreateCircleFields,
+            "entity.update.circle" => UpdateCircleFields,
+            "entity.delete.circle" => DeleteLineFields,
+            "entity.create.arc" => CreateArcFields,
+            "entity.update.arc" => UpdateArcFields,
+            "entity.delete.arc" => DeleteLineFields,
+            "entity.create.lwpolyline" => CreatePolylineFields,
+            "entity.update.lwpolyline" => UpdatePolylineFields,
+            "entity.delete.lwpolyline" => DeleteLineFields,
             _ => throw new BridgeProtocolException(
                 "UNSUPPORTED_OPERATION",
                 "operation is not enabled",
@@ -322,24 +413,73 @@ internal static class BridgeProtocol
             );
         }
 
-        string? semanticPid = null;
-        if (!string.Equals(operation, "entity.create.line", StringComparison.Ordinal))
-        {
-            semanticPid = RequireString(parameters, "semantic_pid", "INVALID_PARAMS", requestId);
-        }
+        bool isCreate = operation.StartsWith("entity.create.", StringComparison.Ordinal);
+        bool isDelete = operation.StartsWith("entity.delete.", StringComparison.Ordinal);
+        string family = operation.Split('.')[2];
+        string? semanticPid = isCreate
+            ? null
+            : RequireString(parameters, "semantic_pid", "INVALID_PARAMS", requestId);
+
         double[]? start = null;
         double[]? end = null;
-        if (!string.Equals(operation, "entity.delete.line", StringComparison.Ordinal))
+        double[]? center = null;
+        double? radius = null;
+        double? startAngle = null;
+        double? endAngle = null;
+        double[][]? points = null;
+        bool? closed = null;
+        if (!isDelete)
         {
-            start = RequirePoint3(parameters, "start", requestId);
-            end = RequirePoint3(parameters, "end", requestId);
-            if (start.SequenceEqual(end))
+            switch (family)
             {
-                throw new BridgeProtocolException(
-                    "INVALID_PARAMS",
-                    "line start and end must differ",
-                    requestId
-                );
+                case "line":
+                    start = RequirePoint3(parameters, "start", requestId);
+                    end = RequirePoint3(parameters, "end", requestId);
+                    if (start.SequenceEqual(end))
+                    {
+                        throw new BridgeProtocolException(
+                            "INVALID_PARAMS",
+                            "line start and end must differ",
+                            requestId
+                        );
+                    }
+                    break;
+                case "circle":
+                    center = RequirePoint3(parameters, "center", requestId);
+                    radius = RequirePositiveDouble(parameters, "radius", requestId);
+                    break;
+                case "arc":
+                    center = RequirePoint3(parameters, "center", requestId);
+                    radius = RequirePositiveDouble(parameters, "radius", requestId);
+                    startAngle = RequireArcAngle(parameters, "start_angle", requestId);
+                    endAngle = RequireArcAngle(parameters, "end_angle", requestId);
+                    if (Math.Abs(startAngle.Value - endAngle.Value) <= 1e-12)
+                    {
+                        throw new BridgeProtocolException(
+                            "INVALID_PARAMS",
+                            "arc start_angle and end_angle must differ",
+                            requestId
+                        );
+                    }
+                    break;
+                case "lwpolyline":
+                    points = RequirePoint2Array(parameters, "points", requestId);
+                    closed = RequireBoolean(parameters, "closed", requestId);
+                    if (closed.Value && (points.Length < 3 || SamePoint2(points[0], points[^1])))
+                    {
+                        throw new BridgeProtocolException(
+                            "INVALID_PARAMS",
+                            "closed polyline requires at least three vertices and must not repeat the first point",
+                            requestId
+                        );
+                    }
+                    break;
+                default:
+                    throw new BridgeProtocolException(
+                        "UNSUPPORTED_OPERATION",
+                        "mutation operation family is not enabled",
+                        requestId
+                    );
             }
         }
 
@@ -366,13 +506,19 @@ internal static class BridgeProtocol
             requestId,
             operation,
             null,
-            new LineMutationParams(
+            new EntityMutationParams(
                 runtimeDocumentId,
                 documentPid,
                 expectedParentFp,
                 semanticPid,
                 start,
                 end,
+                center,
+                radius,
+                startAngle,
+                endAngle,
+                points,
+                closed,
                 faultStage
             )
         );
@@ -426,6 +572,138 @@ internal static class BridgeProtocol
             result[index] = coordinate;
         }
         return result;
+    }
+
+    private static double RequirePositiveDouble(
+        JsonElement element,
+        string name,
+        Guid requestId
+    )
+    {
+        if (!element.TryGetProperty(name, out JsonElement value)
+            || value.ValueKind != JsonValueKind.Number
+            || !value.TryGetDouble(out double result)
+            || !double.IsFinite(result)
+            || result <= 0.0)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"{name} must be a positive finite number",
+                requestId
+            );
+        }
+        return result;
+    }
+
+    private static double RequireArcAngle(
+        JsonElement element,
+        string name,
+        Guid requestId
+    )
+    {
+        if (!element.TryGetProperty(name, out JsonElement value)
+            || value.ValueKind != JsonValueKind.Number
+            || !value.TryGetDouble(out double result)
+            || !double.IsFinite(result)
+            || result < 0.0
+            || result >= Math.PI * 2.0)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"{name} must be in the half-open range [0, 2pi) radians",
+                requestId
+            );
+        }
+        return result;
+    }
+
+    private static double[][] RequirePoint2Array(
+        JsonElement element,
+        string name,
+        Guid requestId
+    )
+    {
+        if (!element.TryGetProperty(name, out JsonElement value)
+            || value.ValueKind != JsonValueKind.Array)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"{name} must be an array of [x, y] pairs",
+                requestId
+            );
+        }
+        JsonElement[] items = value.EnumerateArray().ToArray();
+        if (items.Length < 2 || items.Length > BridgeConstants.MaxSimplePolylineVertices)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"{name} must contain 2..{BridgeConstants.MaxSimplePolylineVertices} vertices",
+                requestId
+            );
+        }
+        double[][] result = new double[items.Length][];
+        for (int index = 0; index < items.Length; index++)
+        {
+            if (items[index].ValueKind != JsonValueKind.Array)
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "each polyline point must be exactly [x, y]",
+                    requestId
+                );
+            }
+            JsonElement[] coordinates = items[index].EnumerateArray().ToArray();
+            if (coordinates.Length != 2)
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "each polyline point must be exactly [x, y]",
+                    requestId
+                );
+            }
+            result[index] = new double[2];
+            for (int coordinateIndex = 0; coordinateIndex < 2; coordinateIndex++)
+            {
+                if (coordinates[coordinateIndex].ValueKind != JsonValueKind.Number
+                    || !coordinates[coordinateIndex].TryGetDouble(out double coordinate)
+                    || !double.IsFinite(coordinate))
+                {
+                    throw new BridgeProtocolException(
+                        "INVALID_PARAMS",
+                        "polyline coordinates must be finite numbers",
+                        requestId
+                    );
+                }
+                result[index][coordinateIndex] = coordinate;
+            }
+            if (index > 0 && SamePoint2(result[index - 1], result[index]))
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "consecutive polyline points must differ",
+                    requestId
+                );
+            }
+        }
+        return result;
+    }
+
+    private static bool RequireBoolean(JsonElement element, string name, Guid requestId)
+    {
+        if (!element.TryGetProperty(name, out JsonElement value)
+            || (value.ValueKind != JsonValueKind.True && value.ValueKind != JsonValueKind.False))
+        {
+            throw new BridgeProtocolException("INVALID_PARAMS", $"{name} must be a boolean", requestId);
+        }
+        return value.GetBoolean();
+    }
+
+    private static bool SamePoint2(double[] left, double[] right)
+    {
+        return left.Length == 2
+            && right.Length == 2
+            && left[0] == right[0]
+            && left[1] == right[1];
     }
 
     internal static byte[] SerializeResponse(BridgeResponse response)

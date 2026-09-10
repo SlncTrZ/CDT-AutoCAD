@@ -34,7 +34,8 @@ Forbidden unless explicitly assigned:
 - A3.2 advanced dimensions: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
 - A3.3 analysis: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
 - Historical pre-split extraction baseline: 54 tests PASS, 2 live-Windows/AutoCAD tests SKIP; this is not the current regression count.
-- Current regression checkpoint (`2245ebd`): Linux full suite 141 PASS / 4 SKIP; Windows `.171` full suite 140 PASS / 5 SKIP; focused N3 27 PASS; native N2 P0–P10 PASS; native N3 read-only bridge acceptance PASS on real AutoCAD 2027; C# bridge build 0 errors with three documented unsuppressed `MSB3277` warning families.
+- Native semantic checkpoints N0–N6 are closed for their documented scopes; O1 additionally live-verifies internal CIRCLE/ARC/simple-LWPOLYLINE typed mutation over the N5/N6 integrity model; N7 remains NOT STARTED.
+- Current O1 regression checkpoint: Linux full suite 195 PASS / 4 SKIP; Windows `.171` full suite 194 PASS / 5 SKIP; focused O1/N5/N6 76 PASS; O1 native acceptance PASS on real AutoCAD 2027 Session 1; C# bridge build 0 errors with three documented unsuppressed `MSB3277` warning families.
 
 ## Current delivery gates
 
@@ -42,8 +43,8 @@ Forbidden unless explicitly assigned:
 2. `N0` documentation freeze is complete; preserve its architecture boundary.
 3. `N1` semantic contract models/canonical fingerprint engine are implemented and regression-verified; preserve golden fingerprints/state-chain invariants.
 4. `N2` persistent PID storage/clone policy is live-verified on AutoCAD 2027 and closed; preserve NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID and mandatory clone reconciliation. Raw DWG copies may share lineage PID.
-5. `N3` Managed .NET bridge skeleton + local typed IPC is CLOSED/LIVE PASS and proves runtime-document disambiguation for read-only identity. `expected_parent_fp` remains a required future mutation guard but is **not yet enforced through the native bridge**. `N4` native read-only SemanticSnapshot extraction is the only current architecture implementation frontier; no native mutation endpoint is enabled or authorized in N4.
-6. Every mutation architecture must preserve the two pillars: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting.
+5. `N3` Managed .NET bridge skeleton + local typed IPC, `N4` native bounded SemanticSnapshot extraction, `N5` parent-guarded LINE transaction/R0 rollback and `N6` semantic delta/state-chain enforcement are CLOSED/LIVE PASS. O1 extends the internal typed allowlist to CIRCLE, ARC and simple LWPOLYLINE create/update/delete while preserving the same `expected_parent_fp` + persistent-PID invariants. N7 post-commit recovery remains NOT STARTED.
+6. Every mutation architecture must preserve the two pillars: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting; no O1 result may be described as N7 recovery or public promotion.
 7. Continue A3/public capability promotion only through explicit contract/version changes; native implementation or verification alone does not publish tools.
 8. Any reference-driven/user-reviewed drawing must satisfy both Semantic State integrity and `docs/DRAWING_QUALITY_ACCEPTANCE.md`.
 
@@ -67,7 +68,7 @@ For every semantically required technical condition, use the correct linetype ro
 
 Drawing checkpoints progress through `TECHNICAL_PASS -> GEOMETRY_PASS -> DOMAIN_PASS -> VISUAL_PASS -> USER_ACCEPTED`. Only `USER_ACCEPTED` is a completed user-reviewed checkpoint. If the reviewer cannot access the actual screenshot/file, keep the state `PENDING_USER_VISUAL_ACCEPTANCE`.
 
-Execution must follow `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: decompose work into small semantic steps and prefer structured state over screenshots. The target invariant is native extraction -> PID/fingerprint -> semantic delta -> deterministic validation -> commit-or-verified-rollback. **Current N3 does not yet provide full native SemanticSnapshot/rollback enforcement; until N4+ closes those gates, use available structured COM/ezdxf/N3 identity evidence and never label a step full native `COMMITTED_VERIFIED`/`ROLLED_BACK_VERIFIED` unless the required native proof exists.** Screenshots are supplemental visual evidence, not the geometry oracle. Never run the next dependent step after failed, drifted, uncertain, or unverified state.
+Execution must follow `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: decompose work into small semantic steps and prefer structured state over screenshots. The invariant is native extraction -> PID/fingerprint -> semantic delta -> deterministic validation -> commit-or-verified-rollback. **N4–N6 plus O1 now provide this proof only for their documented bounded native scopes; do not project that evidence onto unsupported entity families, topology, whole-DWG extraction, N7 recovery or public routing.** Screenshots are supplemental visual evidence, not the geometry oracle. Never run the next dependent step after failed, drifted, uncertain, or unverified state.
 
 ## Architecture-upgrade invariants
 

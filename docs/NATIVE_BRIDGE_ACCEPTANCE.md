@@ -1,12 +1,12 @@
 # Native Bridge + Semantic Integrity Acceptance
 
-> Updated: 2026-09-10 15:15 +07:00
-> Status: N3/NB0 PASS · N4/NB1 PASS · N5/NB4 bounded R0 PASS · N6 state-chain/NB6 PASS · NB7 validation bounded PASS · NB5 recovery and later gates OPEN
+> Updated: 2026-09-10 17:30 +07:00
+> Status: N3/NB0 PASS · N4/NB1 PASS · N5/NB4 PASS · N6/NB6 PASS · O1 CIRCLE/ARC/simple-LWPOLYLINE bounded PASS · NB5 recovery and later promotion gates OPEN
 > Target: AutoCAD 2027 full / Windows x64 / Managed .NET
 
 ## 1. Purpose
 
-This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0, N4/NB1, bounded N5/NB4 and the N6 semantic delta/state-chain/drift validation layer have live-passed for their declared scopes. Post-commit recovery and later migration gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
+This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0, N4/NB1, bounded N5/NB4, N6 semantic state-chain/drift validation and O1 basic-shape mutation expansion have live-passed for their declared scopes. Post-commit recovery and formal public migration gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
 
 The upgrade is not accepted unless both core pillars are proven under fault injection:
 
@@ -91,6 +91,27 @@ Measured properties:
 
 This closes **N6 state-chain continuity and NB6 state-drift detection**, and provides a **bounded NB7 semantic-validation PASS for the N5 LINE surface**. It does not close the NB7 recovery half when an unexpected effect is discovered after commit; that depends on NB5/N7 R1/R2/two-phase recovery, which remains OPEN/NOT STARTED.
 
+### O1.0 measured checkpoint — LIVE PASS (2026-09-10)
+
+O1 is a separately authorized internal operation-family expansion over N4–N6. It does not start N7 or change the public MCP contract. Canonical evidence: `docs/evidence/o1-native-shape-mutation-2026-09-10.json`.
+
+Measured properties:
+
+- bridge `0.4.0-o1` advertises exactly 12 typed mutations: LINE, CIRCLE, ARC and simple LWPOLYLINE create/update/delete; no arbitrary C#/AutoLISP/shell/macro/free-text command surface is introduced;
+- every new-family mutation retains runtime-document + lineage document PID + `expected_parent_fp` binding and persistent target PID semantics;
+- stale-parent CIRCLE create is refused as `STATE_DRIFT` before write and leaves the authoritative fingerprint unchanged;
+- CIRCLE create rollback, ARC update rollback and LWPOLYLINE delete rollback independently restore the exact predecessor document fingerprint as `ROLLED_BACK_VERIFIED`;
+- CIRCLE/ARC/LWPOLYLINE create/update geometry matches both the native semantic snapshot and independent COM measurements; update preserves PID and native Handle;
+- save/close/reopen preserves all three new-family PIDs, Handles and requested geometry while runtime-document binding is recreated;
+- LWPOLYLINE scope is intentionally simple 2D: finite XY vertices, maximum 128 vertices, zero elevation, +Z normal and zero bulge/per-vertex widths; complex existing geometry is refused before write as `UNSUPPORTED_TARGET_GEOMETRY`;
+- native debugging measured AutoCAD `eDegenerateGeometry` when `RemoveVertexAt(0)` was attempted with one vertex remaining; the accepted in-place rebuild uses `SetPointAt`, removes/adds only the tail and applies `Closed` last; live acceptance proves 4→2 shrink and 2→5 grow with COM parity and stable PID/Handle;
+- N6 create/update/delete orchestration for CIRCLE, ARC and simple LWPOLYLINE produces exactly nine accepted state-chain entries and verifies the final chain tip;
+- at the 32-object semantic cap, an additional CIRCLE is rejected as `SNAPSHOT_CAPACITY_EXCEEDED` before write with unchanged parent fingerprint;
+- bridge DLL SHA-256 is `4ad2d4138d6e71a8fa91281ea5482c592e2a0c04cb5d41ec5f2452b7cff31484`; final raw acceptance summary SHA-256 is `b8a3fadf952f1d5f13ce351e41657a0ae10d5a66a2b1c0a22680c6feda800ccf`;
+- focused O1/N5/N6 regression is 76 PASS; Linux full regression is 195 PASS / 4 SKIP; Windows `.171` is 194 PASS / 5 SKIP; changed-file Ruff, compileall and `git diff --check` pass.
+
+O1 therefore extends the already-accepted NB3/NB4/NB7 mechanisms to three additional bounded entity families. It does **not** close NB5 post-commit recovery, NB8 file-level promotion, NB9 default COM replacement or NB10 drawing stress-test gates, and N7 remains NOT STARTED.
+
 ## 2. Gate families
 
 ### NB0 — Bridge identity / secure loading — **PASS (N3)**
@@ -139,7 +160,7 @@ Prove on real DWG:
 
 AutoCAD `ObjectId` is not accepted as persistent identity. Native Handle may assist lookup but is not sufficient by itself.
 
-### NB3 — Canonical fingerprints — **N1 PRIMITIVES PASS · N4 NATIVE INTEGRATION PASS · N5 DOCUMENT-FP V2 PARENT BINDING PASS · N6 STATE-CHAIN USE BOUNDED PASS**
+### NB3 — Canonical fingerprints — **N1 PRIMITIVES PASS · N4 NATIVE INTEGRATION PASS · N5 DOCUMENT-FP V2 PARENT BINDING PASS · N6/O1 MULTI-FAMILY STATE-CHAIN USE BOUNDED PASS**
 
 Golden tests must prove deterministic:
 
@@ -150,7 +171,7 @@ Golden tests must prove deterministic:
 - scope/document fingerprint;
 - step/state-chain fingerprint.
 
-N4 proves native document-snapshot fingerprint parity with the canonical Python engine for the accepted live fixture. N5 advances the document domain to explicitly versioned schema v2 so volatile `saved/DBMOD` cannot create false semantic drift, and live-proves v2 as the mutation parent/rollback identity. N6 live-proves deterministic delta/step fingerprints and parent-state/parent-step continuity across committed create/update/delete transitions on the fixed LINE surface.
+N4 proves native document-snapshot fingerprint parity with the canonical Python engine for the accepted live fixture. N5 advances the document domain to explicitly versioned schema v2 so volatile `saved/DBMOD` cannot create false semantic drift, and live-proves v2 as the mutation parent/rollback identity. N6 live-proves deterministic delta/step fingerprints and parent-state/parent-step continuity for LINE; O1 re-proves the same state-chain mechanism across CIRCLE, ARC and simple LWPOLYLINE create/update/delete without changing fingerprint schema v2.
 
 Required adversarial cases:
 
@@ -160,7 +181,7 @@ Required adversarial cases:
 - different semantic PIDs can share geometry fingerprint without sharing instance fingerprint;
 - forbidden duplicate geometry is detected independently of native handle.
 
-### NB4 — Native transaction rollback — **BOUNDED PASS (N5 LINE SURFACE)**
+### NB4 — Native transaction rollback — **BOUNDED PASS (LINE + O1 CIRCLE/ARC/simple-LWPOLYLINE)**
 
 Inject failures after each mutation stage and prove:
 
@@ -171,7 +192,7 @@ Inject failures after each mutation stage and prove:
 
 Target status: `ROLLED_BACK_VERIFIED`.
 
-**N5 result:** PASS for deterministic pre-commit R0 abort on the staged LINE create/update surface. The accepted proof requires independent post-abort semantic read-back and exact v2 predecessor fingerprint restoration. This does not claim R1/R2 or post-commit recovery; those remain later gates.
+**N5/O1 result:** PASS for deterministic pre-commit R0 abort on the staged typed surface. N5 proves LINE create/update; O1 additionally live-proves CIRCLE create, ARC update and LWPOLYLINE delete abort paths with independent post-abort semantic read-back and exact v2 predecessor fingerprint restoration. This does not claim R1/R2 or post-commit recovery; those remain later gates.
 
 ### NB5 — Post-commit integrity / recovery — **OPEN**
 
@@ -186,7 +207,7 @@ Inject mismatches after commit and prove:
 
 If restoration cannot be proven, result must remain `ROLLBACK_FAILED` / `STATE_UNCERTAIN`.
 
-### NB6 — State drift — **PASS (N6 LINE SURFACE)**
+### NB6 — State drift — **PASS (N6 mechanism; O1 preserves the same pre-write parent guard)**
 
 After a verified step, manually modify the DWG before the next step.
 
@@ -199,7 +220,7 @@ Prove:
 
 **N6 result:** PASS on real AutoCAD 2027. A manual COM edit changed the authoritative semantic fingerprint; the next N6 action was refused before the native mutation call, the chain did not advance, and independent read-back proved the refusal itself introduced no change.
 
-### NB7 — Allowed-effects enforcement — **BOUNDED VALIDATION PASS · RECOVERY OPEN**
+### NB7 — Allowed-effects enforcement — **BOUNDED VALIDATION PASS FOR LINE/CIRCLE/ARC/simple-LWPOLYLINE · RECOVERY OPEN**
 
 For each ActionSpec, inject an unexpected sibling create/modify/delete and prove semantic delta catches it.
 
@@ -212,7 +233,7 @@ Examples:
 
 Unexpected effects must fail validation and invoke rollback/recovery.
 
-**N6 result:** the validation half passes for the fixed LINE surface: unexpected type/identity effects, wrong requested geometry, unrequested target layer/style/hierarchy change, document resource change and newly introduced duplicate geometry are deterministic failures. When the violation is discovered only after N5 has already committed, N6 latches `STATE_UNCERTAIN`, records the failed step and blocks continuation. Automatic R1/R2 recovery is intentionally not claimed and remains coupled to NB5/N7.
+**N6/O1 result:** the validation half passes for LINE/CIRCLE/ARC/simple-LWPOLYLINE: unexpected type/identity effects, wrong requested geometry, unrequested target layer/style/hierarchy change, document resource change and newly introduced duplicate geometry are deterministic failures. O1 also rejects complex LWPOLYLINE target geometry before write. When a broader semantic violation is discovered only after native commit, N6 latches `STATE_UNCERTAIN`, records the failed step and blocks continuation. Automatic R1/R2 recovery is intentionally not claimed and remains coupled to NB5/N7.
 
 ### NB8 — File-level integrity — **OPEN**
 
@@ -223,13 +244,13 @@ For SaveAs/export/native checkpoints prove:
 - failed export/save does not advance state-chain identity;
 - reopen of promoted native checkpoint reproduces the expected semantic fingerprint.
 
-### NB9 — COM parity migration — **OPEN**
+### NB9 — COM parity migration — **OPEN (O1 FAMILY PARITY EVIDENCE EXISTS, DEFAULT MIGRATION NOT DONE)**
 
 For each migrated operation family, execute equivalent disposable-drawing scenarios through current COM and new .NET bridge.
 
 Compare normalized semantic outcomes, not raw implementation details.
 
-No operation family replaces COM in the default live path until:
+O1 records native-vs-COM geometry parity for CIRCLE, ARC and simple LWPOLYLINE create/update, but the public/default COM path is unchanged. No operation family replaces COM in the default live path until:
 
 - semantic parity is acceptable;
 - rollback gates pass;

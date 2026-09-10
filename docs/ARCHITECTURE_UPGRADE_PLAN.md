@@ -1,7 +1,7 @@
 # Architecture Upgrade Plan — Native Bridge + Semantic State Loop
 
-> Updated: 2026-09-10 15:15 +07:00
-> Status: N0–N6 CLOSED · IMPLEMENTATION STOP FOR CURRENT HANDOFF · N7 NOT STARTED
+> Updated: 2026-09-10 17:30 +07:00
+> Status: N0–N6 CLOSED · O1 CLOSED / LIVE PASS · N7 NOT STARTED
 > Current runtime remains `ezdxf + COM` until migration gates close.
 > Acceptance companion: `docs/NATIVE_BRIDGE_ACCEPTANCE.md`
 
@@ -96,7 +96,7 @@ Gate:
 
 **Status: IMPLEMENTED / GATE PASS — 2026-09-10.**
 
-Implemented under `src/cdt_autocad/semantic/`. Historical N1 closure evidence was `31 passed` focused semantic tests and Windows `.171` full suite `113 passed, 5 skipped`. Those numbers belong to the N1 checkpoint; the current N6-closure regression is Linux `182 passed, 4 skipped`, Windows `.171` `181 passed, 5 skipped`, and focused N6 delta/executor regression `27 passed`. See `docs/CURRENT_CHECKPOINT.md`.
+Implemented under `src/cdt_autocad/semantic/`. Historical N1 closure evidence was `31 passed` focused semantic tests and Windows `.171` full suite `113 passed, 5 skipped`. Those numbers belong to the N1 checkpoint; the current O1-closure regression is Linux `195 passed, 4 skipped`, Windows `.171` `194 passed, 5 skipped`, and focused O1/N5/N6 regression `76 passed`. See `docs/CURRENT_CHECKPOINT.md`.
 
 Implement internal typed models for:
 
@@ -285,6 +285,35 @@ Gate — **PASS for the bounded N5 LINE surface**:
 
 N6 does **not** claim topology validation because current native relation extraction is empty, does not resume journals across a fresh process, and does not implement R1/R2 or N7 two-phase post-commit recovery.
 
+### O1 — Internal basic-shape operation-family expansion
+
+**Status: CLOSED / LIVE PASS — 2026-09-10.** Canonical evidence: `docs/evidence/o1-native-shape-mutation-2026-09-10.json`.
+
+O1 is a separately authorized internal expansion over the closed N4–N6 foundation; it does not open N7 and does not mark the formal N8 public migration phase complete. The staged bridge version advances to `0.4.0-o1` and the exact typed mutation allowlist becomes 12 operations:
+
+- LINE create/update/delete retained from N5;
+- CIRCLE create/update/delete;
+- ARC create/update/delete;
+- simple LWPOLYLINE create/update/delete.
+
+The new families preserve the existing invariants: runtime-document + lineage document PID + `expected_parent_fp` binding, persistent entity PID targeting, native `DocumentLock`/transaction boundaries, R0 fault-injection verification, independent semantic read-back, N6 requested-geometry/allowed-effects validation and one state-chain entry per accepted semantic step.
+
+O1 LWPOLYLINE update is intentionally bounded to simple 2D zero-elevation +Z polylines with zero bulge/vertex widths and at most 128 finite XY vertices. Complex existing polylines are refused before write as `UNSUPPORTED_TARGET_GEOMETRY`. Live debugging proved AutoCAD throws `eDegenerateGeometry` if an update removes the final remaining vertex; the accepted implementation therefore rebuilds in place with `SetPointAt`, tail shrink/grow and final `Closed` application. Live acceptance proves 4→2 shrink and 2→5 grow with stable PID/Handle and COM parity.
+
+Gate — **PASS**:
+
+- exact 12-operation native allowlist and no arbitrary command/eval surface;
+- stale parent fails before mutation;
+- CIRCLE/ARC/LWPOLYLINE R0 rollback paths return verified predecessor fingerprints;
+- create/update COM parity and PID/Handle stability;
+- save/reopen preserves all new-family PID/geometry state;
+- complex LWPOLYLINE update refuses without mutation;
+- direct deletes remove each target PID;
+- N6 create/update/delete for all three new families yields exactly nine verified chain entries;
+- generalized 32→33 snapshot-capacity guard refuses a new CIRCLE before write;
+- Linux `195 passed / 4 skipped`, Windows `.171` `194 passed / 5 skipped`, focused O1/N5/N6 `76 passed`;
+- N7 is not used.
+
 ### N7 — Two-phase native commit integrity
 
 **Status: NOT STARTED.**
@@ -304,7 +333,7 @@ Gate:
 
 ### N8 — Migrate current live operations
 
-**Status: NOT STARTED.**
+**Status: NOT STARTED as the formal COM-to-.NET/public migration phase.** O1 has staged three additional internal native mutation families, but no public MCP routing/capability has changed.
 
 Move current COM-backed public functionality incrementally to the native bridge while keeping public MCP semantics stable.
 
@@ -424,6 +453,6 @@ The architecture documentation may lead implementation; runtime claims must cont
 
 ## 7. Current implementation frontier
 
-**N0 through N6 are complete for their documented bounded scopes. Implementation stops here for the current handoff; N7 remains NOT STARTED.**
+**N0 through N6 and the separately authorized O1 operation-family expansion are complete for their documented bounded scopes. N7 remains NOT STARTED.**
 
-N6 now wraps the live-verified N5 LINE mutation executor with deterministic semantic delta, requested-geometry/allowed-effects validation, duplicate detection, state-chain continuity, manual-drift refusal and post-dispatch uncertainty latching without changing the native bridge binary or public runtime. The next authorized activity is an N4–N6 audit and a separate three-agent execution plan. No N7 code or promotion work should begin from this document until a later explicit implementation decision.
+The staged native executor now covers LINE, CIRCLE, ARC and simple LWPOLYLINE under the same PID/parent-fingerprint/R0/N6 state-chain integrity model while the public runtime remains unchanged. Future operation-family expansion may proceed only as separately bounded and accepted work; TEXT/MTEXT, ELLIPSE/SPLINE, BLOCK/DIM/HATCH and formal N8 migration/promotion remain open. No N7 recovery claim follows from O1.

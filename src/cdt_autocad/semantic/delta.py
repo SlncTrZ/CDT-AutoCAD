@@ -4,8 +4,9 @@ Wing: code | Topic: semantic-state-n6 | Updated: 2026-09-10 14:35
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from .canonical import ToleranceProfile, canonical_json
@@ -114,31 +115,136 @@ def _effect_scope_unexpected(
     return tuple(sorted(unexpected))
 
 
+def _operation_shape(operation: str) -> tuple[str, str] | None:
+    parts = operation.split(".")
+    if len(parts) != 3 or parts[0] != "entity" or parts[1] not in {"create", "update", "delete"}:
+        return None
+    entity_type = {
+        "line": "LINE",
+        "circle": "CIRCLE",
+        "arc": "ARC",
+        "lwpolyline": "LWPOLYLINE",
+    }.get(parts[2])
+    return (parts[1], entity_type) if entity_type is not None else None
+
+
+def _simple_polyline_geometry(
+    points: Any,
+    closed: Any,
+    *,
+    normal: Any,
+    elevation: Any,
+) -> dict[str, Any] | None:
+    if not isinstance(points, (list, tuple)) or not isinstance(closed, bool):
+        return None
+    vertices = [
+        {
+            "point": list(point),
+            "bulge": 0.0,
+            "start_width": 0.0,
+            "end_width": 0.0,
+        }
+        for point in points
+    ]
+    return {
+        "vertices": vertices,
+        "closed": closed,
+        "elevation": elevation,
+        "normal": normal,
+    }
+
+
+def _is_simple_polyline_geometry(geometry: Mapping[str, Any], profile: ToleranceProfile) -> bool:
+    vertices = geometry.get("vertices")
+    if not isinstance(vertices, (list, tuple)):
+        return False
+    zero = canonical_json(0.0, profile, float_kind="linear")
+    for vertex in vertices:
+        if not isinstance(vertex, Mapping):
+            return False
+        for field_name in ("bulge", "start_width", "end_width"):
+            if canonical_json(vertex.get(field_name), profile, float_kind="linear") != zero:
+                return False
+    return (
+        canonical_json(geometry.get("elevation"), profile, float_kind="linear") == zero
+        and canonical_json(geometry.get("normal"), profile, float_kind="linear")
+        == canonical_json([0.0, 0.0, 1.0], profile, float_kind="linear")
+    )
+
+
 def _requested_geometry_check(
     action: ActionSpec,
+    before: SemanticSnapshot,
     after: SemanticSnapshot,
     delta: SemanticDelta,
     profile: ToleranceProfile,
 ) -> tuple[bool, Any, Any, tuple[str, ...]]:
-    if action.operation not in {"entity.create.line", "entity.update.line"}:
+    shape = _operation_shape(action.operation)
+    if shape is None or shape[0] == "delete":
         return True, None, None, ()
 
-    args = action.args or {}
-    start = args.get("start")
-    end = args.get("end")
-    if start is None or end is None:
-        return False, {"type": "LINE", "start": start, "end": end}, None, tuple(delta.created + delta.modified)
-
-    if action.operation == "entity.create.line":
-        target_pid = delta.created[0] if len(delta.created) == 1 else None
-    else:
-        target_pid = action.semantic_pids[0] if len(action.semantic_pids) == 1 else None
+    verb, entity_type = shape
+    target_pid = (
+        delta.created[0]
+        if verb == "create" and len(delta.created) == 1
+        else action.semantic_pids[0]
+        if verb == "update" and len(action.semantic_pids) == 1
+        else None
+    )
+    before_by_pid = {entity.semantic_pid: entity for entity in before.entities}
     after_by_pid = {entity.semantic_pid: entity for entity in after.entities}
+    before_entity = before_by_pid.get(target_pid) if target_pid is not None else None
     entity = after_by_pid.get(target_pid) if target_pid is not None else None
-    expected_payload = {"type": "LINE", "start": start, "end": end}
-    expected_fp = fingerprint_geometry(expected_payload, profile)
+    args = action.args or {}
+
+    expected_payload: dict[str, Any] | None = None
+    input_contract_passed = True
+    if entity_type == "LINE":
+        expected_payload = {"type": "LINE", "start": args.get("start"), "end": args.get("end")}
+    elif entity_type == "CIRCLE":
+        normal = [0.0, 0.0, 1.0] if verb == "create" else (
+            before_entity.geometry.get("normal") if before_entity is not None else None
+        )
+        expected_payload = {
+            "type": "CIRCLE",
+            "center": args.get("center"),
+            "normal": normal,
+            "radius": args.get("radius"),
+        }
+    elif entity_type == "ARC":
+        start_angle = args.get("start_angle")
+        end_angle = args.get("end_angle")
+        sweep_angle = None
+        if isinstance(start_angle, (int, float)) and isinstance(end_angle, (int, float)):
+            sweep_angle = (float(end_angle) - float(start_angle)) % math.tau
+        normal = [0.0, 0.0, 1.0] if verb == "create" else (
+            before_entity.geometry.get("normal") if before_entity is not None else None
+        )
+        expected_payload = {
+            "type": "ARC",
+            "center": args.get("center"),
+            "normal": normal,
+            "radius": args.get("radius"),
+            "start_angle": start_angle,
+            "end_angle": end_angle,
+            "sweep_angle": sweep_angle,
+        }
+    elif entity_type == "LWPOLYLINE":
+        if verb == "update" and before_entity is not None:
+            input_contract_passed = _is_simple_polyline_geometry(before_entity.geometry, profile)
+        normal = [0.0, 0.0, 1.0]
+        elevation = 0.0
+        geometry = _simple_polyline_geometry(
+            args.get("points"),
+            args.get("closed"),
+            normal=normal,
+            elevation=elevation,
+        )
+        expected_payload = {"type": "LWPOLYLINE", **geometry} if geometry is not None else None
+
+    expected_fp = fingerprint_geometry(expected_payload, profile) if expected_payload is not None else None
     actual_fp = fingerprint_geometry(entity, profile) if entity is not None else None
-    passed = entity is not None and actual_fp == expected_fp
+    passed = entity is not None and expected_fp is not None and actual_fp == expected_fp and input_contract_passed
     unexpected = () if passed or target_pid is None else (target_pid,)
     return (
         passed,
@@ -154,7 +260,8 @@ def _target_envelope_check(
     after: SemanticSnapshot,
     profile: ToleranceProfile,
 ) -> tuple[bool, Any, Any, tuple[str, ...]]:
-    if action.operation != "entity.update.line" or len(action.semantic_pids) != 1:
+    shape = _operation_shape(action.operation)
+    if shape is None or shape[0] != "update" or len(action.semantic_pids) != 1:
         return True, None, None, ()
 
     target_pid = action.semantic_pids[0]
@@ -214,8 +321,11 @@ def _document_invariant_check(
 
 
 def _expected_operation_effect(action: ActionSpec, delta: SemanticDelta) -> tuple[bool, Any, Any]:
-    operation = action.operation
-    if operation == "entity.create.line":
+    shape = _operation_shape(action.operation)
+    if shape is None:
+        return False, {"operation": "supported typed mutation"}, {"operation": action.operation}
+    verb, _entity_type = shape
+    if verb == "create":
         expected = {"created_count": 1, "modified": [], "deleted": []}
         actual = {
             "created_count": len(delta.created),
@@ -224,7 +334,7 @@ def _expected_operation_effect(action: ActionSpec, delta: SemanticDelta) -> tupl
         }
         return len(delta.created) == 1 and not delta.modified and not delta.deleted, expected, actual
 
-    if operation == "entity.update.line":
+    if verb == "update":
         expected_pid = action.semantic_pids[0] if len(action.semantic_pids) == 1 else None
         expected = {"modified": [expected_pid] if expected_pid else ["<exactly-one-target-pid>"]}
         actual = {
@@ -240,7 +350,7 @@ def _expected_operation_effect(action: ActionSpec, delta: SemanticDelta) -> tupl
         )
         return passed, expected, actual
 
-    if operation == "entity.delete.line":
+    if verb == "delete":
         expected_pid = action.semantic_pids[0] if len(action.semantic_pids) == 1 else None
         expected = {"deleted": [expected_pid] if expected_pid else ["<exactly-one-target-pid>"]}
         actual = {
@@ -256,7 +366,7 @@ def _expected_operation_effect(action: ActionSpec, delta: SemanticDelta) -> tupl
         )
         return passed, expected, actual
 
-    return False, {"operation": "N6-supported typed mutation"}, {"operation": operation}
+    return False, {"operation": "supported typed mutation"}, {"operation": action.operation}
 
 
 def validate_action_delta(
@@ -273,7 +383,7 @@ def validate_action_delta(
     scope_unexpected = set(_effect_scope_unexpected(action, before, after, observed))
     duplicate_members = set(_new_duplicate_members(before, after, selected))
     geometry_passed, geometry_expected, geometry_actual, geometry_unexpected = (
-        _requested_geometry_check(action, after, observed, selected)
+        _requested_geometry_check(action, before, after, observed, selected)
     )
     envelope_passed, envelope_expected, envelope_actual, envelope_unexpected = (
         _target_envelope_check(action, before, after, selected)
@@ -338,7 +448,7 @@ def validate_action_delta(
             passed=document_passed,
             expected=document_expected,
             actual=document_actual,
-            detail=None if document_passed else "LINE mutation changed invariant document/resource state",
+            detail=None if document_passed else "typed mutation changed invariant document/resource state",
         ),
         ValidationCheck(
             rule_type="new_duplicate_geometry",

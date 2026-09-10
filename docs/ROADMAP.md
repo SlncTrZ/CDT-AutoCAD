@@ -1,6 +1,6 @@
 # PLAN — AutoCAD Provider
 
-> Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-10 15:15 +07:00
+> Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-10 17:30 +07:00
 > Governing docs: `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/CURRENT_CHECKPOINT.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
 
 ## 1. Objective
@@ -337,7 +337,7 @@ Execution is step-gated by `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: one small se
 
 ## 11. Current Status / Next Step
 
-**A0 + A1 are CLOSED. A2 is release-candidate complete and live-verified on AutoCAD 2027; RC identity is retained pending explicit promotion. A3.1/A3.2/A3.3 are native live-verified but staged/non-public. N0–N6 of the Native Bridge + Semantic State migration are CLOSED for their documented scopes. Implementation stops at N6 for the current handoff; N7 remains NOT STARTED.**
+**A0 + A1 are CLOSED. A2 is release-candidate complete and live-verified on AutoCAD 2027; RC identity is retained pending explicit promotion. A3.1/A3.2/A3.3 are native live-verified but staged/non-public. N0–N6 are CLOSED for their documented scopes and O1 has separately live-verified internal CIRCLE/ARC/simple-LWPOLYLINE native mutation expansion. N7 remains NOT STARTED and the public runtime is unchanged.**
 
 Current public runtime identity:
 
@@ -359,7 +359,8 @@ The detailed plan is `docs/ARCHITECTURE_UPGRADE_PLAN.md`; acceptance is `docs/NA
 - `N3` C# Managed .NET bridge + local typed IPC skeleton — **CLOSED / LIVE PASS** (evidence `docs/evidence/n3-native-bridge-readonly-2026-09-10.json`).
 - `N4` native read-only SemanticSnapshot extractor — **CLOSED / LIVE PASS** (evidence `docs/evidence/n4-native-semantic-2026-09-10.json`).
 - `N5` native transactional executor + verified R0 rollback — **CLOSED / LIVE PASS** for fixed-schema LINE create/update/delete (evidence `docs/evidence/n5-native-mutation-2026-09-10.json`).
-- `N6` deterministic validator + semantic delta + state-chain engine — **CLOSED / LIVE PASS** over the N5 LINE surface (evidence `docs/evidence/n6-semantic-state-chain-2026-09-10.json`).
+- `N6` deterministic validator + semantic delta + state-chain engine — **CLOSED / LIVE PASS** (evidence `docs/evidence/n6-semantic-state-chain-2026-09-10.json`).
+- `O1` internal basic-shape native mutation expansion — **CLOSED / LIVE PASS** for CIRCLE/ARC/simple-LWPOLYLINE create/update/delete over the N5/N6 integrity model (evidence `docs/evidence/o1-native-shape-mutation-2026-09-10.json`).
 - `N7` two-phase commit integrity and independent post-commit recovery — **NOT STARTED / UNOPENED**.
 - `N8` incremental COM-to-.NET operation-family migration with parity evidence — **NOT STARTED**.
 - `N9` reference-driven drawing workflow migration to Data-first Semantic State Loop — **NOT STARTED**.
@@ -460,17 +461,18 @@ new MCP tools are published despite the AutoCAD 2027 native PASS. Live evidence 
 
 ### Verification evidence
 
-Current verification on the final N6 hardening tree:
+Current verification on the O1 closure tree:
 
 - AutoCAD 2027 hidden native A2: `30 passed, 1 skipped`;
 - AutoCAD 2027 hidden native A3.1: `11 passed`;
 - AutoCAD 2027 hidden native A3.2: `6 passed`;
 - AutoCAD 2027 hidden native A3.3: `8 passed`;
-- Linux full regression after N6: `182 passed, 4 skipped`;
-- Windows `.171` full Python regression after N6: `181 passed, 5 skipped`;
-- focused N6 semantic delta/executor regression: `27 passed`;
-- native N2 P0–P10, N3 read-only bridge, N4 semantic snapshot, N5 typed LINE mutation/R0 rollback and N6 state-chain/drift acceptance all PASS on real AutoCAD 2027;
-- N6 changed-file `ruff check`, `python -m compileall src tests` and `git diff --check` pass; full-repository Ruff has 14 known pre-existing findings outside the N6 change set;
+- Linux full regression after O1: `195 passed, 4 skipped`;
+- Windows `.171` full Python regression after O1: `194 passed, 5 skipped`;
+- focused O1/N5/N6 native-protocol + semantic regression: `76 passed`;
+- native N2 P0–P10, N3 read-only bridge, N4 semantic snapshot, N5 typed LINE mutation/R0 rollback, N6 state-chain/drift and O1 CIRCLE/ARC/simple-LWPOLYLINE acceptance all PASS on real AutoCAD 2027;
+- O1 changed-file `ruff check`, `python -m compileall src tests` and `git diff --check` pass; full-repository Ruff debt remains separate from O1 acceptance;
+- accepted O1 bridge is `0.4.0-o1`, SHA-256 `4ad2d4138d6e71a8fa91281ea5482c592e2a0c04cb5d41ec5f2452b7cff31484`;
 - application version parsing identifies AutoCAD 2027 as COM `26.0`; usable live ProgID is `AutoCAD.Application.26`;
 - native PDF plotting retries bounded busy COM boundaries while restoring `BACKGROUNDPLOT` and prior layout state;
 - `SaveAs` remains single-shot mutation; only post-save `Name`/`FullName` reads receive bounded busy retry;
@@ -478,7 +480,7 @@ Current verification on the final N6 hardening tree:
 
 ### Next gates
 
-Implementation is intentionally stopped after N6. The next activity is an integrated N4–N6 audit followed by a separate 3-agent execution plan with explicit file ownership, dependency waves, independent review/acceptance and merge gates. N7, broader native mutation families, journal resume/recovery, topology extraction and public promotion are planning subjects only until a later explicit implementation authorization. Existing Autodesk-reference warning debt and the 14 pre-existing full-repository Ruff findings remain tracked separately from the N6 closure.
+O1 is closed without opening N7 or changing the public runtime. Any further native operation-family expansion should remain one bounded family at a time with its own typed contract, TDD, AutoCAD Session 1 acceptance, COM parity where relevant, semantic-chain evidence and separate commit. Candidate future order is TEXT/MTEXT → ELLIPSE/SPLINE → BLOCK/DIM/HATCH, while N7 recovery, journal resume, topology extraction and formal N8/public migration remain separately gated work. Existing Autodesk-reference warning debt and pre-existing repository lint debt remain tracked separately.
 
 See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared
 runtime from this lane; reusable infrastructure still requires Rule-of-Two cross-provider evidence.

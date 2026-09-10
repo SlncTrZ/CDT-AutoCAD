@@ -30,9 +30,18 @@ internal sealed class NativeBridgeService
             "bridge.documents.list" => new { documents = _documents.List() },
             "bridge.document.identity" => DocumentIdentity(request),
             "bridge.document.snapshot" => DocumentSnapshot(request),
-            "entity.create.line" => LineMutation(request),
-            "entity.update.line" => LineMutation(request),
-            "entity.delete.line" => LineMutation(request),
+            "entity.create.line" => EntityMutation(request),
+            "entity.update.line" => EntityMutation(request),
+            "entity.delete.line" => EntityMutation(request),
+            "entity.create.circle" => EntityMutation(request),
+            "entity.update.circle" => EntityMutation(request),
+            "entity.delete.circle" => EntityMutation(request),
+            "entity.create.arc" => EntityMutation(request),
+            "entity.update.arc" => EntityMutation(request),
+            "entity.delete.arc" => EntityMutation(request),
+            "entity.create.lwpolyline" => EntityMutation(request),
+            "entity.update.lwpolyline" => EntityMutation(request),
+            "entity.delete.lwpolyline" => EntityMutation(request),
             _ => throw new BridgeServiceException(
                 "UNSUPPORTED_OPERATION",
                 "operation is not enabled"
@@ -63,6 +72,15 @@ internal sealed class NativeBridgeService
                 "entity.create.line",
                 "entity.update.line",
                 "entity.delete.line",
+                "entity.create.circle",
+                "entity.update.circle",
+                "entity.delete.circle",
+                "entity.create.arc",
+                "entity.update.arc",
+                "entity.delete.arc",
+                "entity.create.lwpolyline",
+                "entity.update.lwpolyline",
+                "entity.delete.lwpolyline",
             },
             document_count = documents.Count,
             active_document = AcApplication.DocumentManager.MdiActiveDocument?.Name,
@@ -76,10 +94,10 @@ internal sealed class NativeBridgeService
         return _documents.Resolve(parameters.RuntimeDocumentId, parameters.DocumentPid);
     }
 
-    private object LineMutation(BridgeRequest request)
+    private object EntityMutation(BridgeRequest request)
     {
-        LineMutationParams parameters = request.LineMutation
-            ?? throw new BridgeServiceException("INVALID_PARAMS", "line mutation params are required");
+        EntityMutationParams parameters = request.Mutation
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "entity mutation params are required");
         Document document = _documents.ResolveDocument(
             parameters.RuntimeDocumentId,
             parameters.DocumentPid

@@ -55,6 +55,38 @@ def entity(
     )
 
 
+def shape_entity(
+    pid: str,
+    entity_type: str,
+    geometry: Mapping[str, Any],
+    *,
+    handle: str,
+) -> EntitySemanticState:
+    provisional = EntitySemanticState(
+        semantic_pid=pid,
+        native_handle=handle,
+        entity_type=entity_type,
+        layer="0",
+        geometry=geometry,
+        bbox=None,
+        metrics={},
+        style={"linetype": "ByLayer", "lineweight": "ByLayer"},
+        hierarchy={"owner_space": "Model"},
+    )
+    return EntitySemanticState(
+        semantic_pid=pid,
+        native_handle=handle,
+        entity_type=entity_type,
+        layer="0",
+        geometry=geometry,
+        bbox=None,
+        metrics={},
+        style=provisional.style,
+        hierarchy=provisional.hierarchy,
+        fingerprints=FingerprintSet(geometry_fp=fingerprint_geometry(provisional)),
+    )
+
+
 def snapshot(
     *entities: EntitySemanticState,
     saved: bool = True,
@@ -265,6 +297,118 @@ def test_update_rejects_unrequested_style_change_on_target():
     assert "pid:target" in delta.unexpected_changes
     check = next(item for item in result.checks if item.rule_type == "target_envelope_unchanged")
     assert check.passed is False
+
+
+def test_o1_circle_requested_geometry_and_update_envelope_are_validated():
+    before = snapshot(
+        shape_entity(
+            "pid:c",
+            "CIRCLE",
+            {"center": [0, 0, 0], "normal": [0, 0, 1], "radius": 2.0},
+            handle="20",
+        )
+    )
+    after = snapshot(
+        shape_entity(
+            "pid:c",
+            "CIRCLE",
+            {"center": [3, 4, 0], "normal": [0, 0, 1], "radius": 5.0},
+            handle="20",
+        )
+    )
+    spec = action(
+        "entity.update.circle",
+        pids=("pid:c",),
+        args={"center": [3, 4, 0], "radius": 5.0},
+        allowed=AllowedEffects(modify=("CIRCLE",)),
+    )
+
+    delta, result = validate_action_delta(spec, before, after)
+
+    assert result.status is ValidationStatus.PASS
+    assert delta.modified == ("pid:c",)
+
+
+def test_o1_circle_wrong_normal_fails_requested_geometry():
+    before = snapshot()
+    after = snapshot(
+        shape_entity(
+            "pid:c",
+            "CIRCLE",
+            {"center": [3, 4, 0], "normal": [0, 1, 0], "radius": 5.0},
+            handle="20",
+        )
+    )
+    spec = action(
+        "entity.create.circle",
+        args={"center": [3, 4, 0], "radius": 5.0},
+        allowed=AllowedEffects(create=("CIRCLE",)),
+    )
+
+    delta, result = validate_action_delta(spec, before, after)
+
+    assert result.status is ValidationStatus.FAIL
+    assert "pid:c" in delta.unexpected_changes
+
+
+def test_o1_arc_requested_geometry_matches_native_semantics():
+    before = snapshot()
+    after = snapshot(
+        shape_entity(
+            "pid:a",
+            "ARC",
+            {
+                "center": [10, 10, 0],
+                "normal": [0, 0, 1],
+                "radius": 4.0,
+                "start_angle": 0.25,
+                "end_angle": 2.5,
+                "sweep_angle": 2.25,
+            },
+            handle="21",
+        )
+    )
+    spec = action(
+        "entity.create.arc",
+        args={"center": [10, 10, 0], "radius": 4.0, "start_angle": 0.25, "end_angle": 2.5},
+        allowed=AllowedEffects(create=("ARC",)),
+    )
+
+    delta, result = validate_action_delta(spec, before, after)
+
+    assert result.status is ValidationStatus.PASS
+    assert delta.created == ("pid:a",)
+
+
+def test_o1_simple_lwpolyline_requested_geometry_matches_zero_bulge_width_contract():
+    before = snapshot()
+    after = snapshot(
+        shape_entity(
+            "pid:p",
+            "LWPOLYLINE",
+            {
+                "vertices": [
+                    {"point": [0, 0], "bulge": 0.0, "start_width": 0.0, "end_width": 0.0},
+                    {"point": [5, 0], "bulge": 0.0, "start_width": 0.0, "end_width": 0.0},
+                    {"point": [5, 3], "bulge": 0.0, "start_width": 0.0, "end_width": 0.0},
+                ],
+                "closed": True,
+                "elevation": 0.0,
+                "normal": [0, 0, 1],
+            },
+            handle="22",
+        )
+    )
+    spec = action(
+        "entity.create.lwpolyline",
+        args={"points": [[0, 0], [5, 0], [5, 3]], "closed": True},
+        allowed=AllowedEffects(create=("LWPOLYLINE",)),
+    )
+
+    delta, result = validate_action_delta(spec, before, after)
+
+    assert result.status is ValidationStatus.PASS
+    assert delta.created == ("pid:p",)
 
 
 def test_line_mutation_rejects_document_style_resource_change():

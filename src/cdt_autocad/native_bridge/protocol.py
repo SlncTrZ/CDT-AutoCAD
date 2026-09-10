@@ -16,6 +16,7 @@ from uuid import UUID
 NATIVE_PROTOCOL_VERSION = "cdt-autocad-native-v1"
 MAX_FRAME_BYTES = 65_536
 MAX_ERROR_MESSAGE_CHARS = 512
+MAX_SIMPLE_POLYLINE_VERTICES = 128
 
 _READ_ONLY_OPERATIONS = frozenset(
     {
@@ -26,7 +27,20 @@ _READ_ONLY_OPERATIONS = frozenset(
     }
 )
 _MUTATION_OPERATIONS = frozenset(
-    {"entity.create.line", "entity.update.line", "entity.delete.line"}
+    {
+        "entity.create.line",
+        "entity.update.line",
+        "entity.delete.line",
+        "entity.create.circle",
+        "entity.update.circle",
+        "entity.delete.circle",
+        "entity.create.arc",
+        "entity.update.arc",
+        "entity.delete.arc",
+        "entity.create.lwpolyline",
+        "entity.update.lwpolyline",
+        "entity.delete.lwpolyline",
+    }
 )
 _ALLOWED_OPERATIONS = _READ_ONLY_OPERATIONS | _MUTATION_OPERATIONS
 _REQUEST_FIELDS = frozenset({"protocol", "request_id", "operation", "params"})
@@ -137,6 +151,49 @@ def _point3(value: Any, field_name: str) -> tuple[float, float, float]:
     return result  # type: ignore[return-value]
 
 
+def _positive_float(value: Any, field_name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise BridgeProtocolError("INVALID_PARAMS", f"{field_name} must be a positive finite number")
+    result = float(value)
+    if not math.isfinite(result) or result <= 0:
+        raise BridgeProtocolError("INVALID_PARAMS", f"{field_name} must be a positive finite number")
+    return result
+
+
+def _arc_angle(value: Any, field_name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise BridgeProtocolError("INVALID_PARAMS", f"{field_name} must be a finite radian angle")
+    result = float(value)
+    if not math.isfinite(result) or not 0.0 <= result < math.tau:
+        raise BridgeProtocolError(
+            "INVALID_PARAMS", f"{field_name} must be in the half-open range [0, 2π) radians"
+        )
+    return result
+
+
+def _points2(value: Any) -> tuple[tuple[float, float], ...]:
+    if not isinstance(value, list | tuple):
+        raise BridgeProtocolError("INVALID_PARAMS", "points must be an array of [x, y] pairs")
+    if not 2 <= len(value) <= MAX_SIMPLE_POLYLINE_VERTICES:
+        raise BridgeProtocolError(
+            "INVALID_PARAMS",
+            f"points must contain 2..{MAX_SIMPLE_POLYLINE_VERTICES} vertices",
+        )
+    points: list[tuple[float, float]] = []
+    for raw_point in value:
+        if not isinstance(raw_point, list | tuple) or len(raw_point) != 2:
+            raise BridgeProtocolError("INVALID_PARAMS", "each polyline point must be exactly [x, y]")
+        if any(isinstance(item, bool) or not isinstance(item, int | float) for item in raw_point):
+            raise BridgeProtocolError("INVALID_PARAMS", "polyline coordinates must be finite numbers")
+        point = (float(raw_point[0]), float(raw_point[1]))
+        if not all(math.isfinite(item) for item in point):
+            raise BridgeProtocolError("INVALID_PARAMS", "polyline coordinates must be finite numbers")
+        if points and point == points[-1]:
+            raise BridgeProtocolError("INVALID_PARAMS", "consecutive polyline points must differ")
+        points.append(point)
+    return tuple(points)
+
+
 @dataclass(frozen=True)
 class LineCreateParams:
     runtime_document_id: str
@@ -212,13 +269,286 @@ class LineTargetParams:
 
 
 @dataclass(frozen=True)
+class CircleCreateParams:
+    runtime_document_id: str
+    document_pid: str
+    expected_parent_fp: str
+    center: tuple[float, float, float]
+    radius: float
+    fault_stage: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> CircleCreateParams:
+        allowed = _MUTATION_BINDING_FIELDS | {"center", "radius"}
+        runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
+        return cls(
+            runtime_id,
+            document_pid,
+            parent_fp,
+            _point3(value.get("center"), "center"),
+            _positive_float(value.get("radius"), "radius"),
+            fault_stage,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "expected_parent_fp": self.expected_parent_fp,
+            "center": list(self.center),
+            "radius": self.radius,
+        }
+        if self.fault_stage is not None:
+            result["fault_stage"] = self.fault_stage
+        return result
+
+
+@dataclass(frozen=True)
+class CircleTargetParams:
+    runtime_document_id: str
+    document_pid: str
+    expected_parent_fp: str
+    semantic_pid: str
+    center: tuple[float, float, float] | None = None
+    radius: float | None = None
+    fault_stage: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any], *, require_geometry: bool) -> CircleTargetParams:
+        allowed = _MUTATION_BINDING_FIELDS | {"semantic_pid"}
+        if require_geometry:
+            allowed |= {"center", "radius"}
+        runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
+        semantic_pid = value.get("semantic_pid")
+        if not isinstance(semantic_pid, str) or not semantic_pid.strip():
+            raise BridgeProtocolError("INVALID_PARAMS", "semantic_pid is required for target mutation")
+        center = radius = None
+        if require_geometry:
+            center = _point3(value.get("center"), "center")
+            radius = _positive_float(value.get("radius"), "radius")
+        return cls(runtime_id, document_pid, parent_fp, semantic_pid, center, radius, fault_stage)
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "expected_parent_fp": self.expected_parent_fp,
+            "semantic_pid": self.semantic_pid,
+        }
+        if self.center is not None and self.radius is not None:
+            result["center"] = list(self.center)
+            result["radius"] = self.radius
+        if self.fault_stage is not None:
+            result["fault_stage"] = self.fault_stage
+        return result
+
+
+@dataclass(frozen=True)
+class ArcCreateParams:
+    runtime_document_id: str
+    document_pid: str
+    expected_parent_fp: str
+    center: tuple[float, float, float]
+    radius: float
+    start_angle: float
+    end_angle: float
+    fault_stage: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> ArcCreateParams:
+        allowed = _MUTATION_BINDING_FIELDS | {"center", "radius", "start_angle", "end_angle"}
+        runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
+        start_angle = _arc_angle(value.get("start_angle"), "start_angle")
+        end_angle = _arc_angle(value.get("end_angle"), "end_angle")
+        if abs(start_angle - end_angle) <= 1e-12:
+            raise BridgeProtocolError("INVALID_PARAMS", "arc start_angle and end_angle must differ")
+        return cls(
+            runtime_id,
+            document_pid,
+            parent_fp,
+            _point3(value.get("center"), "center"),
+            _positive_float(value.get("radius"), "radius"),
+            start_angle,
+            end_angle,
+            fault_stage,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "expected_parent_fp": self.expected_parent_fp,
+            "center": list(self.center),
+            "radius": self.radius,
+            "start_angle": self.start_angle,
+            "end_angle": self.end_angle,
+        }
+        if self.fault_stage is not None:
+            result["fault_stage"] = self.fault_stage
+        return result
+
+
+@dataclass(frozen=True)
+class ArcTargetParams:
+    runtime_document_id: str
+    document_pid: str
+    expected_parent_fp: str
+    semantic_pid: str
+    center: tuple[float, float, float] | None = None
+    radius: float | None = None
+    start_angle: float | None = None
+    end_angle: float | None = None
+    fault_stage: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any], *, require_geometry: bool) -> ArcTargetParams:
+        allowed = _MUTATION_BINDING_FIELDS | {"semantic_pid"}
+        if require_geometry:
+            allowed |= {"center", "radius", "start_angle", "end_angle"}
+        runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
+        semantic_pid = value.get("semantic_pid")
+        if not isinstance(semantic_pid, str) or not semantic_pid.strip():
+            raise BridgeProtocolError("INVALID_PARAMS", "semantic_pid is required for target mutation")
+        center = radius = start_angle = end_angle = None
+        if require_geometry:
+            center = _point3(value.get("center"), "center")
+            radius = _positive_float(value.get("radius"), "radius")
+            start_angle = _arc_angle(value.get("start_angle"), "start_angle")
+            end_angle = _arc_angle(value.get("end_angle"), "end_angle")
+            if abs(start_angle - end_angle) <= 1e-12:
+                raise BridgeProtocolError("INVALID_PARAMS", "arc start_angle and end_angle must differ")
+        return cls(
+            runtime_id,
+            document_pid,
+            parent_fp,
+            semantic_pid,
+            center,
+            radius,
+            start_angle,
+            end_angle,
+            fault_stage,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "expected_parent_fp": self.expected_parent_fp,
+            "semantic_pid": self.semantic_pid,
+        }
+        if None not in (self.center, self.radius, self.start_angle, self.end_angle):
+            result["center"] = list(self.center or ())
+            result["radius"] = self.radius
+            result["start_angle"] = self.start_angle
+            result["end_angle"] = self.end_angle
+        if self.fault_stage is not None:
+            result["fault_stage"] = self.fault_stage
+        return result
+
+
+@dataclass(frozen=True)
+class PolylineCreateParams:
+    runtime_document_id: str
+    document_pid: str
+    expected_parent_fp: str
+    points: tuple[tuple[float, float], ...]
+    closed: bool
+    fault_stage: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> PolylineCreateParams:
+        allowed = _MUTATION_BINDING_FIELDS | {"points", "closed"}
+        runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
+        points = _points2(value.get("points"))
+        closed = value.get("closed")
+        if not isinstance(closed, bool):
+            raise BridgeProtocolError("INVALID_PARAMS", "closed must be a boolean")
+        if closed and (len(points) < 3 or points[0] == points[-1]):
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                "closed polyline requires at least three vertices and must not repeat the first point",
+            )
+        return cls(runtime_id, document_pid, parent_fp, points, closed, fault_stage)
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "expected_parent_fp": self.expected_parent_fp,
+            "points": [list(point) for point in self.points],
+            "closed": self.closed,
+        }
+        if self.fault_stage is not None:
+            result["fault_stage"] = self.fault_stage
+        return result
+
+
+@dataclass(frozen=True)
+class PolylineTargetParams:
+    runtime_document_id: str
+    document_pid: str
+    expected_parent_fp: str
+    semantic_pid: str
+    points: tuple[tuple[float, float], ...] | None = None
+    closed: bool | None = None
+    fault_stage: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any], *, require_geometry: bool) -> PolylineTargetParams:
+        allowed = _MUTATION_BINDING_FIELDS | {"semantic_pid"}
+        if require_geometry:
+            allowed |= {"points", "closed"}
+        runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
+        semantic_pid = value.get("semantic_pid")
+        if not isinstance(semantic_pid, str) or not semantic_pid.strip():
+            raise BridgeProtocolError("INVALID_PARAMS", "semantic_pid is required for target mutation")
+        points = closed = None
+        if require_geometry:
+            points = _points2(value.get("points"))
+            closed = value.get("closed")
+            if not isinstance(closed, bool):
+                raise BridgeProtocolError("INVALID_PARAMS", "closed must be a boolean")
+            if closed and (len(points) < 3 or points[0] == points[-1]):
+                raise BridgeProtocolError(
+                    "INVALID_PARAMS",
+                    "closed polyline requires at least three vertices and must not repeat the first point",
+                )
+        return cls(runtime_id, document_pid, parent_fp, semantic_pid, points, closed, fault_stage)
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "expected_parent_fp": self.expected_parent_fp,
+            "semantic_pid": self.semantic_pid,
+        }
+        if self.points is not None and self.closed is not None:
+            result["points"] = [list(point) for point in self.points]
+            result["closed"] = self.closed
+        if self.fault_stage is not None:
+            result["fault_stage"] = self.fault_stage
+        return result
+
+
+@dataclass(frozen=True)
 class BridgeRequest:
     """Strict typed request envelope for the staged native bridge."""
 
     protocol: str
     request_id: str
     operation: str
-    params: DocumentIdentityParams | LineCreateParams | LineTargetParams | Mapping[str, Any]
+    params: (
+        DocumentIdentityParams
+        | LineCreateParams
+        | LineTargetParams
+        | CircleCreateParams
+        | CircleTargetParams
+        | ArcCreateParams
+        | ArcTargetParams
+        | PolylineCreateParams
+        | PolylineTargetParams
+        | Mapping[str, Any]
+    )
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> BridgeRequest:
@@ -245,15 +575,42 @@ class BridgeRequest:
             field_name="params",
         )
         if operation in {"bridge.document.identity", "bridge.document.snapshot"}:
-            params: DocumentIdentityParams | LineCreateParams | LineTargetParams | Mapping[str, Any] = (
-                DocumentIdentityParams.from_dict(raw_params)
-            )
+            params: (
+                DocumentIdentityParams
+                | LineCreateParams
+                | LineTargetParams
+                | CircleCreateParams
+                | CircleTargetParams
+                | ArcCreateParams
+                | ArcTargetParams
+                | PolylineCreateParams
+                | PolylineTargetParams
+                | Mapping[str, Any]
+            ) = DocumentIdentityParams.from_dict(raw_params)
         elif operation == "entity.create.line":
             params = LineCreateParams.from_dict(raw_params)
         elif operation == "entity.update.line":
             params = LineTargetParams.from_dict(raw_params, require_geometry=True)
         elif operation == "entity.delete.line":
             params = LineTargetParams.from_dict(raw_params, require_geometry=False)
+        elif operation == "entity.create.circle":
+            params = CircleCreateParams.from_dict(raw_params)
+        elif operation == "entity.update.circle":
+            params = CircleTargetParams.from_dict(raw_params, require_geometry=True)
+        elif operation == "entity.delete.circle":
+            params = CircleTargetParams.from_dict(raw_params, require_geometry=False)
+        elif operation == "entity.create.arc":
+            params = ArcCreateParams.from_dict(raw_params)
+        elif operation == "entity.update.arc":
+            params = ArcTargetParams.from_dict(raw_params, require_geometry=True)
+        elif operation == "entity.delete.arc":
+            params = ArcTargetParams.from_dict(raw_params, require_geometry=False)
+        elif operation == "entity.create.lwpolyline":
+            params = PolylineCreateParams.from_dict(raw_params)
+        elif operation == "entity.update.lwpolyline":
+            params = PolylineTargetParams.from_dict(raw_params, require_geometry=True)
+        elif operation == "entity.delete.lwpolyline":
+            params = PolylineTargetParams.from_dict(raw_params, require_geometry=False)
         else:
             if raw_params:
                 raise BridgeProtocolError("INVALID_PARAMS", f"{operation} does not accept parameters")

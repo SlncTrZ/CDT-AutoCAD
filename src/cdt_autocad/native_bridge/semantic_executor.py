@@ -24,7 +24,17 @@ from cdt_autocad.semantic.models import (
 from cdt_autocad.semantic.state_chain import build_state_chain_entry, verify_state_chain
 
 from .client import BridgeRemoteError
-from .protocol import BridgeProtocolError, LineCreateParams, LineTargetParams
+from .protocol import (
+    ArcCreateParams,
+    ArcTargetParams,
+    BridgeProtocolError,
+    CircleCreateParams,
+    CircleTargetParams,
+    LineCreateParams,
+    LineTargetParams,
+    PolylineCreateParams,
+    PolylineTargetParams,
+)
 
 
 class SemanticStepError(RuntimeError):
@@ -68,10 +78,23 @@ class JsonlStateJournal:
 
 
 class NativeSemanticExecutor:
-    """Wrap the N5 LINE bridge surface with N6 semantic validation and chain continuity."""
+    """Wrap the staged typed native mutation surface with semantic validation and chain continuity."""
 
     _OPERATIONS = frozenset(
-        {"entity.create.line", "entity.update.line", "entity.delete.line"}
+        {
+            "entity.create.line",
+            "entity.update.line",
+            "entity.delete.line",
+            "entity.create.circle",
+            "entity.update.circle",
+            "entity.delete.circle",
+            "entity.create.arc",
+            "entity.update.arc",
+            "entity.delete.arc",
+            "entity.create.lwpolyline",
+            "entity.update.lwpolyline",
+            "entity.delete.lwpolyline",
+        }
     )
     _VERIFIED_PREWRITE_REMOTE_CODES = frozenset(
         {
@@ -79,6 +102,7 @@ class NativeSemanticExecutor:
             "SNAPSHOT_CAPACITY_EXCEEDED",
             "ENTITY_NOT_FOUND",
             "ENTITY_TYPE_MISMATCH",
+            "UNSUPPORTED_TARGET_GEOMETRY",
         }
     )
 
@@ -364,7 +388,74 @@ class NativeSemanticExecutor:
                 start=tuple(args["start"]),
                 end=tuple(args["end"]),
             )
-        return self.client.delete_line(
+        if action.operation == "entity.delete.line":
+            return self.client.delete_line(
+                runtime_document_id,
+                **common,
+                semantic_pid=action.semantic_pids[0],
+            )
+        if action.operation == "entity.create.circle":
+            return self.client.create_circle(
+                runtime_document_id,
+                **common,
+                center=tuple(args["center"]),
+                radius=args["radius"],
+            )
+        if action.operation == "entity.update.circle":
+            return self.client.update_circle(
+                runtime_document_id,
+                **common,
+                semantic_pid=action.semantic_pids[0],
+                center=tuple(args["center"]),
+                radius=args["radius"],
+            )
+        if action.operation == "entity.delete.circle":
+            return self.client.delete_circle(
+                runtime_document_id,
+                **common,
+                semantic_pid=action.semantic_pids[0],
+            )
+        if action.operation == "entity.create.arc":
+            return self.client.create_arc(
+                runtime_document_id,
+                **common,
+                center=tuple(args["center"]),
+                radius=args["radius"],
+                start_angle=args["start_angle"],
+                end_angle=args["end_angle"],
+            )
+        if action.operation == "entity.update.arc":
+            return self.client.update_arc(
+                runtime_document_id,
+                **common,
+                semantic_pid=action.semantic_pids[0],
+                center=tuple(args["center"]),
+                radius=args["radius"],
+                start_angle=args["start_angle"],
+                end_angle=args["end_angle"],
+            )
+        if action.operation == "entity.delete.arc":
+            return self.client.delete_arc(
+                runtime_document_id,
+                **common,
+                semantic_pid=action.semantic_pids[0],
+            )
+        if action.operation == "entity.create.lwpolyline":
+            return self.client.create_lwpolyline(
+                runtime_document_id,
+                **common,
+                points=tuple(tuple(point) for point in args["points"]),
+                closed=args["closed"],
+            )
+        if action.operation == "entity.update.lwpolyline":
+            return self.client.update_lwpolyline(
+                runtime_document_id,
+                **common,
+                semantic_pid=action.semantic_pids[0],
+                points=tuple(tuple(point) for point in args["points"]),
+                closed=args["closed"],
+            )
+        return self.client.delete_lwpolyline(
             runtime_document_id,
             **common,
             semantic_pid=action.semantic_pids[0],
@@ -374,17 +465,26 @@ class NativeSemanticExecutor:
         if action.operation not in self._OPERATIONS:
             raise SemanticStepError("INVALID_ACTION", "operation is not enabled by the N6 executor")
         args = dict(action.args or {})
-        if action.operation == "entity.create.line":
+        operation_parts = action.operation.split(".")
+        verb = operation_parts[1]
+        family = operation_parts[2]
+        if verb == "create":
             if action.semantic_pids:
-                raise SemanticStepError("INVALID_ACTION", "create.line cannot target existing semantic PIDs")
+                raise SemanticStepError("INVALID_ACTION", "create action cannot target existing semantic PIDs")
             payload = {
                 "runtime_document_id": runtime_document_id,
                 "document_pid": action.document_pid,
                 "expected_parent_fp": action.expected_parent_fp,
                 **args,
             }
+            parser = {
+                "line": LineCreateParams,
+                "circle": CircleCreateParams,
+                "arc": ArcCreateParams,
+                "lwpolyline": PolylineCreateParams,
+            }[family]
             try:
-                LineCreateParams.from_dict(payload)
+                parser.from_dict(payload)
             except BridgeProtocolError as exc:
                 raise SemanticStepError("INVALID_ACTION", exc.safe_message) from exc
             return
@@ -392,7 +492,7 @@ class NativeSemanticExecutor:
         if len(action.semantic_pids) != 1:
             raise SemanticStepError(
                 "INVALID_ACTION",
-                "update/delete LINE actions require exactly one target semantic PID",
+                "update/delete actions require exactly one target semantic PID",
             )
         payload = {
             "runtime_document_id": runtime_document_id,
@@ -401,11 +501,14 @@ class NativeSemanticExecutor:
             "semantic_pid": action.semantic_pids[0],
             **args,
         }
+        parser = {
+            "line": LineTargetParams,
+            "circle": CircleTargetParams,
+            "arc": ArcTargetParams,
+            "lwpolyline": PolylineTargetParams,
+        }[family]
         try:
-            LineTargetParams.from_dict(
-                payload,
-                require_geometry=action.operation == "entity.update.line",
-            )
+            parser.from_dict(payload, require_geometry=verb == "update")
         except BridgeProtocolError as exc:
             raise SemanticStepError("INVALID_ACTION", exc.safe_message) from exc
 
@@ -452,7 +555,7 @@ class NativeSemanticExecutor:
         delta: SemanticDelta,
     ) -> None:
         affected_pid = receipt.get("affected_semantic_pid")
-        if action.operation == "entity.create.line":
+        if action.operation.startswith("entity.create."):
             if len(delta.created) != 1 or affected_pid != delta.created[0]:
                 raise SemanticStepError(
                     "INVALID_NATIVE_RECEIPT",

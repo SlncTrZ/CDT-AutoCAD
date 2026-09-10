@@ -55,6 +55,32 @@ def entity(pid: str, start, end, handle: str) -> EntitySemanticState:
     )
 
 
+def shape_entity(pid: str, entity_type: str, geometry: dict, handle: str) -> EntitySemanticState:
+    provisional = EntitySemanticState(
+        semantic_pid=pid,
+        native_handle=handle,
+        entity_type=entity_type,
+        layer="0",
+        geometry=geometry,
+        bbox=None,
+        metrics={},
+        style={"linetype": "ByLayer", "lineweight": "ByLayer"},
+        hierarchy={"owner_space": "Model"},
+    )
+    return EntitySemanticState(
+        semantic_pid=pid,
+        native_handle=handle,
+        entity_type=entity_type,
+        layer="0",
+        geometry=geometry,
+        bbox=None,
+        metrics={},
+        style=provisional.style,
+        hierarchy=provisional.hierarchy,
+        fingerprints=FingerprintSet(geometry_fp=fingerprint_geometry(provisional)),
+    )
+
+
 def snapshot(*entities: EntitySemanticState, snapshot_id="snap:test") -> SemanticSnapshot:
     provisional = SemanticSnapshot(
         snapshot_id=snapshot_id,
@@ -122,6 +148,42 @@ class FakeClient:
     def delete_line(self, runtime_document_id, **kwargs):
         assert runtime_document_id == RUNTIME
         return self._receipt("entity.delete.line", kwargs)
+
+    def create_circle(self, runtime_document_id, **kwargs):
+        assert runtime_document_id == RUNTIME
+        return self._receipt("entity.create.circle", kwargs)
+
+    def update_circle(self, runtime_document_id, **kwargs):
+        assert runtime_document_id == RUNTIME
+        return self._receipt("entity.update.circle", kwargs)
+
+    def delete_circle(self, runtime_document_id, **kwargs):
+        assert runtime_document_id == RUNTIME
+        return self._receipt("entity.delete.circle", kwargs)
+
+    def create_arc(self, runtime_document_id, **kwargs):
+        assert runtime_document_id == RUNTIME
+        return self._receipt("entity.create.arc", kwargs)
+
+    def update_arc(self, runtime_document_id, **kwargs):
+        assert runtime_document_id == RUNTIME
+        return self._receipt("entity.update.arc", kwargs)
+
+    def delete_arc(self, runtime_document_id, **kwargs):
+        assert runtime_document_id == RUNTIME
+        return self._receipt("entity.delete.arc", kwargs)
+
+    def create_lwpolyline(self, runtime_document_id, **kwargs):
+        assert runtime_document_id == RUNTIME
+        return self._receipt("entity.create.lwpolyline", kwargs)
+
+    def update_lwpolyline(self, runtime_document_id, **kwargs):
+        assert runtime_document_id == RUNTIME
+        return self._receipt("entity.update.lwpolyline", kwargs)
+
+    def delete_lwpolyline(self, runtime_document_id, **kwargs):
+        assert runtime_document_id == RUNTIME
+        return self._receipt("entity.delete.lwpolyline", kwargs)
 
 
 def receipt(operation, pre, post, pid, outcome="COMMITTED_VERIFIED"):
@@ -576,6 +638,97 @@ def test_strict_action_shape_refuses_unknown_args_before_mutation(tmp_path):
         executor.execute_step(RUNTIME, spec)
 
     assert caught.value.code == "INVALID_ACTION"
+    assert client.mutation_calls == []
+
+
+@pytest.mark.parametrize(
+    ("operation", "entity_type", "args", "geometry", "method_name"),
+    [
+        (
+            "entity.create.circle",
+            "CIRCLE",
+            {"center": [10, 20, 0], "radius": 5.0},
+            {"center": [10, 20, 0], "normal": [0, 0, 1], "radius": 5.0},
+            "entity.create.circle",
+        ),
+        (
+            "entity.create.arc",
+            "ARC",
+            {"center": [30, 20, 0], "radius": 4.0, "start_angle": 0.25, "end_angle": 2.5},
+            {
+                "center": [30, 20, 0],
+                "normal": [0, 0, 1],
+                "radius": 4.0,
+                "start_angle": 0.25,
+                "end_angle": 2.5,
+                "sweep_angle": 2.25,
+            },
+            "entity.create.arc",
+        ),
+        (
+            "entity.create.lwpolyline",
+            "LWPOLYLINE",
+            {"points": [[0, 0], [5, 0], [5, 3]], "closed": True},
+            {
+                "vertices": [
+                    {"point": [0, 0], "bulge": 0.0, "start_width": 0.0, "end_width": 0.0},
+                    {"point": [5, 0], "bulge": 0.0, "start_width": 0.0, "end_width": 0.0},
+                    {"point": [5, 3], "bulge": 0.0, "start_width": 0.0, "end_width": 0.0},
+                ],
+                "closed": True,
+                "elevation": 0.0,
+                "normal": [0, 0, 1],
+            },
+            "entity.create.lwpolyline",
+        ),
+    ],
+)
+def test_o1_new_shape_create_advances_n6_chain(
+    tmp_path,
+    operation,
+    entity_type,
+    args,
+    geometry,
+    method_name,
+):
+    before = snapshot()
+    after = snapshot(shape_entity("pid:new", entity_type, geometry, "90"))
+    client = FakeClient(
+        [before, after],
+        [receipt(operation, before.fingerprints.document_fp, after.fingerprints.document_fp, "pid:new")],
+    )
+    executor = NativeSemanticExecutor(client, tmp_path / "state.jsonl")
+    result = executor.execute_step(
+        RUNTIME,
+        action(
+            operation,
+            before.fingerprints.document_fp,
+            args=args,
+            allowed=AllowedEffects(create=(entity_type,)),
+        ),
+    )
+
+    assert result.outcome is MutationOutcome.COMMITTED_VERIFIED
+    assert len(executor.entries) == 1
+    assert client.mutation_calls[0][0] == method_name
+
+
+def test_o1_invalid_circle_action_is_rejected_before_snapshot_or_dispatch(tmp_path):
+    before = snapshot()
+    client = FakeClient([before], [])
+    executor = NativeSemanticExecutor(client, tmp_path / "state.jsonl")
+    spec = action(
+        "entity.create.circle",
+        before.fingerprints.document_fp,
+        args={"center": [0, 0, 0], "radius": 0},
+        allowed=AllowedEffects(create=("CIRCLE",)),
+    )
+
+    with pytest.raises(SemanticStepError) as caught:
+        executor.execute_step(RUNTIME, spec)
+
+    assert caught.value.code == "INVALID_ACTION"
+    assert client.snapshot_calls == 0
     assert client.mutation_calls == []
 
 
