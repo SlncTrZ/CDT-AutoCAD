@@ -227,6 +227,21 @@ internal sealed class PipeHost : IAsyncDisposable
     )
     {
         byte[] body = BridgeProtocol.SerializeResponse(response);
+        if (body.Length > BridgeConstants.MaxFrameBytes)
+        {
+            Guid? requestId = null;
+            if (response.RequestId is not null
+                && Guid.TryParseExact(response.RequestId, "D", out Guid parsedRequestId))
+            {
+                requestId = parsedRequestId;
+            }
+            response = BridgeResponse.Failure(
+                requestId,
+                "RESPONSE_TOO_LARGE",
+                "native bridge response exceeds maximum frame size"
+            );
+            body = BridgeProtocol.SerializeResponse(response);
+        }
         if (body.Length == 0 || body.Length > BridgeConstants.MaxFrameBytes)
         {
             throw new InvalidOperationException("bridge generated an invalid response frame size");

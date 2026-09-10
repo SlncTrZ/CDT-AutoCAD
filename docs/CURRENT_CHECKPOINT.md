@@ -1,8 +1,8 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-10 11:56 +07:00
-> Status: **N0–N3 CLOSED · N4 NEXT · native mutation disabled**
-> Implementation checkpoint commit: `2245ebd` (N3 code/evidence); this document may be updated by later docs-only commits without changing that implementation checkpoint
+> Updated: 2026-09-10 13:25 +07:00
+> Status: **N0–N4 CLOSED · N5 NEXT · native mutation disabled**
+> Implementation checkpoint: N4 code/evidence in the N4 closure commit; previous N3 checkpoint `2245ebd`
 > Primary native target: AutoCAD 2027 full · Windows x64 · COM `26.0` · Managed .NET `net10.0-windows`
 
 ## 1. Public runtime
@@ -27,12 +27,13 @@ The N-series Managed .NET bridge is **not yet the public provider backend**.
 | N1 | **CLOSED / PASS** | Python semantic models, canonicalization/fingerprint primitives, rollback receipts and state-chain primitives |
 | N2 | **CLOSED / LIVE PASS** | persistent document/entity PID carrier and clone/reconciliation policy on real AutoCAD 2027, P0–P10 |
 | N3 | **CLOSED / LIVE PASS** | staged in-process C# Managed .NET bridge, bounded local typed Named Pipe IPC, runtime-document binding and read-only document identity |
-| N4 | **NEXT / NOT STARTED** | authoritative native read-only `SemanticSnapshot` extraction |
-| N5+ | **NOT STARTED** | native typed mutation, transactional rollback integration, deterministic delta validation, post-commit integrity and migration/promotion |
+| N4 | **CLOSED / LIVE PASS** | authoritative native read-only `SemanticSnapshot` extraction, persistent entity PID binding and native↔N1 document fingerprint parity |
+| N5 | **NEXT / NOT STARTED** | typed native mutation with `expected_parent_fp`, transaction boundary and verified rollback |
+| N6+ | **NOT STARTED** | deterministic semantic delta validation, state-chain integration, post-commit integrity and migration/promotion |
 
-## 3. N3 runtime truth
+## 3. N4 runtime truth
 
-N3 is implemented under `native/CDT.AutoCAD.Bridge/` and is intentionally read-only.
+The staged bridge remains read-only, now with authoritative N4 semantic extraction under `native/CDT.AutoCAD.Bridge/`.
 
 Enabled internal operations:
 
@@ -40,6 +41,7 @@ Enabled internal operations:
 bridge.health
 bridge.documents.list
 bridge.document.identity
+bridge.document.snapshot
 ```
 
 Measured invariants:
@@ -54,6 +56,15 @@ Measured invariants:
 - two open raw-copy DWGs sharing one `document_pid` receive distinct `runtime_document_id` values;
 - PID-only target selection is rejected;
 - read-only N3 acceptance leaves tested drawings at `DBMOD=0`;
+- `bridge.document.snapshot` reads the active bound AutoCAD Database through native `ForRead` transactions;
+- N4 scope is intentionally bounded to the active document's current space plus referenced block definitions/content, with `MaxSnapshotEntities=32`; it is not yet a whole-DWG/all-layout semantic extractor;
+- extracted entities require persistent N2 semantic PIDs and duplicate/missing PIDs fail closed;
+- supported N4 semantic families live-proven: LINE, CIRCLE, ARC, LWPOLYLINE, TEXT, MTEXT, INSERT, BLOCK_DEFINITION, DIMENSION and HATCH;
+- referenced block definitions and their PID-bearing contents are included recursively in the semantic fingerprint; a saved block-definition geometry mutation changes `document_fp` even with `DBMOD=0` on both compared states;
+- layer, linetype, text-style and dimension-style resources are extracted deterministically;
+- native document fingerprint matches the N1 canonical fingerprint byte-for-byte for the accepted fixture;
+- repeated reads keep `DBMOD=0`, and save/reopen preserves the semantic document fingerprint;
+- a snapshot whose serialized result exceeds the 65,536-byte frame fails as correlated `RESPONSE_TOO_LARGE`; the bridge remains alive and the read attempt does not change `DBMOD`;
 - `mutation_enabled=false`.
 
 Acceptance deployment on Windows `.171` uses the per-user bundle:
@@ -66,6 +77,8 @@ with only its `Contents\Windows` directory explicitly added to `TRUSTEDPATHS`; `
 
 Canonical N3 evidence: `docs/evidence/n3-native-bridge-readonly-2026-09-10.json`.
 
+Canonical N4 evidence: `docs/evidence/n4-native-semantic-2026-09-10.json`.
+
 ## 4. Identity / rollback invariants
 
 Two pillars remain non-negotiable:
@@ -73,7 +86,7 @@ Two pillars remain non-negotiable:
 1. **Data Integrity / Rollback** — future native mutation may advance only from a known parent state and must end as `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`; uncertain state blocks later mutation.
 2. **Precise Identity / PID + Fingerprinting** — native `ObjectId`/Handle is insufficient semantic identity; persistent PID, runtime-document binding and deterministic fingerprints are required.
 
-N2 has proven PID carrier/storage and clone semantics. N3 has proven runtime-document disambiguation over IPC. **`expected_parent_fp` is not yet enforceable through the native bridge** because authoritative native `SemanticSnapshot` extraction is the N4 deliverable. Documentation must not claim otherwise.
+N2 has proven PID carrier/storage and clone semantics. N3 has proven runtime-document disambiguation over IPC. N4 now provides authoritative native parent-state snapshots and deterministic document fingerprints. **`expected_parent_fp` is still not enforced on mutation because no native mutation endpoint exists until N5.**
 
 ## 5. Semantic State Loop implementation status
 
@@ -95,50 +108,46 @@ Current implementation coverage is partial:
 - N1: semantic/fingerprint/state-chain primitives exist in Python;
 - N2: persistent PID policy exists and is live-verified;
 - N3: native read-only transport/document binding exists and is live-verified;
-- N4: full native semantic extraction is **not implemented yet**;
-- N5+: native mutation/rollback/state-loop integration is **not implemented yet**.
+- N4: native read-only semantic extraction + parent document fingerprinting is implemented and live-verified;
+- N5+: native mutation/rollback/delta/state-loop integration is **not implemented yet**.
 
-Therefore a current drawing workflow may use structured COM/ezdxf/native identity evidence, but it must **not claim full native Semantic State Loop completion** until N4+ gates are implemented and accepted.
+Therefore a current drawing workflow may now use authoritative native N4 semantic snapshots for the supported scope, but it must **not claim full native Semantic State Loop completion** until N5/N6 mutation, rollback and deterministic delta/state-chain gates are accepted.
 
 ## 6. Verification checkpoint
 
-Current regression/evidence on the N3 closure tree:
+Current regression/evidence on the N4 closure tree:
 
-- focused N3 Python protocol/client/transport: **27 passed**;
-- Linux full Python suite: **141 passed / 4 skipped**;
-- Windows `.171` full Python suite: **140 passed / 5 skipped**;
+- focused N4 snapshot/protocol/client + N1 semantic regression: **58 passed**;
+- Linux full Python suite: **145 passed / 4 skipped**;
+- Windows `.171` full Python suite: **144 passed / 5 skipped**;
 - C# bridge build: **0 errors**;
 - documented unsuppressed build-warning families: `Microsoft.VisualBasic`, `System.Drawing`, `WindowsBase` (`MSB3277`);
 - native N2 P0–P10: PASS;
 - native N3 read-only acceptance: PASS;
-- `compileall`: PASS;
-- `git diff --check`: PASS;
-- Ruff: **UNAVAILABLE in the prepared project environments**, therefore not counted as PASS.
+- native N4 semantic acceptance: **PASS on real AutoCAD 2027 Session 1**;
+- `git diff --check`: PASS.
 
-Final N3 bridge DLL recorded by canonical evidence:
+Final N4 bridge DLL recorded by canonical evidence:
 
 ```text
-SHA-256 55954aabbdaae897935ea97e1a44f3de0e207b9555d8e94a8bd663d3cfb7e70a
+SHA-256 e3402c18370c59e78a5a6586de90797482b64b26e1ba449c939eff869e2da01b
 ```
 
 ## 7. Next development gate
 
-**N4 is the only current N-series implementation frontier.**
+**N5 is the only current N-series implementation frontier.**
 
-N4 must remain read-only and implement authoritative native extraction for at least:
+N5 may now introduce a bounded typed native mutation surface, but every mutation must:
 
-- document identity / units / current space / extents;
-- layers, linetypes and styles;
-- core 2D entities;
-- blocks/references;
-- dimensions and hatches;
-- native metrics / WCS bounds;
-- persistent PIDs;
-- deterministic snapshot serialization suitable for N1 canonical fingerprinting.
+- bind `runtime_document_id` + persistent `document_pid` + `expected_parent_fp`;
+- re-read authoritative N4 parent state before mutation and fail with state drift on mismatch;
+- execute inside one native transaction boundary;
+- use persistent entity PID targeting rather than Handle/ObjectId as semantic identity;
+- reconcile clone-created PIDs before acceptance;
+- abort on deterministic validation failure;
+- independently re-read after commit/abort and prove either `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`.
 
-Acceptance must prove repeated-read stability, no drawing dirtying, save/reopen semantic stability where semantics are unchanged, and COM-vs-.NET parity for supported measurements.
-
-**Do not open a native mutation endpoint in N4.** N5 may start only after N4 provides authoritative parent-state data sufficient to support `expected_parent_fp`, rollback and post-commit integrity gates.
+N5 must not add arbitrary AutoCAD command, AutoLISP, C#, macro or shell execution. N6 semantic delta/state-chain work starts only after N5 native transaction and rollback gates live-pass.
 
 ## 8. Status authority
 

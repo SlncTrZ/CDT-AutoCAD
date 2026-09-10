@@ -1,7 +1,8 @@
-// ReadOnlyBridgeService — N3 fixed read-only operation allowlist executed on AutoCAD Idle.
-// Wing: code | Topic: native-bridge-n3 | Updated: 2026-09-10 10:58
+// ReadOnlyBridgeService — staged read-only operation allowlist executed on AutoCAD Idle.
+// Wing: code | Topic: native-bridge-n4 | Updated: 2026-09-10 13:11
 
-using Autodesk.AutoCAD.ApplicationServices.Core;
+using Autodesk.AutoCAD.ApplicationServices;
+using AcApplication = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace CDT.AutoCAD.Bridge;
 
@@ -10,6 +11,7 @@ internal sealed class ReadOnlyBridgeService
     private readonly Guid _bridgeInstanceId;
     private readonly string _pipeName;
     private readonly DocumentRegistry _documents;
+    private readonly NativeSemanticExtractor _semantic = new();
 
     internal ReadOnlyBridgeService(Guid bridgeInstanceId, string pipeName, DocumentRegistry documents)
     {
@@ -25,9 +27,10 @@ internal sealed class ReadOnlyBridgeService
             "bridge.health" => Health(),
             "bridge.documents.list" => new { documents = _documents.List() },
             "bridge.document.identity" => DocumentIdentity(request),
+            "bridge.document.snapshot" => DocumentSnapshot(request),
             _ => throw new BridgeServiceException(
                 "UNSUPPORTED_OPERATION",
-                "operation is not enabled in N3"
+                "operation is not enabled"
             ),
         };
     }
@@ -50,7 +53,7 @@ internal sealed class ReadOnlyBridgeService
             same_windows_session_only = true,
             mutation_enabled = false,
             document_count = documents.Count,
-            active_document = Application.DocumentManager.MdiActiveDocument?.Name,
+            active_document = AcApplication.DocumentManager.MdiActiveDocument?.Name,
         };
     }
 
@@ -59,6 +62,22 @@ internal sealed class ReadOnlyBridgeService
         DocumentIdentityParams parameters = request.DocumentIdentity
             ?? throw new BridgeServiceException("INVALID_PARAMS", "document identity params are required");
         return _documents.Resolve(parameters.RuntimeDocumentId, parameters.DocumentPid);
+    }
+
+    private object DocumentSnapshot(BridgeRequest request)
+    {
+        DocumentIdentityParams parameters = request.DocumentIdentity
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "document snapshot params are required");
+        Document document = _documents.ResolveDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        string documentPid = DocumentPidReader.Read(document.Database)
+            ?? throw new BridgeServiceException(
+                "DOCUMENT_PID_MISSING",
+                "native semantic snapshot requires persistent document lineage PID metadata"
+            );
+        return _semantic.Extract(document, parameters.RuntimeDocumentId, documentPid);
     }
 }
 

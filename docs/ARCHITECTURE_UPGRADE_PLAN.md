@@ -1,7 +1,7 @@
 # Architecture Upgrade Plan — Native Bridge + Semantic State Loop
 
-> Updated: 2026-09-10 11:56 +07:00
-> Status: IMPLEMENTATION IN PROGRESS · N0–N3 CLOSED · N4 NEXT
+> Updated: 2026-09-10 13:25 +07:00
+> Status: IMPLEMENTATION IN PROGRESS · N0–N4 CLOSED · N5 NEXT
 > Current runtime remains `ezdxf + COM` until migration gates close.
 > Acceptance companion: `docs/NATIVE_BRIDGE_ACCEPTANCE.md`
 
@@ -96,7 +96,7 @@ Gate:
 
 **Status: IMPLEMENTED / GATE PASS — 2026-09-10.**
 
-Implemented under `src/cdt_autocad/semantic/`. Historical N1 closure evidence was `31 passed` focused semantic tests and Windows `.171` full suite `113 passed, 5 skipped`. Those numbers belong to the N1 checkpoint; the current N3-closure regression is Linux `141 passed, 4 skipped`, Windows `.171` `140 passed, 5 skipped`, and focused N3 `27 passed`. See `docs/CURRENT_CHECKPOINT.md`.
+Implemented under `src/cdt_autocad/semantic/`. Historical N1 closure evidence was `31 passed` focused semantic tests and Windows `.171` full suite `113 passed, 5 skipped`. Those numbers belong to the N1 checkpoint; the current N4-closure regression is Linux `145 passed, 4 skipped`, Windows `.171` `144 passed, 5 skipped`, and focused N4/N1 semantic regression `58 passed`. See `docs/CURRENT_CHECKPOINT.md`.
 
 Implement internal typed models for:
 
@@ -194,32 +194,38 @@ Known build debt: three Autodesk product-reference `MSB3277` warning families re
 
 ### N4 — Native semantic extractor
 
-**Status: NEXT / NOT STARTED.** Implement read-only extraction first.
+**Status: CLOSED / LIVE PASS — 2026-09-10.** Canonical evidence: `docs/evidence/n4-native-semantic-2026-09-10.json`.
+
+Read-only `bridge.document.snapshot` is implemented and live-verified on full AutoCAD 2027 Session 1. The native bridge remains mutation-disabled. N4 is intentionally bounded to the active bound document's current space plus referenced block definitions/content, with a 32-object semantic cap; this is not yet a whole-DWG/all-layout extractor.
 
 Baseline semantic families:
 
 - document/units/current space/extents;
 - layers/linetypes/styles;
-- LINE/CIRCLE/ARC/POLYLINE/TEXT;
-- blocks/references;
+- LINE/CIRCLE/ARC/LWPOLYLINE/TEXT/MTEXT;
+- blocks/references, including referenced block definitions and PID-bearing definition content;
 - dimensions/hatches;
 - geometry metrics/bounding boxes;
 - relations/intersections where deterministic;
 - document/entity PIDs;
 - canonical snapshot export.
 
-Gate:
+Gate — **PASS**:
 
 - snapshot stability across repeated reads;
 - save/reopen semantic fingerprint stability where semantics are unchanged;
 - COM vs .NET measurement parity on current supported entities;
-- read-only path cannot mutate drawing.
+- read-only path cannot mutate drawing;
+- persistent entity PID is mandatory and duplicate/missing PID fails closed;
+- native document fingerprint matches the N1 canonical Python fingerprint for the accepted fixture;
+- a saved referenced-block-definition geometry mutation changes `document_fp` while both compared snapshots are clean (`DBMOD=0`), proving definition content participates in parent-state identity;
+- oversized serialized snapshots fail as correlated `RESPONSE_TOO_LARGE` without dirtying the document or killing the bridge.
 
 ### N5 — Native transactional executor + rollback
 
-**Status: NOT STARTED.**
+**Status: NEXT / NOT STARTED.**
 
-Implement typed mutations behind native transactions.
+Implement typed mutations behind native transactions. N5 owns the first authoritative mutation-time `expected_parent_fp` guard: every request must bind runtime document + persistent document PID + expected parent document fingerprint and re-read N4 state before any write.
 
 Start with:
 
@@ -230,7 +236,10 @@ Start with:
 - delete;
 - document-safe transaction scope.
 
-Required rollback behavior:
+Required precondition / rollback behavior:
+
+- reject stale/mismatched `expected_parent_fp` before opening the write transaction;
+- resolve entity targets by persistent semantic PID, not Handle/ObjectId alone;
 
 - R0 transaction abort before commit;
 - R1 verified compensation only where deterministic;
@@ -249,8 +258,8 @@ Gate:
 
 Implement:
 
-- expected-parent fingerprint guard;
 - semantic pre/post diff;
+- state-chain parent continuity and manual-drift detection;
 - allowed-effects enforcement;
 - geometry/style/topology fingerprinting;
 - PID uniqueness checks;
@@ -405,6 +414,6 @@ The architecture documentation may lead implementation; runtime claims must cont
 
 ## 7. Current implementation frontier
 
-**N0, N1, N2 and N3 are complete. Next: N4 — native semantic extractor.**
+**N0, N1, N2, N3 and N4 are complete. Next: N5 — typed native transactional mutation + verified rollback.**
 
-N3 consumes the frozen N1 semantic contract and live-verified N2 document-lineage PID policy without changing clone semantics. The bridge remains staged/internal even after NB0 PASS; current COM/ezdxf remains the supported public migration baseline. N4 must stay read-only and add authoritative native SemanticSnapshot families before N5 may introduce typed mutation transactions. `expected_parent_fp` must not be claimed as enforced until the required native snapshot/fingerprint integration exists.
+N4 now provides authoritative read-only parent SemanticSnapshot data and native↔N1 document fingerprint parity without changing the public backend. The bridge remains staged/internal and current COM/ezdxf remains the supported public migration baseline. N5 may introduce only bounded typed mutation operations, must enforce `expected_parent_fp` before native writes, and must prove transaction abort/rollback by independent N4 read-back. N6 starts only after those N5 gates live-pass.

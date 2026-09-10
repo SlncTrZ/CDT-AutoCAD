@@ -1,5 +1,5 @@
 """Native bridge protocol — bounded typed wire contract shared with the staged .NET bridge.
-Wing: code | Topic: native-bridge-n3 | Updated: 2026-09-10 10:43
+Wing: code | Topic: native-bridge-n4 | Updated: 2026-09-10 12:45
 """
 
 from __future__ import annotations
@@ -7,8 +7,9 @@ from __future__ import annotations
 import json
 import re
 import struct
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, BinaryIO, Mapping
+from typing import Any, BinaryIO
 from uuid import UUID
 
 NATIVE_PROTOCOL_VERSION = "cdt-autocad-native-v1"
@@ -20,6 +21,7 @@ _READ_ONLY_OPERATIONS = frozenset(
         "bridge.health",
         "bridge.documents.list",
         "bridge.document.identity",
+        "bridge.document.snapshot",
     }
 )
 _REQUEST_FIELDS = frozenset({"protocol", "request_id", "operation", "params"})
@@ -95,7 +97,7 @@ class DocumentIdentityParams:
 
 @dataclass(frozen=True)
 class BridgeRequest:
-    """Strict N3 request envelope; only three read-only operations are accepted."""
+    """Strict typed request envelope for the staged native bridge."""
 
     protocol: str
     request_id: str
@@ -120,13 +122,13 @@ class BridgeRequest:
         )
         operation = request.get("operation")
         if not isinstance(operation, str) or operation not in _READ_ONLY_OPERATIONS:
-            raise BridgeProtocolError("UNSUPPORTED_OPERATION", "operation is not enabled in N3")
+            raise BridgeProtocolError("UNSUPPORTED_OPERATION", "operation is not enabled")
         raw_params = _require_mapping(
             request.get("params"),
             code="INVALID_PARAMS",
             field_name="params",
         )
-        if operation == "bridge.document.identity":
+        if operation in {"bridge.document.identity", "bridge.document.snapshot"}:
             params: DocumentIdentityParams | Mapping[str, Any] = DocumentIdentityParams.from_dict(
                 raw_params
             )

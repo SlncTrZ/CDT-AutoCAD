@@ -1,12 +1,12 @@
 # Native Bridge + Semantic Integrity Acceptance
 
-> Updated: 2026-09-10 11:56 +07:00
-> Status: N3/NB0 LIVE PASS · NB1 NEXT/OPEN · NB2 storage/policy PASS · NB3 core primitives PASS/native integration OPEN · NB4–NB10 OPEN
+> Updated: 2026-09-10 13:25 +07:00
+> Status: N3/NB0 LIVE PASS · N4/NB1 LIVE PASS · NB2 storage/policy PASS · NB3 N1 primitives + N4 document-fingerprint integration PASS · NB4–NB10 OPEN
 > Target: AutoCAD 2027 full / Windows x64 / Managed .NET
 
 ## 1. Purpose
 
-This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0 has already live-passed; NB1 and later gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
+This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0 and N4/NB1 have live-passed; native mutation and later integrity gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
 
 The upgrade is not accepted unless both core pillars are proven under fault injection:
 
@@ -30,7 +30,27 @@ Measured properties:
 - read-only bridge calls leave tested drawings at `DBMOD=0`;
 - public MCP contract remains 50 tools and current COM/ezdxf remains the supported migration baseline.
 
-This closes **N3 and NB0 only** plus the document-identity/non-dirtying subset needed to start N4. It does **not** close NB1 full semantic extraction, NB3 fingerprints, NB4+ rollback/state-chain integration, or any native mutation capability. The three existing Autodesk product-reference `MSB3277` warning families are documented rather than suppressed; native build is 0 errors and live runtime acceptance passes.
+This closes **N3 and NB0 only** plus the document-identity/non-dirtying subset needed to start N4. It does **not** retroactively claim N4/NB1, NB4+ rollback/state-chain integration, or any native mutation capability. The three existing Autodesk product-reference `MSB3277` warning families are documented rather than suppressed; native build is 0 errors and live runtime acceptance passes.
+
+### N4.0 measured checkpoint — LIVE PASS (2026-09-10)
+
+N4 adds the read-only `bridge.document.snapshot` operation and live-verifies authoritative native semantic extraction on full AutoCAD 2027 in interactive Session 1. Canonical evidence: `docs/evidence/n4-native-semantic-2026-09-10.json`. The accepted scope is intentionally bounded to the active document's current space plus referenced block definitions/content, with a 32-object semantic cap; it is not a whole-DWG/all-layout extractor yet.
+
+Measured properties:
+
+- bound-document snapshot extraction runs through native AutoCAD Database `ForRead` access on `Application.Idle`;
+- every extracted managed entity requires the persistent N2 semantic PID; missing or duplicate PIDs fail closed;
+- live fixture covers LINE, CIRCLE, ARC, LWPOLYLINE, TEXT, MTEXT, INSERT, BLOCK_DEFINITION, DIMENSION and HATCH plus layer/linetype/text-style/dimension-style resources;
+- referenced block definitions and their PID-bearing contents are fingerprinted recursively with a visited-definition guard; a saved block-definition geometry mutation changes the document fingerprint even when both compared snapshots have `DBMOD=0`;
+- native WCS extents and representative native metrics match COM observations;
+- repeated native snapshots produce the same document fingerprint and do not change `DBMOD`;
+- save/close/reopen changes runtime document binding but preserves persistent document PID and semantic document fingerprint;
+- native document fingerprint matches the N1 canonical Python fingerprint for the accepted snapshot;
+- bridge protocol/frame/security boundary remains unchanged and `mutation_enabled=false`;
+- a real 80,000-character MText proves oversized snapshot responses fail as correlated `RESPONSE_TOO_LARGE` instead of ending the pipe; the bridge remains alive and the read attempt preserves `DBMOD`;
+- Linux regression is 145 PASS / 4 SKIP; Windows `.171` regression is 144 PASS / 5 SKIP; native build is 0 errors with the same three unsuppressed `MSB3277` warning families.
+
+This closes **N4/NB1** and the native document-fingerprint integration required to make authoritative parent-state data available to N5. It does **not** enforce `expected_parent_fp` on mutation, because N4 exposes no mutation endpoint.
 
 ## 2. Gate families
 
@@ -44,7 +64,7 @@ Prove:
 - malformed/oversized/unauthorized requests fail closed;
 - no endpoint accepts arbitrary C#, AutoLISP, shell, macro or free-text AutoCAD command execution.
 
-### NB1 — Read-only semantic extraction — **NEXT / OPEN (N4)**
+### NB1 — Read-only semantic extraction — **PASS (N4)**
 
 Prove repeated reads are stable for:
 
@@ -58,6 +78,8 @@ Prove repeated reads are stable for:
 - relations/intersections where implemented.
 
 Read-only extraction must not dirty or mutate the drawing.
+
+**N4 result:** PASS for the supported N4 scope. Repeated read stability, persistent PID binding, resource/entity extraction, referenced-block-definition sensitivity, COM metric parity, `DBMOD` stability, typed oversized-response failure and save/reopen fingerprint stability are recorded in the N4 canonical evidence.
 
 ### NB2 — Persistent identity / PID — **N2 STORAGE/POLICY PASS · FULL NATIVE INTEGRATION OPEN**
 
@@ -78,7 +100,7 @@ Prove on real DWG:
 
 AutoCAD `ObjectId` is not accepted as persistent identity. Native Handle may assist lookup but is not sufficient by itself.
 
-### NB3 — Canonical fingerprints — **N1 PRIMITIVES PASS · NATIVE SNAPSHOT INTEGRATION OPEN**
+### NB3 — Canonical fingerprints — **N1 PRIMITIVES PASS · N4 NATIVE DOCUMENT-FP INTEGRATION PASS · MUTATION/STATE-CHAIN USE OPEN**
 
 Golden tests must prove deterministic:
 
@@ -88,6 +110,8 @@ Golden tests must prove deterministic:
 - instance fingerprint;
 - scope/document fingerprint;
 - step/state-chain fingerprint.
+
+N4 additionally proves native document-snapshot fingerprint parity with the N1 canonical engine for the accepted live fixture. Geometry/style/instance fingerprint primitives remain owned by N1; N5/N6 must prove their use across mutation, rollback, semantic delta and state-chain transitions.
 
 Required adversarial cases:
 

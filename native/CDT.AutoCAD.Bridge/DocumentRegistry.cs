@@ -1,5 +1,5 @@
-// DocumentRegistry — bridge-instance runtime IDs for currently open AutoCAD Documents.
-// Wing: code | Topic: native-bridge-n3 | Updated: 2026-09-10 10:58
+// DocumentRegistry — bridge-instance runtime IDs and bound native Document resolution.
+// Wing: code | Topic: native-bridge-n4 | Updated: 2026-09-10 13:09
 
 using Autodesk.AutoCAD.ApplicationServices;
 using AcApplication = Autodesk.AutoCAD.ApplicationServices.Core.Application;
@@ -62,6 +62,39 @@ internal sealed class DocumentRegistry
             );
         }
         return identity;
+    }
+
+    internal Document ResolveDocument(Guid runtimeDocumentId, string? assertedDocumentPid)
+    {
+        Refresh();
+        Document? document = _byDocument
+            .Where(item => item.Value == runtimeDocumentId)
+            .Select(item => item.Key)
+            .FirstOrDefault();
+        if (document is null)
+        {
+            throw new BridgeServiceException(
+                "DOCUMENT_NOT_FOUND",
+                "runtime document binding is no longer present"
+            );
+        }
+        string? documentPid = DocumentPidReader.Read(document.Database);
+        if (string.IsNullOrWhiteSpace(documentPid))
+        {
+            throw new BridgeServiceException(
+                "DOCUMENT_PID_MISSING",
+                "native semantic operations require persistent document lineage PID metadata"
+            );
+        }
+        if (assertedDocumentPid is not null
+            && !string.Equals(assertedDocumentPid, documentPid, StringComparison.Ordinal))
+        {
+            throw new BridgeServiceException(
+                "DOCUMENT_BINDING_MISMATCH",
+                "document lineage assertion does not match the runtime document"
+            );
+        }
+        return document;
     }
 
     private void Refresh()

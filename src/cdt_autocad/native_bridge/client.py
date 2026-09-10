@@ -1,5 +1,5 @@
-"""Native bridge client — staged Python-side request/correlation layer for N3.
-Wing: code | Topic: native-bridge-n3 | Updated: 2026-09-10 10:52
+"""Native bridge client — staged Python-side request/correlation and semantic adapter layer.
+Wing: code | Topic: native-bridge-n4 | Updated: 2026-09-10 12:46
 """
 
 from __future__ import annotations
@@ -9,11 +9,15 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import uuid4
 
+from cdt_autocad.semantic.models import SemanticSnapshot
+
 from .protocol import (
     NATIVE_PROTOCOL_VERSION,
+    BridgeProtocolError,
     BridgeRequest,
     DocumentIdentityParams,
 )
+from .semantic import parse_native_snapshot
 
 
 class BridgeTransport(Protocol):
@@ -73,6 +77,27 @@ class NativeBridgeClient:
             }
         )
         return self._request("bridge.document.identity", params.to_dict())
+
+    def document_snapshot(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str | None = None,
+        verify_fingerprint: bool = True,
+    ) -> SemanticSnapshot:
+        """Read one authoritative native snapshot and verify N1 fingerprint compatibility."""
+
+        params = DocumentIdentityParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                **({"document_pid": document_pid} if document_pid is not None else {}),
+            }
+        )
+        result = self._request("bridge.document.snapshot", params.to_dict())
+        try:
+            return parse_native_snapshot(result, verify_fingerprint=verify_fingerprint)
+        except BridgeProtocolError as exc:
+            raise BridgeClientProtocolError(exc.code, exc.safe_message) from exc
 
     def _request(self, operation: str, params: Mapping[str, Any]) -> dict[str, Any]:
         request_id = self.request_id_factory()

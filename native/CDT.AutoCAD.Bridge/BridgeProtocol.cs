@@ -1,5 +1,5 @@
-// BridgeProtocol — strict bounded N3 request/response JSON contract.
-// Wing: code | Topic: native-bridge-n3 | Updated: 2026-09-10 10:58
+// BridgeProtocol — strict bounded staged native request/response JSON contract.
+// Wing: code | Topic: native-bridge-n4 | Updated: 2026-09-10 13:10
 
 using System.Text;
 using System.Text.Json;
@@ -75,6 +75,7 @@ internal static class BridgeProtocol
         "bridge.health",
         "bridge.documents.list",
         "bridge.document.identity",
+        "bridge.document.snapshot",
     };
 
     private static readonly HashSet<string> EnvelopeFields = new(StringComparer.Ordinal)
@@ -162,13 +163,14 @@ internal static class BridgeProtocol
             {
                 throw new BridgeProtocolException(
                     "UNSUPPORTED_OPERATION",
-                    "operation is not enabled in N3",
+                    "operation is not enabled",
                     requestId
                 );
             }
 
             JsonElement parameters = RequireObject(root, "params", "INVALID_PARAMS", requestId);
-            if (!string.Equals(operation, "bridge.document.identity", StringComparison.Ordinal))
+            if (!string.Equals(operation, "bridge.document.identity", StringComparison.Ordinal)
+                && !string.Equals(operation, "bridge.document.snapshot", StringComparison.Ordinal))
             {
                 if (parameters.EnumerateObject().Any())
                 {
@@ -283,7 +285,7 @@ internal static class BridgeProtocol
         {
             throw new BridgeProtocolException(
                 code,
-                "document identity params contain unknown fields",
+                "document binding params contain unknown fields",
                 requestId
             );
         }
