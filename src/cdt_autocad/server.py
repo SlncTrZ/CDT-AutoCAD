@@ -21,6 +21,7 @@ from .backends.base import AutoCADBackend
 from .backends.com_backend import ComBackend
 from .backends.ezdxf_backend import EzdxfBackend
 from .config import Settings
+from .diagnostics import DiagnosticSink, ProviderDiagnosticMiddleware
 from .errors import (
     BackendQuarantinedError,
     BackendTimeoutError,
@@ -126,7 +127,11 @@ class ProviderErrorMiddleware(Middleware):
             return ToolResult(content=message, structured_content=payload, is_error=True)
 
 
-def create_mcp(settings: Settings | None = None) -> FastMCP:
+def create_mcp(
+    settings: Settings | None = None,
+    *,
+    diagnostic_sink: DiagnosticSink | None = None,
+) -> FastMCP:
     settings = settings or Settings.from_env()
     backend: AutoCADBackend
     if settings.backend == "com":
@@ -152,6 +157,13 @@ def create_mcp(settings: Settings | None = None) -> FastMCP:
             "backend-specific features. The ezdxf backend is headless/DXF-first; the COM backend "
             "controls a live Windows AutoCAD session and supports native DWG when available."
         ),
+    )
+    app.add_middleware(
+        ProviderDiagnosticMiddleware(
+            backend_name=backend.name,
+            provider_version=__version__,
+            sink=diagnostic_sink,
+        )
     )
     app.add_middleware(ProviderErrorMiddleware(backend))
 

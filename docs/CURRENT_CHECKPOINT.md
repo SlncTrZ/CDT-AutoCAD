@@ -1,9 +1,9 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-10 +07:00
-> Status: **N0–N6 CLOSED · O1 CLOSED / LIVE PASS · N7 IN PROGRESS / NOT CLOSED**
+> Updated: 2026-09-11 +07:00
+> Status: **MP0-T00 CLOSED / PASS · A-01 NEXT · N0–N6 CLOSED · O1 CLOSED / LIVE PASS · N7 PRESERVED / NOT CLOSED**
 > Accepted implementation baseline: `04ff820` (`Feat: expand native typed shape mutations`)
-> Working implementation checkpoint: N7 two-phase native commit integrity + R0/R1/R2 recovery; uncommitted implementation tree
+> Working implementation checkpoint: N7 two-phase native commit integrity + R0/R1/R2 recovery remains uncommitted and preserved; Master Plan ordering is MP0-T00 → A-01 → A-02 → A-03 → resume N7
 > Primary native target: AutoCAD 2027 full · Windows x64 · COM `26.0` · Managed .NET `net10.0-windows`
 
 ## 1. Public runtime
@@ -24,6 +24,7 @@ The N-series Managed .NET bridge is **not yet the public provider backend**.
 
 | Phase | State | What is proven |
 | --- | --- | --- |
+| MP0-T00 | **CLOSED / PASS** | platform-specific PEP 751 dependency locks from one canonical resolver workflow; source/build/DLL/runtime provenance; baseline threat model; structured request diagnostics/correlation with telemetry separated from recovery journal truth |
 | N0 | **CLOSED** | architecture/documentation freeze and migration boundary |
 | N1 | **CLOSED / PASS** | Python semantic models, canonicalization/fingerprint primitives, rollback receipts and state-chain primitives |
 | N2 | **CLOSED / LIVE PASS** | persistent document/entity PID carrier and clone/reconciliation policy on real AutoCAD 2027, P0–P10 |
@@ -163,6 +164,20 @@ Therefore the accepted staged native executor still covers four basic 2D familie
 
 ## 6. Verification checkpoint
 
+MP0-T00 closure evidence on isolated clean gates derived from `1957ad8` and containing no N7 dirty files:
+
+- canonical resolver: pip `26.1.2` `pip lock`, PEP 751 platform locks;
+- `pylock.linux.toml`: 88 locked packages, SHA-256 `e7fe668b159c56233be4d008600fe80dd0778689a58b48ab55cecc670c45bf06`;
+- `pylock.windows.toml`: 89 locked packages, SHA-256 `acbbc28bc07d26c2e07c76ab5d24f2e474945ba10cc14a0c9e94cca29867869e`;
+- canonical lock generator normalizes platform output to LF and has an explicit newline-regression test;
+- clean Linux locked environment + full suite: **204 passed / 4 skipped**;
+- clean Windows `.171` locked environment + full suite: **203 passed / 5 skipped** with AutoCAD 2027 running in Session 1;
+- changed-file Ruff on Linux and Windows: PASS; compileall on Linux and Windows: PASS; `git diff --check` on both clean gates: PASS;
+- clean-baseline full-tree Ruff with locked `ruff 0.16.7` reports **12 pre-existing findings outside MP0-T00 scope**; they remain separate lint debt and were not opportunistically refactored;
+- structured MCP diagnostics: correlated start/completion events PASS; injected telemetry-sink failure does not fail the tool call; existing N6 journal-failure test remains fail-closed as `JOURNAL_FAILED`;
+- canonical MP0 evidence: `docs/evidence/mp0-t00-baseline-2026-09-11.json`, with Linux/Windows runtime manifests beside it;
+- observed installed `.171` bridge DLL SHA-256 remains `8f3c28b7f765c1420afaeafc9f54f726e5c24306de6a852ea3f38758158b3767`; MP0 records it as **OBSERVED_ONLY**, not as a newly certified native artifact.
+
 Accepted regression/evidence on the O1 closure tree:
 
 - focused O1/N5/N6 native-protocol + semantic regression: **76 passed**;
@@ -196,7 +211,9 @@ SHA-256 4ad2d4138d6e71a8fa91281ea5482c592e2a0c04cb5d41ec5f2452b7cff31484
 
 ## 7. Current boundary / next activity
 
-**N7 is open and IN PROGRESS.** The immediate blocker is R2 document replacement safety: the bridge must not close/replace an active AutoCAD document from an unsafe application-context callback. The next implementation slice must switch activation safely, close only inactive documents, reopen the restored original, rebind runtime identity, and independently prove `document_pid + document_fp` before returning `ROLLED_BACK_VERIFIED`.
+Master Plan execution order is now authoritative: **MP0-T00 is CLOSED/PASS; next is A-01, then A-02, then A-03, and only then resume N7.** The existing N7 working tree is intentionally preserved unchanged while the public-safety fixes execute in front of it.
+
+**N7 remains open / NOT CLOSED.** Its immediate recovery blocker is R2 document replacement safety: the bridge must not close/replace an active AutoCAD document from an unsafe application-context callback. When N7 resumes after A-03, the next recovery slice must switch activation safely, close only inactive documents, reopen the restored original, rebind runtime identity, and independently prove `document_pid + document_fp` before returning `ROLLED_BACK_VERIFIED`.
 
 Detailed unfinished-N7 handoff: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
 
