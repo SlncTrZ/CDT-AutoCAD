@@ -2,8 +2,8 @@
 
 > Updated: 2026-09-11 11:10 +07:00
 > Status: **MP0-T00 CLOSED / PASS · A-01 CLOSED / PASS · A-02 CLOSED / LIVE PASS · A-03+A-06 CLOSED / PASS · N0–N7 CLOSED · O1 CLOSED / LIVE PASS · MP-2 HOT RELOAD CLOSED / LIVE PASS**
-> Accepted implementation baseline before MP-2 closure commit: `7304687` (`Feat: close N7 native recovery lifecycle`)
-> Working implementation checkpoint: **MP-2 Python MCP/provider hot reload CLOSED / LIVE PASS** on top of `7304687`; canonical evidence is `docs/evidence/mp2-hot-reload-2026-09-11.json` and the public 50-tool contract remains unchanged
+> Accepted implementation baseline: `9224fb0` (`Feat: close MP-2 hot reload runtime`)
+> Working architecture checkpoint: **ADR-002 ACCEPTED — CDT-AutoCAD remains a Generic CAD Execution Engine; domain standards/business logic/audit reporting stay in external Domain Agents.** Next program: G1 Generic Batch Geometry → G2 Schema-Agnostic Metadata → G3 Chunked Logical Atomicity; no G-series implementation is claimed yet.
 > Primary native target: AutoCAD 2027 full · Windows x64 · COM `26.0` · Managed .NET `net10.0-windows`
 
 ## 1. Public runtime
@@ -38,6 +38,9 @@ The N-series Managed .NET bridge is **not yet the public provider backend**.
 | O1 | **CLOSED / LIVE PASS** | internal typed CIRCLE/ARC/simple-LWPOLYLINE create/update/delete added to the N5/N6 parent-PID-transaction-semantic-chain foundation |
 | N7 | **CLOSED / LIVE PASS** | two-phase native commit integrity, immutable checkpoint manifests/artifact hashes, R0/R1/R2 recovery, executor R1→R2 cascade, restart-persisted recovery and activation-safe R2 document replacement/rebinding all passed on real AutoCAD 2027 Session 1 |
 | MP-2 | **CLOSED / LIVE PASS** | stable authenticated ASGI supervisor, replaceable stateless FastMCP workers, generation fencing/drain/fallback, protocol/contract-hash + runtime generation/build/policy identity, bounded native-bridge readiness probe and source watcher; focused `41 passed`, Linux `254/5`, Windows `.171` `253/6`, process `20` success + `10` injected failure PASS, AutoCAD 2027 Session 1 COM + required bridge `2` success + `1` failure PASS, TaskScheduler result `0`, zero worker orphans |
+| G1 | **PLANNED / NOT STARTED** | generic typed batch geometry (`batch_create_entities`, transforms, block insertion) with bounded chunking and UI-blocking measurements; no domain concepts |
+| G2 | **PLANNED / NOT STARTED** | schema-agnostic namespaced JSON metadata get/set/query over Extension Dictionary/XRecord with reserved provider-state isolation and bounded query/storage work |
+| G3 | **PLANNED / NOT STARTED** | logical all-or-nothing batch outcome across bounded native chunks using checkpoint/journal/compensation plus exact predecessor fingerprint proof |
 | N8 | **NOT STARTED** | formal incremental COM-to-.NET/public operation migration |
 | N9 | **NOT STARTED** | semantic drawing-workflow migration |
 | N10 | **NOT STARTED** | explicit public contract/promotion decision |
@@ -264,7 +267,7 @@ Final MP-2 evidence: focused `41 passed`; Linux full `254 passed / 5 skipped`; W
 
 Historical MP-2 implementation handoff: `docs/SESSION_HANDOFF_2026-09-11_MP2_HOT_RELOAD.md`; canonical MP-2 closure evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`. Historical N7 handoff/incident record: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`; canonical N7 closure evidence: `docs/evidence/n7-native-recovery-2026-09-11.json`.
 
-Future operation-family work must still keep bounded typed contracts, TDD, native build, AutoCAD Session 1 acceptance, semantic-chain evidence, review and separate commits. TEXT/MTEXT, ELLIPSE/SPLINE, BLOCK/DIM/HATCH and later families remain future work until explicitly implemented and accepted.
+The next approved engineering program is defined by `docs/ADR-002-GENERIC-CAD-EXECUTION-ENGINE.md`: **G1 Generic Batch Geometry → G2 Schema-Agnostic Metadata → G3 Chunked Logical Atomicity**, followed by measured graduation at `100 → 1,000 → 5,000 → 10,000` entities. CDT-AutoCAD must stay domain-agnostic: TCVN/ISO/ASME/customer rules, engineering calculations and audit/report logic belong to external Domain Agents. G-series work must preserve bounded typed contracts, TDD, native build, AutoCAD Session 1 acceptance, semantic-chain/recovery evidence, review and separate commits. Public contract changes remain separately gated.
 
 ## 8. Status authority
 

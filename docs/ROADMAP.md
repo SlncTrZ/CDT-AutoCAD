@@ -486,7 +486,20 @@ Final MP-2 evidence: focused `41 passed`; process-level `20` successful source r
 
 Canonical closure evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`. Historical implementation handoff: `docs/SESSION_HANDOFF_2026-09-11_MP2_HOT_RELOAD.md`.
 
-Any further native operation-family expansion should remain one bounded family at a time with its own typed contract, TDD, AutoCAD Session 1 acceptance, COM parity where relevant, semantic-chain evidence and separate commit. Candidate future order remains TEXT/MTEXT → ELLIPSE/SPLINE → BLOCK/DIM/HATCH. Journal resume, topology extraction and formal N8/public migration remain separately gated work. Existing Autodesk-reference warning debt and pre-existing repository lint debt remain tracked separately.
+### Generic CAD Execution Engine program
+
+ADR-002 fixes the Separation-of-Concerns boundary: CDT-AutoCAD is a **Generic CAD Execution Engine**. TCVN/ISO/ASME/customer rules, engineering calculations, domain constraint logic and audit/report generation belong to external Domain Agents and must not be embedded in the MCP provider or C# bridge.
+
+The approved sequence before later migration/promotion work is:
+
+1. **G1 — Generic Batch Geometry:** typed `batch_create_entities`, generic transforms and block insertion using bounded chunks/yields; measure UI blocking rather than only total throughput.
+2. **G2 — Schema-Agnostic Metadata:** bounded namespaced JSON `get/set/query` over Extension Dictionary/XRecord; provider PID/recovery namespaces remain reserved and inaccessible through arbitrary metadata writes.
+3. **G3 — Chunked Logical Atomicity:** multi-chunk logical `COMMITTED_VERIFIED` or exact `ROLLED_BACK_VERIFIED` outcome using checkpoint/journal/compensation and predecessor fingerprint proof; uncertainty blocks later mutation.
+4. **Scale graduation:** `100 → 1,000 → 5,000 → 10,000` entities with correctness, injected failure and scalability evidence at each tier.
+
+G3 is semantic/logical atomicity across bounded native transactions, not one giant AutoCAD `DocumentLock + Transaction`. If later requirements demand that intermediate state never appear in the live DWG, that is a separate off-document/staging Database capability and must be designed/accepted independently.
+
+G1/G2/G3 implementation does not automatically change the public 50-tool contract. Each phase needs TDD, native build, real AutoCAD 2027 Interactive Session 1 acceptance, evidence, review and a separate commit. Formal N8/public migration remains separately gated. Existing Autodesk-reference warning debt and repository lint-tool availability remain tracked separately.
 
 See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared
 runtime from this lane; reusable infrastructure still requires Rule-of-Two cross-provider evidence.

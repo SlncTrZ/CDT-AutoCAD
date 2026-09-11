@@ -475,4 +475,19 @@ The accepted staged native executor is now `0.5.0-n7` for the bounded LINE, CIRC
 
 MP-2 now provides a stable authenticated ASGI supervisor over replaceable stateless FastMCP workers, source/build generation identity, protocol/contract-hash promotion validation, request fence/drain, last-healthy fallback, frozen policy identity and bounded native-bridge readiness probing. Final measured gates: focused `41 passed`; Linux full `254 passed / 5 skipped`; Windows `.171` full `253 passed / 6 skipped`; process-level `20` successful source reloads + `10` injected startup failures PASS; Windows AutoCAD 2027 Interactive Session 1 COM + required native bridge `2` success + `1` injected failure PASS with TaskScheduler result `0` and zero post-run worker orphans. Canonical evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`.
 
-Control-plane files `hot_reload.py` and `supervisor.py` are intentionally outside worker source identity and require supervisor restart when changed. Future operation-family expansion may proceed only as separately bounded and accepted work; TEXT/MTEXT, ELLIPSE/SPLINE, BLOCK/DIM/HATCH remain open until explicitly implemented and accepted.
+Control-plane files `hot_reload.py` and `supervisor.py` are intentionally outside worker source identity and require supervisor restart when changed.
+
+### 7.1 ADR-002 Generic CAD Execution Engine boundary
+
+The next architecture program is governed by `docs/ADR-002-GENERIC-CAD-EXECUTION-ENGINE.md`. CDT-AutoCAD remains domain-agnostic: standards such as TCVN/ISO/ASME, engineering calculations, discipline-specific constraint logic and audit/report generation are owned by external Domain Agents. The provider and C# bridge own only generic CAD execution, identity, bounded storage/query, transaction/recovery and AutoCAD lifecycle invariants.
+
+The approved implementation sequence is:
+
+- **G1 Generic Batch Geometry** — typed batch creation, generic transforms and block insertion with bounded chunking/yield so >1,000-entity work does not become one unbounded UI-blocking native transaction;
+- **G2 Schema-Agnostic Metadata** — namespaced canonical JSON get/set/query over Extension Dictionary/XRecord, with provider-owned PID/recovery namespaces reserved and generic storage/query work strictly bounded;
+- **G3 Chunked Logical Atomicity** — a logical batch is accepted only as `COMMITTED_VERIFIED`; any failed chunk triggers reverse compensation and exact predecessor read-back/fingerprint proof for `ROLLED_BACK_VERIFIED`; unverifiable recovery blocks later mutation as uncertain state;
+- **graduation ladder** — 100, 1,000, 5,000 and 10,000 entities, measuring correctness, injected failures, longest continuous UI-blocked interval, total latency, memory, recovery latency, modal/busy behavior and process leaks.
+
+G3 explicitly does not keep one AutoCAD `DocumentLock + Transaction` open across thousands of entities. Intermediate chunk state may temporarily exist in the live DWG until the logical operation reaches final verification or verified compensation. A requirement for invisible intermediate state would require a separate staging/off-document Database architecture.
+
+G-series implementation does not automatically publish tools or promote the native bridge. Public contract/version/routing changes remain N8/N10 decisions after live native acceptance. Future individual entity-family expansion remains separately bounded; no family or scale tier inherits certification from another automatically.
