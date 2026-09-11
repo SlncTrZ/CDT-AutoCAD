@@ -17,6 +17,7 @@ NATIVE_PROTOCOL_VERSION = "cdt-autocad-native-v1"
 MAX_FRAME_BYTES = 65_536
 MAX_ERROR_MESSAGE_CHARS = 512
 MAX_SIMPLE_POLYLINE_VERTICES = 128
+MAX_BATCH_CHUNK_ENTITIES = 32
 
 _READ_ONLY_OPERATIONS = frozenset(
     {
@@ -29,6 +30,9 @@ _READ_ONLY_OPERATIONS = frozenset(
 )
 _MUTATION_OPERATIONS = frozenset(
     {
+        "entity.batch.create",
+        "entity.batch.insert_blocks",
+        "entity.batch.transform",
         "entity.create.line",
         "entity.update.line",
         "entity.delete.line",
@@ -58,6 +62,7 @@ _MUTATION_BINDING_FIELDS = frozenset(
 _FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ERROR_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _CHECKPOINT_ID_RE = re.compile(r"^cp:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+_ENTITY_PID_RE = re.compile(r"^pid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 _FAULT_STAGES = frozenset(
     {
         "after_apply_before_commit",
@@ -302,6 +307,12 @@ def _arc_angle(value: Any, field_name: str) -> float:
     return result
 
 
+def _canonical_entity_pid(value: Any) -> str:
+    if not isinstance(value, str) or _ENTITY_PID_RE.fullmatch(value) is None:
+        raise BridgeProtocolError("INVALID_PARAMS", "semantic_pids must contain canonical pid:<uuid> values")
+    return value
+
+
 def _points2(value: Any) -> tuple[tuple[float, float], ...]:
     if not isinstance(value, list | tuple):
         raise BridgeProtocolError("INVALID_PARAMS", "points must be an array of [x, y] pairs")
@@ -323,6 +334,343 @@ def _points2(value: Any) -> tuple[tuple[float, float], ...]:
             raise BridgeProtocolError("INVALID_PARAMS", "consecutive polyline points must differ")
         points.append(point)
     return tuple(points)
+
+
+@dataclass(frozen=True)
+class BatchCreateEntitySpec:
+    """One generic create-only CAD primitive inside a bounded native batch chunk."""
+
+    kind: str
+    start: tuple[float, float, float] | None = None
+    end: tuple[float, float, float] | None = None
+    center: tuple[float, float, float] | None = None
+    radius: float | None = None
+    start_angle: float | None = None
+    end_angle: float | None = None
+    points: tuple[tuple[float, float], ...] | None = None
+    closed: bool | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> BatchCreateEntitySpec:
+        item = _require_mapping(value, code="INVALID_PARAMS", field_name="batch entity")
+        kind = item.get("kind")
+        if kind == "line":
+            if set(item) != {"kind", "start", "end"}:
+                raise BridgeProtocolError("INVALID_PARAMS", "batch line must use the exact typed schema")
+            start = _point3(item.get("start"), "start")
+            end = _point3(item.get("end"), "end")
+            if start == end:
+                raise BridgeProtocolError("INVALID_PARAMS", "line start and end must differ")
+            return cls(kind="line", start=start, end=end)
+        if kind == "circle":
+            if set(item) != {"kind", "center", "radius"}:
+                raise BridgeProtocolError("INVALID_PARAMS", "batch circle must use the exact typed schema")
+            return cls(
+                kind="circle",
+                center=_point3(item.get("center"), "center"),
+                radius=_positive_float(item.get("radius"), "radius"),
+            )
+        if kind == "arc":
+            if set(item) != {"kind", "center", "radius", "start_angle", "end_angle"}:
+                raise BridgeProtocolError("INVALID_PARAMS", "batch arc must use the exact typed schema")
+            start_angle = _arc_angle(item.get("start_angle"), "start_angle")
+            end_angle = _arc_angle(item.get("end_angle"), "end_angle")
+            if abs(start_angle - end_angle) <= 1e-12:
+                raise BridgeProtocolError("INVALID_PARAMS", "arc start_angle and end_angle must differ")
+            return cls(
+                kind="arc",
+                center=_point3(item.get("center"), "center"),
+                radius=_positive_float(item.get("radius"), "radius"),
+                start_angle=start_angle,
+                end_angle=end_angle,
+            )
+        if kind == "lwpolyline":
+            if set(item) != {"kind", "points", "closed"}:
+                raise BridgeProtocolError(
+                    "INVALID_PARAMS", "batch lwpolyline must use the exact typed schema"
+                )
+            points = _points2(item.get("points"))
+            closed = item.get("closed")
+            if not isinstance(closed, bool):
+                raise BridgeProtocolError("INVALID_PARAMS", "closed must be a boolean")
+            if closed and (len(points) < 3 or points[0] == points[-1]):
+                raise BridgeProtocolError(
+                    "INVALID_PARAMS",
+                    "closed polyline requires at least three vertices and must not repeat the first point",
+                )
+            return cls(kind="lwpolyline", points=points, closed=closed)
+        raise BridgeProtocolError("INVALID_PARAMS", "batch entity kind is not enabled")
+
+    def to_dict(self) -> dict[str, Any]:
+        if self.kind == "line":
+            return {"kind": self.kind, "start": list(self.start or ()), "end": list(self.end or ())}
+        if self.kind == "circle":
+            return {"kind": self.kind, "center": list(self.center or ()), "radius": self.radius}
+        if self.kind == "arc":
+            return {
+                "kind": self.kind,
+                "center": list(self.center or ()),
+                "radius": self.radius,
+                "start_angle": self.start_angle,
+                "end_angle": self.end_angle,
+            }
+        return {
+            "kind": self.kind,
+            "points": [list(point) for point in self.points or ()],
+            "closed": self.closed,
+        }
+
+
+@dataclass(frozen=True)
+class BatchCreateParams:
+    runtime_document_id: str
+    document_pid: str
+    expected_parent_fp: str
+    entities: tuple[BatchCreateEntitySpec, ...]
+    fault_stage: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> BatchCreateParams:
+        allowed = _MUTATION_BINDING_FIELDS | {"entities"}
+        runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
+        if fault_stage is not None and fault_stage != "after_apply_before_commit":
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                "batch create only enables the pre-commit fault stage",
+            )
+        raw_entities = value.get("entities")
+        if not isinstance(raw_entities, list | tuple) or not 1 <= len(raw_entities) <= MAX_BATCH_CHUNK_ENTITIES:
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                f"entities must contain 1..{MAX_BATCH_CHUNK_ENTITIES} typed primitives",
+            )
+        entities = tuple(
+            BatchCreateEntitySpec.from_dict(
+                _require_mapping(item, code="INVALID_PARAMS", field_name="batch entity")
+            )
+            for item in raw_entities
+        )
+        return cls(runtime_id, document_pid, parent_fp, entities, fault_stage)
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "expected_parent_fp": self.expected_parent_fp,
+            "entities": [item.to_dict() for item in self.entities],
+        }
+        if self.fault_stage is not None:
+            result["fault_stage"] = self.fault_stage
+        return result
+
+
+@dataclass(frozen=True)
+class BatchTransformSpec:
+    """One bounded planar transform that preserves the staged G1 entity families."""
+
+    kind: str
+    delta: tuple[float, float, float] | None = None
+    center: tuple[float, float, float] | None = None
+    angle: float | None = None
+    factor: float | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> BatchTransformSpec:
+        item = _require_mapping(value, code="INVALID_PARAMS", field_name="transform")
+        kind = item.get("kind")
+        if kind == "translate":
+            if set(item) != {"kind", "delta"}:
+                raise BridgeProtocolError("INVALID_PARAMS", "translate transform must use the exact typed schema")
+            delta = _point3(item.get("delta"), "delta")
+            if delta[2] != 0.0 or (delta[0] == 0.0 and delta[1] == 0.0):
+                raise BridgeProtocolError(
+                    "INVALID_PARAMS",
+                    "translate must be a non-zero planar XY displacement with z=0",
+                )
+            return cls(kind=kind, delta=delta)
+        if kind == "rotate_z":
+            if set(item) != {"kind", "center", "angle"}:
+                raise BridgeProtocolError("INVALID_PARAMS", "rotate_z transform must use the exact typed schema")
+            center = _point3(item.get("center"), "center")
+            angle = item.get("angle")
+            if (
+                center[2] != 0.0
+                or isinstance(angle, bool)
+                or not isinstance(angle, int | float)
+                or not math.isfinite(float(angle))
+                or abs(float(angle)) <= 1e-12
+                or abs(float(angle)) > math.tau
+            ):
+                raise BridgeProtocolError(
+                    "INVALID_PARAMS",
+                    "rotate_z requires center.z=0 and a non-zero finite angle within [-2π, 2π]",
+                )
+            return cls(kind=kind, center=center, angle=float(angle))
+        if kind == "scale_uniform":
+            if set(item) != {"kind", "center", "factor"}:
+                raise BridgeProtocolError(
+                    "INVALID_PARAMS", "scale_uniform transform must use the exact typed schema"
+                )
+            center = _point3(item.get("center"), "center")
+            factor = item.get("factor")
+            if (
+                center[2] != 0.0
+                or isinstance(factor, bool)
+                or not isinstance(factor, int | float)
+                or not math.isfinite(float(factor))
+                or not 1e-6 <= float(factor) <= 1e6
+                or abs(float(factor) - 1.0) <= 1e-12
+            ):
+                raise BridgeProtocolError(
+                    "INVALID_PARAMS",
+                    "scale_uniform requires center.z=0 and factor in [1e-6, 1e6] excluding 1",
+                )
+            return cls(kind=kind, center=center, factor=float(factor))
+        raise BridgeProtocolError("INVALID_PARAMS", "transform kind is not enabled")
+
+    def to_dict(self) -> dict[str, Any]:
+        if self.kind == "translate":
+            return {"kind": self.kind, "delta": list(self.delta or ())}
+        if self.kind == "rotate_z":
+            return {"kind": self.kind, "center": list(self.center or ()), "angle": self.angle}
+        return {"kind": self.kind, "center": list(self.center or ()), "factor": self.factor}
+
+
+@dataclass(frozen=True)
+class BatchTransformParams:
+    runtime_document_id: str
+    document_pid: str
+    expected_parent_fp: str
+    semantic_pids: tuple[str, ...]
+    transform: BatchTransformSpec
+    fault_stage: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> BatchTransformParams:
+        allowed = _MUTATION_BINDING_FIELDS | {"semantic_pids", "transform"}
+        runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
+        if fault_stage is not None and fault_stage != "after_apply_before_commit":
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                "batch transform only enables the pre-commit fault stage",
+            )
+        raw_pids = value.get("semantic_pids")
+        if not isinstance(raw_pids, list | tuple) or not 1 <= len(raw_pids) <= MAX_BATCH_CHUNK_ENTITIES:
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                f"semantic_pids must contain 1..{MAX_BATCH_CHUNK_ENTITIES} targets",
+            )
+        semantic_pids = tuple(_canonical_entity_pid(item) for item in raw_pids)
+        if len(set(semantic_pids)) != len(semantic_pids):
+            raise BridgeProtocolError("INVALID_PARAMS", "semantic_pids must be unique")
+        transform = BatchTransformSpec.from_dict(
+            _require_mapping(value.get("transform"), code="INVALID_PARAMS", field_name="transform")
+        )
+        return cls(runtime_id, document_pid, parent_fp, semantic_pids, transform, fault_stage)
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "expected_parent_fp": self.expected_parent_fp,
+            "semantic_pids": list(self.semantic_pids),
+            "transform": self.transform.to_dict(),
+        }
+        if self.fault_stage is not None:
+            result["fault_stage"] = self.fault_stage
+        return result
+
+
+@dataclass(frozen=True)
+class BatchInsertBlockSpec:
+    """One provider-PID-bound insertion of an already-visible block definition."""
+
+    definition_pid: str
+    position: tuple[float, float, float]
+    rotation: float
+    scale: float
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> BatchInsertBlockSpec:
+        item = _require_mapping(value, code="INVALID_PARAMS", field_name="block insert")
+        if set(item) != {"definition_pid", "position", "rotation", "scale"}:
+            raise BridgeProtocolError("INVALID_PARAMS", "block insert must use the exact typed schema")
+        definition_pid = _canonical_entity_pid(item.get("definition_pid"))
+        position = _point3(item.get("position"), "position")
+        if position[2] != 0.0:
+            raise BridgeProtocolError("INVALID_PARAMS", "block insert position must be planar with z=0")
+        rotation = item.get("rotation")
+        if (
+            isinstance(rotation, bool)
+            or not isinstance(rotation, int | float)
+            or not math.isfinite(float(rotation))
+            or abs(float(rotation)) > math.tau
+        ):
+            raise BridgeProtocolError(
+                "INVALID_PARAMS", "block insert rotation must be finite within [-2π, 2π]"
+            )
+        scale = item.get("scale")
+        if (
+            isinstance(scale, bool)
+            or not isinstance(scale, int | float)
+            or not math.isfinite(float(scale))
+            or not 1e-6 <= float(scale) <= 1e6
+        ):
+            raise BridgeProtocolError(
+                "INVALID_PARAMS", "block insert scale must be finite within [1e-6, 1e6]"
+            )
+        return cls(definition_pid, position, float(rotation), float(scale))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "definition_pid": self.definition_pid,
+            "position": list(self.position),
+            "rotation": self.rotation,
+            "scale": self.scale,
+        }
+
+
+@dataclass(frozen=True)
+class BatchInsertBlocksParams:
+    runtime_document_id: str
+    document_pid: str
+    expected_parent_fp: str
+    inserts: tuple[BatchInsertBlockSpec, ...]
+    fault_stage: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> BatchInsertBlocksParams:
+        allowed = _MUTATION_BINDING_FIELDS | {"inserts"}
+        runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
+        if fault_stage is not None and fault_stage != "after_apply_before_commit":
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                "batch block insert only enables the pre-commit fault stage",
+            )
+        raw_inserts = value.get("inserts")
+        if not isinstance(raw_inserts, list | tuple) or not 1 <= len(raw_inserts) <= MAX_BATCH_CHUNK_ENTITIES:
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                f"inserts must contain 1..{MAX_BATCH_CHUNK_ENTITIES} block insert specs",
+            )
+        inserts = tuple(
+            BatchInsertBlockSpec.from_dict(
+                _require_mapping(item, code="INVALID_PARAMS", field_name="block insert")
+            )
+            for item in raw_inserts
+        )
+        return cls(runtime_id, document_pid, parent_fp, inserts, fault_stage)
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "expected_parent_fp": self.expected_parent_fp,
+            "inserts": [item.to_dict() for item in self.inserts],
+        }
+        if self.fault_stage is not None:
+            result["fault_stage"] = self.fault_stage
+        return result
 
 
 @dataclass(frozen=True)
@@ -670,6 +1018,9 @@ class BridgeRequest:
     operation: str
     params: (
         DocumentIdentityParams
+        | BatchCreateParams
+        | BatchInsertBlocksParams
+        | BatchTransformParams
         | LineCreateParams
         | LineTargetParams
         | CircleCreateParams
@@ -710,6 +1061,9 @@ class BridgeRequest:
         if operation in {"bridge.document.identity", "bridge.document.snapshot"}:
             params: (
                 DocumentIdentityParams
+                | BatchCreateParams
+                | BatchInsertBlocksParams
+                | BatchTransformParams
                 | LineCreateParams
                 | LineTargetParams
                 | CircleCreateParams
@@ -722,6 +1076,12 @@ class BridgeRequest:
                 | RecoveryFinalizeParams
                 | Mapping[str, Any]
             ) = DocumentIdentityParams.from_dict(raw_params)
+        elif operation == "entity.batch.create":
+            params = BatchCreateParams.from_dict(raw_params)
+        elif operation == "entity.batch.insert_blocks":
+            params = BatchInsertBlocksParams.from_dict(raw_params)
+        elif operation == "entity.batch.transform":
+            params = BatchTransformParams.from_dict(raw_params)
         elif operation == "entity.create.line":
             params = LineCreateParams.from_dict(raw_params)
         elif operation == "entity.update.line":

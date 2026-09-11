@@ -1,9 +1,9 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-11 11:10 +07:00
-> Status: **MP0-T00 CLOSED / PASS · A-01 CLOSED / PASS · A-02 CLOSED / LIVE PASS · A-03+A-06 CLOSED / PASS · N0–N7 CLOSED · O1 CLOSED / LIVE PASS · MP-2 HOT RELOAD CLOSED / LIVE PASS**
+> Updated: 2026-09-11 13:40 +07:00
+> Status: **MP0-T00 CLOSED / PASS · A-01 CLOSED / PASS · A-02 CLOSED / LIVE PASS · A-03+A-06 CLOSED / PASS · N0–N7 CLOSED · O1 CLOSED / LIVE PASS · MP-2 HOT RELOAD CLOSED / LIVE PASS · G1 CLOSED / LIVE PASS**
 > Accepted implementation baseline: `9224fb0` (`Feat: close MP-2 hot reload runtime`)
-> Working architecture checkpoint: **ADR-002 ACCEPTED — CDT-AutoCAD remains a Generic CAD Execution Engine; domain standards/business logic/audit reporting stay in external Domain Agents.** Next program: G1 Generic Batch Geometry → G2 Schema-Agnostic Metadata → G3 Chunked Logical Atomicity; no G-series implementation is claimed yet.
+> Working architecture checkpoint: **ADR-002 ACCEPTED — CDT-AutoCAD remains a Generic CAD Execution Engine; domain standards/business logic/audit reporting stay in external Domain Agents.** G1 Generic Batch Geometry is closed/live-pass internally; next program is G2 Schema-Agnostic Metadata → G3 Chunked Logical Atomicity. Public promotion remains separately gated.
 > Primary native target: AutoCAD 2027 full · Windows x64 · COM `26.0` · Managed .NET `net10.0-windows`
 
 ## 1. Public runtime
@@ -38,16 +38,16 @@ The N-series Managed .NET bridge is **not yet the public provider backend**.
 | O1 | **CLOSED / LIVE PASS** | internal typed CIRCLE/ARC/simple-LWPOLYLINE create/update/delete added to the N5/N6 parent-PID-transaction-semantic-chain foundation |
 | N7 | **CLOSED / LIVE PASS** | two-phase native commit integrity, immutable checkpoint manifests/artifact hashes, R0/R1/R2 recovery, executor R1→R2 cascade, restart-persisted recovery and activation-safe R2 document replacement/rebinding all passed on real AutoCAD 2027 Session 1 |
 | MP-2 | **CLOSED / LIVE PASS** | stable authenticated ASGI supervisor, replaceable stateless FastMCP workers, generation fencing/drain/fallback, protocol/contract-hash + runtime generation/build/policy identity, bounded native-bridge readiness probe and source watcher; focused `41 passed`, Linux `254/5`, Windows `.171` `253/6`, process `20` success + `10` injected failure PASS, AutoCAD 2027 Session 1 COM + required bridge `2` success + `1` failure PASS, TaskScheduler result `0`, zero worker orphans |
-| G1 | **PLANNED / NOT STARTED** | generic typed batch geometry (`batch_create_entities`, transforms, block insertion) with bounded chunking and UI-blocking measurements; no domain concepts |
+| G1 | **CLOSED / LIVE PASS** | internal `0.6.0-g1` typed batch create for LINE/CIRCLE/ARC/simple-LWPOLYLINE, planar similarity transform (`translate`, `rotate_z`, `scale_uniform`) and PID-bound referenced block insertion; bounded 32-entity native chunks, semantic verification up to 2,048 entities, 100/1,000 scale acceptance, R0/R1/R2 recovery live-pass; public 50-tool contract unchanged |
 | G2 | **PLANNED / NOT STARTED** | schema-agnostic namespaced JSON metadata get/set/query over Extension Dictionary/XRecord with reserved provider-state isolation and bounded query/storage work |
 | G3 | **PLANNED / NOT STARTED** | logical all-or-nothing batch outcome across bounded native chunks using checkpoint/journal/compensation plus exact predecessor fingerprint proof |
 | N8 | **NOT STARTED** | formal incremental COM-to-.NET/public operation migration |
 | N9 | **NOT STARTED** | semantic drawing-workflow migration |
 | N10 | **NOT STARTED** | explicit public contract/promotion decision |
 
-## 3. Accepted native runtime truth — N7 closed; public backend unchanged
+## 3. Accepted native runtime truth — G1 closed; public backend unchanged
 
-N6 provides the Python semantic orchestration layer; O1 extends the staged C# typed mutation allowlist without changing the public MCP contract. N7 (`0.5.0-n7`) is now accepted for its documented internal recovery scope after the final AutoCAD 2027 Session 1 lifecycle gate. It is **still not the public provider backend** and does not publish new MCP tools or capabilities.
+N6 provides the Python semantic orchestration layer; O1 extends the staged C# typed mutation allowlist and N7 closes checkpoint-backed two-phase recovery. G1 advances the staged bridge to `0.6.0-g1` with bounded generic batch geometry while preserving the same domain-agnostic and public-contract boundary. It is **still not the public provider backend** and does not publish new MCP tools or capabilities.
 
 Enabled internal operations:
 
@@ -56,6 +56,9 @@ bridge.health
 bridge.documents.list
 bridge.document.identity
 bridge.document.snapshot
+entity.batch.create
+entity.batch.transform
+entity.batch.insert_blocks
 entity.create.line
 entity.update.line
 entity.delete.line
@@ -91,7 +94,7 @@ Measured invariants:
 - native document fingerprint matches the N1 canonical fingerprint byte-for-byte for the accepted fixture;
 - repeated reads keep `DBMOD=0`, and save/reopen preserves the semantic document fingerprint;
 - a snapshot whose serialized result exceeds the 65,536-byte frame fails as correlated `RESPONSE_TOO_LARGE`; the bridge remains alive and the read attempt does not change `DBMOD`;
-- accepted staged bridge version is `0.5.0-n7`; `mutation_enabled=true` only for the exact 12 typed LINE/CIRCLE/ARC/LWPOLYLINE operations listed above;
+- accepted staged bridge version is `0.6.0-g1`; `mutation_enabled=true` now also advertises the three internal G1 batch operations while the public MCP surface remains 50 tools;
 - every mutation requires `runtime_document_id + document_pid + expected_parent_fp`; update/delete additionally target a persistent `semantic_pid` rather than Handle/ObjectId;
 - `expected_parent_fp` is re-read through the native semantic extractor before the write transaction; mismatch fails with `STATE_DRIFT` before mutation;
 - create assigns a fresh persistent PID for LINE/CIRCLE/ARC/LWPOLYLINE; update preserves PID/Handle; delete removes the PID-bearing entity from the semantic snapshot;
@@ -109,6 +112,11 @@ Measured invariants:
 - before every later step, current native `document_fp` must equal both the action parent and chain tip; measured manual COM geometry drift is refused as `STATE_DRIFT` before a new native mutation is dispatched;
 - on the accepted O1/N6 baseline, any unverified condition after mutation dispatch begins—including malformed receipt, unknown transport completion, post-commit bridge error, independent read-back failure, validator failure or chain-construction failure—latches `STATE_UNCERTAIN` and blocks later mutation;
 - N7 now replaces deterministic post-commit semantic-integrity failures with checkpoint-backed R1/R2 recovery: the state chain advances only for accepted commits, verified recovery restores the exact predecessor, and unresolved/ambiguous recovery remains fail-closed;
+- G1 batch create is chunk-atomic with `MaxBatchChunkEntities=32`, explicitly `cross_chunk_atomic=false`, and semantic read-back bounded by `MaxBatchSemanticEntities=2048`;
+- G1-A live scale acceptance passed 100 entities in 1.529 s (max chunk 154.179 ms) and 1,000 entities in 7.845 s (max chunk 249.987 ms), with exact injected R0 rollback and zero pending recoveries; the 1,000-entity run measured +159,830,016 B working set and +194,674,688 B private bytes on the live AutoCAD process;
+- G1-B live-proves PID-targeted planar `translate`, `rotate_z` and uniform-scale transforms for LINE/CIRCLE/ARC/simple-LWPOLYLINE; general affine/shear/non-uniform scale is not enabled;
+- G1-C live-proves insertion by persistent `BLOCK_DEFINITION` PID only when that definition is already included in the authoritative predecessor semantic fingerprint; caller-supplied block-name authority and unreferenced-definition insertion remain disabled;
+- G1 batch recovery is live-proven for exact R0 abort, R1 compensation and activation-safe R2 checkpoint restore; R2 rebinds a new `runtime_document_id` and succeeds only after exact predecessor fingerprint proof;
 - N6 records append-only JSONL evidence with `fsync`; journal write failure blocks execution, and non-empty journals are not silently resumed across a new executor process;
 - native relation extraction remains empty in the current bridge, so N6 does not claim topology validation beyond the semantic fields actually present.
 
@@ -130,6 +138,8 @@ Canonical N6 evidence: `docs/evidence/n6-semantic-state-chain-2026-09-10.json`.
 
 Canonical O1 evidence: `docs/evidence/o1-native-shape-mutation-2026-09-10.json`.
 
+Canonical G1 evidence: `docs/evidence/g1-generic-cad-execution-2026-09-11.json`.
+
 ## 4. Identity / rollback invariants
 
 Two pillars remain non-negotiable:
@@ -137,7 +147,7 @@ Two pillars remain non-negotiable:
 1. **Data Integrity / Rollback** — future native mutation may advance only from a known parent state and must end as `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`; uncertain state blocks later mutation.
 2. **Precise Identity / PID + Fingerprinting** — native `ObjectId`/Handle is insufficient semantic identity; persistent PID, runtime-document binding and deterministic fingerprints are required.
 
-N2 has proven PID carrier/storage and clone semantics. N3 has proven runtime-document disambiguation over IPC. N4 provides authoritative native parent-state snapshots. N5 enforces composite runtime-document + lineage PID + semantic `expected_parent_fp` binding and proves R0 rollback. N6 independently validates semantic delta/effects and advances a tamper-evident state chain only for accepted steps. O1 live-proves that the same integrity model extends to CIRCLE, ARC and simple LWPOLYLINE. **N7 now closes bounded post-commit integrity/recovery: R1 compensation and activation-safe R2 checkpoint restore both require exact predecessor read-back before `ROLLED_BACK_VERIFIED`.**
+N2 has proven PID carrier/storage and clone semantics. N3 has proven runtime-document disambiguation over IPC. N4 provides authoritative native parent-state snapshots. N5 enforces composite runtime-document + lineage PID + semantic `expected_parent_fp` binding and proves R0 rollback. N6 independently validates semantic delta/effects and advances a tamper-evident state chain only for accepted steps. O1 live-proves that the same integrity model extends to CIRCLE, ARC and simple LWPOLYLINE. **N7 closes bounded post-commit integrity/recovery, and G1 proves the same R0/R1/R2 exact-restoration model for bounded generic batch geometry. R1 compensation and activation-safe R2 checkpoint restore both require exact predecessor read-back before `ROLLED_BACK_VERIFIED`.**
 
 ## 5. Semantic State Loop implementation status
 
@@ -165,9 +175,10 @@ Current implementation coverage is partial:
 - O1: the same internal mutation/semantic loop is live-verified for CIRCLE, ARC and simple LWPOLYLINE create/update/delete;
 - N7 accepted scope: provisional extraction inside the write transaction, deterministic native validation, post-commit provisional-vs-persisted comparison, provider-owned immutable checkpoint manifests/artifact hashes, typed recovery list/resolve/finalize, R1 compensation, R2 checkpoint restore and Python executor R1→R2 orchestration;
 - N7 R2 lifecycle is activation-safe: the bridge defers one recovery request across AutoCAD Idle ticks, activates a temporary checkpoint document first, closes only inactive documents, reopens/reactivates the restored original, then proves runtime rebound + document PID + exact predecessor fingerprint before success;
-- N8/N9/N10: formal broader migration, drawing-workflow migration and public promotion remain **NOT STARTED**.
+- G1: bounded internal batch create/transform/block-insert is implemented and live-verified at 100 and 1,000 entity tiers, including R0/R1/R2 recovery; chunk atomicity does not imply cross-chunk logical atomicity;
+- G2/G3 and N8/N9/N10: metadata, cross-chunk logical atomicity, formal broader migration, drawing-workflow migration and public promotion remain **NOT STARTED**.
 
-Therefore the accepted staged native executor covers four basic 2D families under the N7 integrity/recovery loop. This is internal staged capability only; it does not imply whole-DWG coverage or public routing.
+Therefore the accepted staged native executor now includes bounded generic batch geometry over the four proven 2D families under the N7 integrity/recovery loop. This is internal staged capability only; it does not imply whole-DWG coverage, 5,000/10,000 scale graduation, cross-chunk atomicity or public routing.
 
 ## 6. Verification checkpoint
 

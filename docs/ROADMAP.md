@@ -492,14 +492,14 @@ ADR-002 fixes the Separation-of-Concerns boundary: CDT-AutoCAD is a **Generic CA
 
 The approved sequence before later migration/promotion work is:
 
-1. **G1 — Generic Batch Geometry:** typed `batch_create_entities`, generic transforms and block insertion using bounded chunks/yields; measure UI blocking rather than only total throughput.
+1. **G1 — Generic Batch Geometry — CLOSED / LIVE PASS:** internal `0.6.0-g1` batch create for LINE/CIRCLE/ARC/simple-LWPOLYLINE, PID-targeted planar translate/rotate/uniform-scale, and referenced block insertion by definition PID. Native chunks are bounded at 32 entities, cross-chunk atomicity is explicitly false, semantic verification is bounded at 2,048 entities, and 100/1,000 scale + R0/R1/R2 live evidence is captured in `docs/evidence/g1-generic-cad-execution-2026-09-11.json`.
 2. **G2 — Schema-Agnostic Metadata:** bounded namespaced JSON `get/set/query` over Extension Dictionary/XRecord; provider PID/recovery namespaces remain reserved and inaccessible through arbitrary metadata writes.
 3. **G3 — Chunked Logical Atomicity:** multi-chunk logical `COMMITTED_VERIFIED` or exact `ROLLED_BACK_VERIFIED` outcome using checkpoint/journal/compensation and predecessor fingerprint proof; uncertainty blocks later mutation.
 4. **Scale graduation:** `100 → 1,000 → 5,000 → 10,000` entities with correctness, injected failure and scalability evidence at each tier.
 
 G3 is semantic/logical atomicity across bounded native transactions, not one giant AutoCAD `DocumentLock + Transaction`. If later requirements demand that intermediate state never appear in the live DWG, that is a separate off-document/staging Database capability and must be designed/accepted independently.
 
-G1/G2/G3 implementation does not automatically change the public 50-tool contract. Each phase needs TDD, native build, real AutoCAD 2027 Interactive Session 1 acceptance, evidence, review and a separate commit. Formal N8/public migration remains separately gated. Existing Autodesk-reference warning debt and repository lint-tool availability remain tracked separately.
+G1 closure did not change the public 50-tool contract; G2/G3 implementation likewise does not automatically change it. Each phase needs TDD, native build, real AutoCAD 2027 Interactive Session 1 acceptance, evidence, review and a separate commit. Formal N8/public migration remains separately gated. Existing Autodesk-reference warning debt and repository lint-tool availability remain tracked separately.
 
 See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared
 runtime from this lane; reusable infrastructure still requires Rule-of-Two cross-provider evidence.

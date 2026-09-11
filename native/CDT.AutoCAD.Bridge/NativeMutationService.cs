@@ -16,6 +16,15 @@ internal sealed record NativeRecoveryContext(
     Dictionary<string, object?>? PredecessorEntity
 );
 
+internal sealed record NativeBatchRecoveryContext(
+    NativeCheckpoint Checkpoint,
+    string[] AffectedPids,
+    ObjectId[] AffectedObjectIds,
+    Dictionary<string, object?>[]? PredecessorEntities
+);
+
+internal sealed record NativeBatchCreatedEntity(string Pid, ObjectId ObjectId);
+
 internal enum NativeR2RecoveryPhase
 {
     WaitCheckpointActive,
@@ -55,6 +64,7 @@ internal sealed class NativeMutationService
     private readonly NativeCheckpointStore _checkpoints;
     private readonly DocumentRegistry _documents;
     private readonly Dictionary<string, NativeRecoveryContext> _recoveryContexts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, NativeBatchRecoveryContext> _batchRecoveryContexts = new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, NativeR2RecoveryState> _r2RecoveryStates = new();
 
     internal NativeMutationService(NativeSemanticExtractor semantic, DocumentRegistry documents)
@@ -267,6 +277,547 @@ internal sealed class NativeMutationService
         }
     }
 
+    internal object ExecuteBatchCreate(
+        Document document,
+        Guid requestId,
+        BatchCreateParams parameters
+    )
+    {
+        const string operation = "entity.batch.create";
+        using DocumentLock documentLock = document.LockDocument();
+        Dictionary<string, object?> before = _semantic.Extract(
+            document,
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid,
+            BridgeConstants.MaxBatchSemanticEntities
+        );
+        string parentFp = Fingerprint(before);
+        if (!string.Equals(parentFp, parameters.ExpectedParentFp, StringComparison.Ordinal))
+        {
+            throw new BridgeServiceException(
+                "STATE_DRIFT",
+                "current semantic fingerprint does not match expected_parent_fp"
+            );
+        }
+        if (SnapshotEntities(before).Count + parameters.Entities.Length > BridgeConstants.MaxBatchSemanticEntities)
+        {
+            throw new BridgeServiceException(
+                "SNAPSHOT_CAPACITY_EXCEEDED",
+                "batch create would exceed the bounded G1 semantic verification capacity"
+            );
+        }
+
+        NativeCheckpoint checkpoint = _checkpoints.Create(
+            document,
+            parameters.DocumentPid,
+            parentFp,
+            operation,
+            requestId
+        );
+        List<string> affectedPids = [];
+        List<ObjectId> affectedObjectIds = [];
+        Dictionary<string, object?>? provisional = null;
+        bool committed = false;
+        string? r0Reason = null;
+        try
+        {
+            using (Transaction transaction = document.Database.TransactionManager.StartTransaction())
+            {
+                foreach (BatchCreateEntitySpec spec in parameters.Entities)
+                {
+                    NativeBatchCreatedEntity created = ApplyBatchCreateEntity(
+                        document.Database,
+                        transaction,
+                        spec
+                    );
+                    affectedPids.Add(created.Pid);
+                    affectedObjectIds.Add(created.ObjectId);
+                }
+
+                if (string.Equals(parameters.FaultStage, "after_apply_before_commit", StringComparison.Ordinal))
+                {
+                    r0Reason = "FAULT_INJECTED";
+                    transaction.Abort();
+                }
+                else
+                {
+                    try
+                    {
+                        provisional = _semantic.ExtractWithinTransaction(
+                            document,
+                            parameters.RuntimeDocumentId,
+                            parameters.DocumentPid,
+                            transaction,
+                            BridgeConstants.MaxBatchSemanticEntities
+                        );
+                        NativeMutationValidator.ValidateBatchCreate(
+                            affectedPids,
+                            parameters,
+                            before,
+                            provisional
+                        );
+                    }
+                    catch (BridgeServiceException exc) when (
+                        exc.Code is "PROVISIONAL_VALIDATION_FAILED" or "SNAPSHOT_TOO_LARGE")
+                    {
+                        r0Reason = "PROVISIONAL_VALIDATION_FAILED";
+                    }
+
+                    if (r0Reason is not null)
+                    {
+                        transaction.Abort();
+                    }
+                    else
+                    {
+                        transaction.Commit();
+                        committed = true;
+                    }
+                }
+            }
+
+            if (!committed)
+            {
+                Dictionary<string, object?> afterAbort = _semantic.Extract(
+                    document,
+                    parameters.RuntimeDocumentId,
+                    parameters.DocumentPid,
+                    BridgeConstants.MaxBatchSemanticEntities
+                );
+                string restoreFp = Fingerprint(afterAbort);
+                bool restored = string.Equals(restoreFp, parentFp, StringComparison.Ordinal);
+                if (restored)
+                {
+                    _checkpoints.Finalize(checkpoint);
+                }
+                return BatchRollbackResult(
+                    operation,
+                    parameters.DocumentPid,
+                    affectedPids,
+                    checkpoint,
+                    "R0_ABORT",
+                    r0Reason ?? "EXECUTION_FAILED",
+                    parentFp,
+                    restoreFp,
+                    restored,
+                    parameters.RuntimeDocumentId
+                );
+            }
+
+            if (provisional is null)
+            {
+                throw new BridgeServiceException(
+                    "COMMIT_INTEGRITY_FAIL",
+                    "provisional semantic state is unavailable after batch commit"
+                );
+            }
+            string provisionalFp = Fingerprint(provisional);
+            _batchRecoveryContexts[checkpoint.CheckpointId] = new NativeBatchRecoveryContext(
+                checkpoint,
+                affectedPids.ToArray(),
+                affectedObjectIds.ToArray(),
+                null
+            );
+
+            Dictionary<string, object?> persisted = _semantic.Extract(
+                document,
+                parameters.RuntimeDocumentId,
+                parameters.DocumentPid,
+                BridgeConstants.MaxBatchSemanticEntities
+            );
+            string persistedFp = Fingerprint(persisted);
+            bool integrityOk = string.Equals(provisionalFp, persistedFp, StringComparison.Ordinal);
+            return new Dictionary<string, object?>
+            {
+                ["schema_version"] = 1,
+                ["operation"] = operation,
+                ["outcome"] = integrityOk ? "COMMITTED_VERIFIED" : "COMMIT_INTEGRITY_FAIL",
+                ["document_pid"] = parameters.DocumentPid,
+                ["pre_document_fp"] = parentFp,
+                ["provisional_document_fp"] = provisionalFp,
+                ["post_document_fp"] = persistedFp,
+                ["affected_semantic_pids"] = affectedPids.ToArray(),
+                ["recovery_checkpoint"] = CheckpointPayload(checkpoint),
+            };
+        }
+        catch
+        {
+            if (!committed)
+            {
+                try { _checkpoints.Finalize(checkpoint); }
+                catch { }
+            }
+            throw;
+        }
+    }
+
+    internal object ExecuteBatchInsertBlocks(
+        Document document,
+        Guid requestId,
+        BatchInsertBlocksParams parameters
+    )
+    {
+        const string operation = "entity.batch.insert_blocks";
+        using DocumentLock documentLock = document.LockDocument();
+        Dictionary<string, object?> before = _semantic.Extract(
+            document,
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid,
+            BridgeConstants.MaxBatchSemanticEntities
+        );
+        string parentFp = Fingerprint(before);
+        if (!string.Equals(parentFp, parameters.ExpectedParentFp, StringComparison.Ordinal))
+        {
+            throw new BridgeServiceException(
+                "STATE_DRIFT",
+                "current semantic fingerprint does not match expected_parent_fp"
+            );
+        }
+        if (SnapshotEntities(before).Count + parameters.Inserts.Length > BridgeConstants.MaxBatchSemanticEntities)
+        {
+            throw new BridgeServiceException(
+                "SNAPSHOT_CAPACITY_EXCEEDED",
+                "block insert batch would exceed the bounded G1 semantic verification capacity"
+            );
+        }
+        foreach (string definitionPid in parameters.Inserts.Select(item => item.DefinitionPid).Distinct(StringComparer.Ordinal))
+        {
+            _ = FindVisibleBlockDefinition(before, definitionPid);
+        }
+
+        NativeCheckpoint checkpoint = _checkpoints.Create(
+            document,
+            parameters.DocumentPid,
+            parentFp,
+            operation,
+            requestId
+        );
+        List<string> affectedPids = [];
+        List<ObjectId> affectedObjectIds = [];
+        Dictionary<string, object?>? provisional = null;
+        bool committed = false;
+        string? r0Reason = null;
+        try
+        {
+            using (Transaction transaction = document.Database.TransactionManager.StartTransaction())
+            {
+                string[] definitionPids = parameters.Inserts
+                    .Select(item => item.DefinitionPid)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                IReadOnlyDictionary<string, ObjectId> definitions = EntityPidStore.ResolveBlockDefinitions(
+                    document.Database,
+                    definitionPids,
+                    transaction
+                );
+                BlockTableRecord space = CurrentSpace(document.Database, transaction);
+                foreach (BatchInsertBlockSpec spec in parameters.Inserts)
+                {
+                    BlockReference blockReference = new(
+                        Point(spec.Position, "position"),
+                        definitions[spec.DefinitionPid]
+                    )
+                    {
+                        LayerId = document.Database.Clayer,
+                        Rotation = spec.Rotation,
+                        ScaleFactors = new Scale3d(spec.Scale),
+                    };
+                    NativeBatchCreatedEntity created = AppendBatchWithPid(
+                        space,
+                        blockReference,
+                        transaction
+                    );
+                    affectedPids.Add(created.Pid);
+                    affectedObjectIds.Add(created.ObjectId);
+                }
+
+                if (string.Equals(parameters.FaultStage, "after_apply_before_commit", StringComparison.Ordinal))
+                {
+                    r0Reason = "FAULT_INJECTED";
+                    transaction.Abort();
+                }
+                else
+                {
+                    try
+                    {
+                        provisional = _semantic.ExtractWithinTransaction(
+                            document,
+                            parameters.RuntimeDocumentId,
+                            parameters.DocumentPid,
+                            transaction,
+                            BridgeConstants.MaxBatchSemanticEntities
+                        );
+                        NativeMutationValidator.ValidateBatchInsertBlocks(
+                            affectedPids,
+                            parameters,
+                            before,
+                            provisional
+                        );
+                    }
+                    catch (BridgeServiceException exc) when (
+                        exc.Code is "PROVISIONAL_VALIDATION_FAILED" or "SNAPSHOT_TOO_LARGE")
+                    {
+                        r0Reason = "PROVISIONAL_VALIDATION_FAILED";
+                    }
+
+                    if (r0Reason is not null)
+                    {
+                        transaction.Abort();
+                    }
+                    else
+                    {
+                        transaction.Commit();
+                        committed = true;
+                    }
+                }
+            }
+
+            if (!committed)
+            {
+                Dictionary<string, object?> afterAbort = _semantic.Extract(
+                    document,
+                    parameters.RuntimeDocumentId,
+                    parameters.DocumentPid,
+                    BridgeConstants.MaxBatchSemanticEntities
+                );
+                string restoreFp = Fingerprint(afterAbort);
+                bool restored = string.Equals(restoreFp, parentFp, StringComparison.Ordinal);
+                if (restored)
+                {
+                    _checkpoints.Finalize(checkpoint);
+                }
+                return BatchRollbackResult(
+                    operation,
+                    parameters.DocumentPid,
+                    affectedPids,
+                    checkpoint,
+                    "R0_ABORT",
+                    r0Reason ?? "EXECUTION_FAILED",
+                    parentFp,
+                    restoreFp,
+                    restored,
+                    parameters.RuntimeDocumentId
+                );
+            }
+
+            if (provisional is null)
+            {
+                throw new BridgeServiceException(
+                    "COMMIT_INTEGRITY_FAIL",
+                    "provisional semantic state is unavailable after block insert batch commit"
+                );
+            }
+            string provisionalFp = Fingerprint(provisional);
+            _batchRecoveryContexts[checkpoint.CheckpointId] = new NativeBatchRecoveryContext(
+                checkpoint,
+                affectedPids.ToArray(),
+                affectedObjectIds.ToArray(),
+                null
+            );
+
+            Dictionary<string, object?> persisted = _semantic.Extract(
+                document,
+                parameters.RuntimeDocumentId,
+                parameters.DocumentPid,
+                BridgeConstants.MaxBatchSemanticEntities
+            );
+            string persistedFp = Fingerprint(persisted);
+            bool integrityOk = string.Equals(provisionalFp, persistedFp, StringComparison.Ordinal);
+            return new Dictionary<string, object?>
+            {
+                ["schema_version"] = 1,
+                ["operation"] = operation,
+                ["outcome"] = integrityOk ? "COMMITTED_VERIFIED" : "COMMIT_INTEGRITY_FAIL",
+                ["document_pid"] = parameters.DocumentPid,
+                ["pre_document_fp"] = parentFp,
+                ["provisional_document_fp"] = provisionalFp,
+                ["post_document_fp"] = persistedFp,
+                ["affected_semantic_pids"] = affectedPids.ToArray(),
+                ["recovery_checkpoint"] = CheckpointPayload(checkpoint),
+            };
+        }
+        catch
+        {
+            if (!committed)
+            {
+                try { _checkpoints.Finalize(checkpoint); }
+                catch { }
+            }
+            throw;
+        }
+    }
+
+    internal object ExecuteBatchTransform(
+        Document document,
+        Guid requestId,
+        BatchTransformParams parameters
+    )
+    {
+        const string operation = "entity.batch.transform";
+        using DocumentLock documentLock = document.LockDocument();
+        Dictionary<string, object?> before = _semantic.Extract(
+            document,
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid,
+            BridgeConstants.MaxBatchSemanticEntities
+        );
+        string parentFp = Fingerprint(before);
+        if (!string.Equals(parentFp, parameters.ExpectedParentFp, StringComparison.Ordinal))
+        {
+            throw new BridgeServiceException(
+                "STATE_DRIFT",
+                "current semantic fingerprint does not match expected_parent_fp"
+            );
+        }
+
+        NativeCheckpoint checkpoint = _checkpoints.Create(
+            document,
+            parameters.DocumentPid,
+            parentFp,
+            operation,
+            requestId
+        );
+        List<ObjectId> affectedObjectIds = [];
+        List<Dictionary<string, object?>> predecessorEntities = [];
+        Dictionary<string, object?>? provisional = null;
+        bool committed = false;
+        string? r0Reason = null;
+        try
+        {
+            Matrix3d transform = BatchTransformMatrix(parameters.Transform);
+            using (Transaction transaction = document.Database.TransactionManager.StartTransaction())
+            {
+                IReadOnlyDictionary<string, ObjectId> targets = EntityPidStore.ResolveCurrentSpaceEntities(
+                    document.Database,
+                    parameters.SemanticPids,
+                    transaction
+                );
+                foreach (string pid in parameters.SemanticPids)
+                {
+                    Dictionary<string, object?> predecessor = FindEntity(before, pid);
+                    ObjectId objectId = targets[pid];
+                    Entity target = (Entity)transaction.GetObject(objectId, OpenMode.ForWrite, false);
+                    EnsureBatchTransformTarget(target, predecessor);
+                    target.TransformBy(transform);
+                    affectedObjectIds.Add(objectId);
+                    predecessorEntities.Add(predecessor);
+                }
+
+                if (string.Equals(parameters.FaultStage, "after_apply_before_commit", StringComparison.Ordinal))
+                {
+                    r0Reason = "FAULT_INJECTED";
+                    transaction.Abort();
+                }
+                else
+                {
+                    try
+                    {
+                        provisional = _semantic.ExtractWithinTransaction(
+                            document,
+                            parameters.RuntimeDocumentId,
+                            parameters.DocumentPid,
+                            transaction,
+                            BridgeConstants.MaxBatchSemanticEntities
+                        );
+                        NativeMutationValidator.ValidateBatchTransform(
+                            parameters.SemanticPids,
+                            parameters,
+                            before,
+                            provisional
+                        );
+                    }
+                    catch (BridgeServiceException exc) when (
+                        exc.Code is "PROVISIONAL_VALIDATION_FAILED" or "SNAPSHOT_TOO_LARGE")
+                    {
+                        r0Reason = "PROVISIONAL_VALIDATION_FAILED";
+                    }
+
+                    if (r0Reason is not null)
+                    {
+                        transaction.Abort();
+                    }
+                    else
+                    {
+                        transaction.Commit();
+                        committed = true;
+                    }
+                }
+            }
+
+            if (!committed)
+            {
+                Dictionary<string, object?> afterAbort = _semantic.Extract(
+                    document,
+                    parameters.RuntimeDocumentId,
+                    parameters.DocumentPid,
+                    BridgeConstants.MaxBatchSemanticEntities
+                );
+                string restoreFp = Fingerprint(afterAbort);
+                bool restored = string.Equals(restoreFp, parentFp, StringComparison.Ordinal);
+                if (restored)
+                {
+                    _checkpoints.Finalize(checkpoint);
+                }
+                return BatchRollbackResult(
+                    operation,
+                    parameters.DocumentPid,
+                    parameters.SemanticPids,
+                    checkpoint,
+                    "R0_ABORT",
+                    r0Reason ?? "EXECUTION_FAILED",
+                    parentFp,
+                    restoreFp,
+                    restored,
+                    parameters.RuntimeDocumentId
+                );
+            }
+
+            if (provisional is null)
+            {
+                throw new BridgeServiceException(
+                    "COMMIT_INTEGRITY_FAIL",
+                    "provisional semantic state is unavailable after batch transform commit"
+                );
+            }
+            string provisionalFp = Fingerprint(provisional);
+            _batchRecoveryContexts[checkpoint.CheckpointId] = new NativeBatchRecoveryContext(
+                checkpoint,
+                parameters.SemanticPids,
+                affectedObjectIds.ToArray(),
+                predecessorEntities.ToArray()
+            );
+
+            Dictionary<string, object?> persisted = _semantic.Extract(
+                document,
+                parameters.RuntimeDocumentId,
+                parameters.DocumentPid,
+                BridgeConstants.MaxBatchSemanticEntities
+            );
+            string persistedFp = Fingerprint(persisted);
+            bool integrityOk = string.Equals(provisionalFp, persistedFp, StringComparison.Ordinal);
+            return new Dictionary<string, object?>
+            {
+                ["schema_version"] = 1,
+                ["operation"] = operation,
+                ["outcome"] = integrityOk ? "COMMITTED_VERIFIED" : "COMMIT_INTEGRITY_FAIL",
+                ["document_pid"] = parameters.DocumentPid,
+                ["pre_document_fp"] = parentFp,
+                ["provisional_document_fp"] = provisionalFp,
+                ["post_document_fp"] = persistedFp,
+                ["affected_semantic_pids"] = parameters.SemanticPids,
+                ["recovery_checkpoint"] = CheckpointPayload(checkpoint),
+            };
+        }
+        catch
+        {
+            if (!committed)
+            {
+                try { _checkpoints.Finalize(checkpoint); }
+                catch { }
+            }
+            throw;
+        }
+    }
+
     internal object ResolveRecovery(Guid requestId, RecoveryResolveParams parameters)
     {
         NativeCheckpoint checkpoint = _checkpoints.Require(
@@ -332,7 +883,8 @@ internal sealed class NativeMutationService
         string actualFp = Fingerprint(_semantic.Extract(
             document,
             parameters.RuntimeDocumentId,
-            parameters.DocumentPid
+            parameters.DocumentPid,
+            RecoverySemanticLimit(checkpoint)
         ));
         if (!string.Equals(actualFp, parameters.AcceptedPostFp, StringComparison.Ordinal))
         {
@@ -343,6 +895,7 @@ internal sealed class NativeMutationService
         }
         _checkpoints.Finalize(checkpoint);
         _recoveryContexts.Remove(checkpoint.CheckpointId);
+        _batchRecoveryContexts.Remove(checkpoint.CheckpointId);
         return new Dictionary<string, object?>
         {
             ["schema_version"] = 1,
@@ -365,7 +918,8 @@ internal sealed class NativeMutationService
                 ["expected_restore_fp"] = checkpoint.ExpectedParentFp,
                 ["checkpoint_artifact_fp"] = checkpoint.ArtifactFp,
                 ["operation"] = checkpoint.Operation,
-                ["r1_context_available"] = _recoveryContexts.ContainsKey(checkpoint.CheckpointId),
+                ["r1_context_available"] = _recoveryContexts.ContainsKey(checkpoint.CheckpointId)
+                    || _batchRecoveryContexts.ContainsKey(checkpoint.CheckpointId),
                 ["r2_in_progress"] = _r2RecoveryStates.Values.Any(
                     state => string.Equals(
                         state.Checkpoint.CheckpointId,
@@ -383,12 +937,20 @@ internal sealed class NativeMutationService
         NativeCheckpoint checkpoint
     )
     {
+        if (_batchRecoveryContexts.TryGetValue(
+            checkpoint.CheckpointId,
+            out NativeBatchRecoveryContext? batchContext
+        ))
+        {
+            return ResolveBatchR1(document, parameters, checkpoint, batchContext);
+        }
         if (!_recoveryContexts.TryGetValue(checkpoint.CheckpointId, out NativeRecoveryContext? context))
         {
             string currentFp = Fingerprint(_semantic.Extract(
                 document,
                 parameters.RuntimeDocumentId,
-                parameters.DocumentPid
+                parameters.DocumentPid,
+                RecoverySemanticLimit(checkpoint)
             ));
             return RollbackResult(
                 checkpoint.Operation,
@@ -457,7 +1019,8 @@ internal sealed class NativeMutationService
         string restoredFp = Fingerprint(_semantic.Extract(
             document,
             parameters.RuntimeDocumentId,
-            parameters.DocumentPid
+            parameters.DocumentPid,
+            RecoverySemanticLimit(checkpoint)
         ));
         bool restored = string.Equals(
             restoredFp,
@@ -473,6 +1036,84 @@ internal sealed class NativeMutationService
             checkpoint.Operation,
             checkpoint.DocumentPid,
             context.AffectedPid,
+            checkpoint,
+            "R1_COMPENSATE",
+            "COMMIT_INTEGRITY_FAIL",
+            parameters.ExpectedRestoreFp,
+            restoredFp,
+            restored,
+            parameters.RuntimeDocumentId
+        );
+    }
+
+    private object ResolveBatchR1(
+        Document document,
+        RecoveryResolveParams parameters,
+        NativeCheckpoint checkpoint,
+        NativeBatchRecoveryContext context
+    )
+    {
+        using DocumentLock documentLock = document.LockDocument();
+        try
+        {
+            using Transaction transaction = document.Database.TransactionManager.StartTransaction();
+            if (context.PredecessorEntities is null)
+            {
+                foreach (ObjectId objectId in context.AffectedObjectIds)
+                {
+                    DBObject created = transaction.GetObject(objectId, OpenMode.ForWrite, false);
+                    created.Erase(true);
+                }
+            }
+            else
+            {
+                if (context.PredecessorEntities.Length != context.AffectedObjectIds.Length)
+                {
+                    throw new BridgeServiceException(
+                        "R1_UNAVAILABLE",
+                        "batch transform predecessor state is incomplete"
+                    );
+                }
+                for (int index = 0; index < context.AffectedObjectIds.Length; index++)
+                {
+                    Entity target = (Entity)transaction.GetObject(
+                        context.AffectedObjectIds[index],
+                        OpenMode.ForWrite,
+                        false
+                    );
+                    RestoreGeometry(target, context.PredecessorEntities[index]);
+                }
+            }
+            transaction.Commit();
+        }
+        catch (Exception exc) when (exc is not BridgeServiceException)
+        {
+            throw new BridgeServiceException(
+                "R1_COMPENSATION_FAILED",
+                $"batch inverse could not execute: {exc.GetType().Name}"
+            );
+        }
+
+        string restoredFp = Fingerprint(_semantic.Extract(
+            document,
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid,
+            BridgeConstants.MaxBatchSemanticEntities
+        ));
+        bool restored = string.Equals(
+            restoredFp,
+            parameters.ExpectedRestoreFp,
+            StringComparison.Ordinal
+        );
+        if (restored)
+        {
+            _checkpoints.Finalize(checkpoint);
+            _batchRecoveryContexts.Remove(checkpoint.CheckpointId);
+        }
+        return BatchRollbackResult(
+            checkpoint.Operation,
+            checkpoint.DocumentPid,
+            context.AffectedPids,
             checkpoint,
             "R1_COMPENSATE",
             "COMMIT_INTEGRITY_FAIL",
@@ -633,25 +1274,48 @@ internal sealed class NativeMutationService
             actualRestoreFp = Fingerprint(_semantic.Extract(
                 restored,
                 restoredRuntimeId.Value,
-                parameters.DocumentPid
+                parameters.DocumentPid,
+                RecoverySemanticLimit(checkpoint)
             ));
             bool restoredExact = string.Equals(
                 actualRestoreFp,
                 parameters.ExpectedRestoreFp,
                 StringComparison.Ordinal
             );
+            _recoveryContexts.TryGetValue(
+                checkpoint.CheckpointId,
+                out NativeRecoveryContext? singleContext
+            );
+            _batchRecoveryContexts.TryGetValue(
+                checkpoint.CheckpointId,
+                out NativeBatchRecoveryContext? batchContext
+            );
             if (restoredExact)
             {
                 _checkpoints.Finalize(checkpoint);
                 _recoveryContexts.Remove(checkpoint.CheckpointId);
+                _batchRecoveryContexts.Remove(checkpoint.CheckpointId);
             }
             _r2RecoveryStates.Remove(state.RequestId);
+            if (batchContext is not null)
+            {
+                return BatchRollbackResult(
+                    checkpoint.Operation,
+                    checkpoint.DocumentPid,
+                    batchContext.AffectedPids,
+                    checkpoint,
+                    "R2_CHECKPOINT_RESTORE",
+                    "COMMIT_INTEGRITY_FAIL",
+                    parameters.ExpectedRestoreFp,
+                    actualRestoreFp,
+                    restoredExact,
+                    restoredRuntimeId.Value
+                );
+            }
             return RollbackResult(
                 checkpoint.Operation,
                 checkpoint.DocumentPid,
-                _recoveryContexts.TryGetValue(checkpoint.CheckpointId, out NativeRecoveryContext? context)
-                    ? context.AffectedPid
-                    : string.Empty,
+                singleContext?.AffectedPid ?? string.Empty,
                 checkpoint,
                 "R2_CHECKPOINT_RESTORE",
                 "COMMIT_INTEGRITY_FAIL",
@@ -747,6 +1411,11 @@ internal sealed class NativeMutationService
         }
     }
 
+    private static int RecoverySemanticLimit(NativeCheckpoint checkpoint) =>
+        checkpoint.Operation.StartsWith("entity.batch.", StringComparison.Ordinal)
+            ? BridgeConstants.MaxBatchSemanticEntities
+            : BridgeConstants.MaxSnapshotEntities;
+
     private static string ApplyMutation(
         Database database,
         Transaction transaction,
@@ -770,6 +1439,161 @@ internal sealed class NativeMutationService
             "entity.delete.lwpolyline" => DeletePolyline(database, transaction, parameters),
             _ => throw new BridgeServiceException("UNSUPPORTED_OPERATION", "mutation operation is not enabled"),
         };
+    }
+
+    private static Matrix3d BatchTransformMatrix(BatchTransformSpec transform)
+    {
+        return transform.Kind switch
+        {
+            "translate" => Matrix3d.Displacement(new Vector3d(
+                transform.Delta![0],
+                transform.Delta[1],
+                0.0
+            )),
+            "rotate_z" => Matrix3d.Rotation(
+                transform.Angle!.Value,
+                Vector3d.ZAxis,
+                Point(transform.Center, "center")
+            ),
+            "scale_uniform" => Matrix3d.Scaling(
+                transform.Factor!.Value,
+                Point(transform.Center, "center")
+            ),
+            _ => throw new BridgeServiceException(
+                "UNSUPPORTED_OPERATION",
+                "batch transform kind is not enabled"
+            ),
+        };
+    }
+
+    private static void EnsureBatchTransformTarget(
+        Entity target,
+        Dictionary<string, object?> predecessor
+    )
+    {
+        string type = Convert.ToString(predecessor["entity_type"]) ?? string.Empty;
+        switch (target)
+        {
+            case Line when type == "LINE":
+                return;
+            case Circle circle when type == "CIRCLE":
+                if (!SameVector(circle.Normal, Vector3d.ZAxis))
+                {
+                    throw new BridgeServiceException(
+                        "UNSUPPORTED_TARGET_GEOMETRY",
+                        "batch transform supports only +Z planar circles"
+                    );
+                }
+                return;
+            case Arc arc when type == "ARC":
+                if (!SameVector(arc.Normal, Vector3d.ZAxis))
+                {
+                    throw new BridgeServiceException(
+                        "UNSUPPORTED_TARGET_GEOMETRY",
+                        "batch transform supports only +Z planar arcs"
+                    );
+                }
+                return;
+            case Polyline polyline when type == "LWPOLYLINE":
+                EnsureSimplePolyline(polyline);
+                return;
+            default:
+                throw new BridgeServiceException(
+                    "UNSUPPORTED_TARGET_GEOMETRY",
+                    "batch transform supports only LINE/CIRCLE/ARC/simple-LWPOLYLINE targets"
+                );
+        }
+    }
+
+    private static NativeBatchCreatedEntity ApplyBatchCreateEntity(
+        Database database,
+        Transaction transaction,
+        BatchCreateEntitySpec spec
+    )
+    {
+        BlockTableRecord space = CurrentSpace(database, transaction);
+        return spec.Kind switch
+        {
+            "line" => AppendBatchWithPid(
+                space,
+                new Line(Point(spec.Start, "start"), Point(spec.End, "end"))
+                {
+                    LayerId = database.Clayer,
+                },
+                transaction
+            ),
+            "circle" => AppendBatchWithPid(
+                space,
+                new Circle(
+                    Point(spec.Center, "center"),
+                    Vector3d.ZAxis,
+                    Positive(spec.Radius, "radius")
+                )
+                {
+                    LayerId = database.Clayer,
+                },
+                transaction
+            ),
+            "arc" => AppendBatchWithPid(
+                space,
+                new Arc(
+                    Point(spec.Center, "center"),
+                    Vector3d.ZAxis,
+                    Positive(spec.Radius, "radius"),
+                    Angle(spec.StartAngle, "start_angle"),
+                    Angle(spec.EndAngle, "end_angle")
+                )
+                {
+                    LayerId = database.Clayer,
+                },
+                transaction
+            ),
+            "lwpolyline" => CreateBatchPolyline(space, transaction, spec),
+            _ => throw new BridgeServiceException(
+                "UNSUPPORTED_OPERATION",
+                "batch create family is not enabled"
+            ),
+        };
+    }
+
+    private static NativeBatchCreatedEntity AppendBatchWithPid(
+        BlockTableRecord space,
+        Entity entity,
+        Transaction transaction
+    )
+    {
+        ObjectId objectId = space.AppendEntity(entity);
+        transaction.AddNewlyCreatedDBObject(entity, true);
+        string pid = EntityPidStore.NewEntityPid();
+        EntityPidStore.Set(entity, pid, transaction);
+        return new NativeBatchCreatedEntity(pid, objectId);
+    }
+
+    private static NativeBatchCreatedEntity CreateBatchPolyline(
+        BlockTableRecord space,
+        Transaction transaction,
+        BatchCreateEntitySpec spec
+    )
+    {
+        double[][] points = Points(spec.Points);
+        Polyline polyline = new(points.Length)
+        {
+            LayerId = space.Database.Clayer,
+            Closed = Closed(spec.Closed),
+            Elevation = 0.0,
+            Normal = Vector3d.ZAxis,
+        };
+        for (int index = 0; index < points.Length; index++)
+        {
+            polyline.AddVertexAt(
+                index,
+                new Point2d(points[index][0], points[index][1]),
+                0.0,
+                0.0,
+                0.0
+            );
+        }
+        return AppendBatchWithPid(space, polyline, transaction);
     }
 
     private static string CreateLine(Database database, Transaction transaction, EntityMutationParams parameters)
@@ -933,6 +1757,42 @@ internal sealed class NativeMutationService
         }
     }
 
+    private static Dictionary<string, object?> BatchRollbackResult(
+        string operation,
+        string documentPid,
+        IEnumerable<string> affectedPids,
+        NativeCheckpoint checkpoint,
+        string strategy,
+        string reason,
+        string expectedRestoreFp,
+        string? actualRestoreFp,
+        bool restored,
+        Guid runtimeDocumentId
+    )
+    {
+        return new Dictionary<string, object?>
+        {
+            ["schema_version"] = 1,
+            ["operation"] = operation,
+            ["outcome"] = restored ? "ROLLED_BACK_VERIFIED" : "ROLLBACK_FAILED",
+            ["document_pid"] = documentPid,
+            ["runtime_document_id"] = runtimeDocumentId.ToString("D"),
+            ["pre_document_fp"] = expectedRestoreFp,
+            ["post_document_fp"] = actualRestoreFp,
+            ["checkpoint_id"] = checkpoint.CheckpointId,
+            ["affected_semantic_pids"] = affectedPids.ToArray(),
+            ["rollback"] = new Dictionary<string, object?>
+            {
+                ["rollback_id"] = "rb:" + Guid.NewGuid().ToString("D"),
+                ["reason"] = reason,
+                ["strategy"] = strategy,
+                ["expected_restore_fp"] = expectedRestoreFp,
+                ["actual_restore_fp"] = actualRestoreFp,
+                ["status"] = restored ? "ROLLED_BACK_VERIFIED" : "ROLLBACK_FAILED",
+            },
+        };
+    }
+
     private static Dictionary<string, object?> RollbackResult(
         string operation,
         string documentPid,
@@ -983,6 +1843,26 @@ internal sealed class NativeMutationService
     private static Dictionary<string, object?> FindEntity(Dictionary<string, object?> snapshot, string pid) =>
         SnapshotEntities(snapshot).FirstOrDefault(item => string.Equals(Convert.ToString(item["semantic_pid"]), pid, StringComparison.Ordinal))
         ?? throw new BridgeServiceException("ENTITY_NOT_FOUND", "target semantic PID is not present in the bound current space");
+
+    private static Dictionary<string, object?> FindVisibleBlockDefinition(
+        Dictionary<string, object?> snapshot,
+        string pid
+    )
+    {
+        Dictionary<string, object?> entity = FindEntity(snapshot, pid);
+        if (!string.Equals(
+            Convert.ToString(entity["entity_type"]),
+            "BLOCK_DEFINITION",
+            StringComparison.Ordinal
+        ))
+        {
+            throw new BridgeServiceException(
+                "BLOCK_DEFINITION_NOT_VISIBLE",
+                "definition_pid must identify a block definition already protected by expected_parent_fp"
+            );
+        }
+        return entity;
+    }
 
     private static BlockTableRecord CurrentSpace(Database database, Transaction transaction) =>
         (BlockTableRecord)transaction.GetObject(database.CurrentSpaceId, OpenMode.ForWrite);

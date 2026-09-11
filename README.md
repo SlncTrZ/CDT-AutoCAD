@@ -1,10 +1,10 @@
 # CDT AutoCAD Provider
 
-> Status: A2 release candidate · N0–N6 + O1 closed/live-pass · N7 in progress/not closed · Version: 0.3.0rc1 · Updated: 2026-09-10 +07:00
+> Status: A2 release candidate · N0–N7 + O1 closed/live-pass · MP-2 closed/live-pass · G1 closed/live-pass (internal) · Public version: 0.3.0rc1 · Updated: 2026-09-11 +07:00
 
 This provider is the first CDT_Engineer reference implementation. The default backend remains
 `ezdxf`; the public release-candidate contract is a bounded 50-tool `autocad-a2-v1-rc1` surface.
-The current `com` backend adds live Windows AutoCAD, native DWG, viewport management, live zoom and screenshot capture while preserving typed refusal on the headless backend. A staged in-process C# Managed .NET native bridge now provides persistent PID-aware semantic snapshots plus internal typed LINE/CIRCLE/ARC/simple-LWPOLYLINE create/update/delete over local Named Pipe IPC. N7 two-phase post-commit recovery is actively under development but is not yet accepted; current COM/ezdxf behavior therefore remains the public migration baseline.
+The current `com` backend adds live Windows AutoCAD, native DWG, viewport management, live zoom and screenshot capture while preserving typed refusal on the headless backend. A staged in-process C# Managed .NET native bridge now provides persistent PID-aware semantic snapshots, typed LINE/CIRCLE/ARC/simple-LWPOLYLINE mutation, N7 checkpoint-backed R0/R1/R2 recovery, and G1 bounded generic batch create/planar-transform/referenced-block insertion over local Named Pipe IPC. These staged native capabilities remain internal; current COM/ezdxf behavior remains the public 50-tool migration baseline.
 
 ## Current public scope
 
@@ -26,7 +26,7 @@ The current `com` backend adds live Windows AutoCAD, native DWG, viewport manage
 A2 viewport create/list/scale/lock/delete, live zoom and native-window PNG capture are public MCP
 release-candidate tools and are **live-verified** on the primary AutoCAD 2027 Windows lane. Mock/Linux verification remains regression evidence only and does not substitute for native acceptance.
 
-## Target architecture — N0–N6 + O1 accepted; N7 recovery in progress
+## Target architecture — N0–N7 + O1 + G1 accepted internally
 
 The accepted target architecture is:
 
@@ -58,7 +58,7 @@ Two invariants are non-negotiable: **Data Integrity / Rollback** and **Precise I
 
 Screenshots/Vision are not the geometry oracle. Native semantic data drives step validation; Vision remains useful for raster-source ingestion and final visual/user review.
 
-Architecture status: `N0–N7 CLOSED/LIVE PASS`, `O1 CLOSED/LIVE PASS`. N1 supplies typed semantic contracts/fingerprints/state-chain primitives; N2 persistent document/entity PID policy; N3 the in-process `net10.0-windows` bridge and bounded same-user/local/same-session Named Pipe transport; N4 authoritative native semantic snapshot/fingerprint extraction; N5 typed transactional mutation with parent-fingerprint binding and R0 rollback; N6 deterministic semantic validation/state-chain orchestration; O1 expands the accepted internal mutation surface to LINE/CIRCLE/ARC/simple-LWPOLYLINE create/update/delete; N7 adds two-phase in-transaction validation plus checkpoint-backed R1/R2 recovery, including activation-safe R2 after real AutoCAD restart. Public routing remains the 50-tool COM/ezdxf release-candidate baseline. See `docs/evidence/n7-native-recovery-2026-09-11.json`.
+Architecture status: `N0–N7 CLOSED/LIVE PASS`, `O1 CLOSED/LIVE PASS`, `G1 CLOSED/LIVE PASS` internally. N1 supplies typed semantic contracts/fingerprints/state-chain primitives; N2 persistent document/entity PID policy; N3 the in-process `net10.0-windows` bridge and bounded same-user/local/same-session Named Pipe transport; N4 authoritative native semantic snapshot/fingerprint extraction; N5 typed transactional mutation with parent-fingerprint binding and R0 rollback; N6 deterministic semantic validation/state-chain orchestration; O1 expands the accepted internal mutation surface to LINE/CIRCLE/ARC/simple-LWPOLYLINE create/update/delete; N7 adds two-phase in-transaction validation plus checkpoint-backed R1/R2 recovery; G1 adds 32-entity bounded batch create, planar similarity transforms and referenced block insertion by persistent definition PID, live-proven at 100 and 1,000 entities with exact R0/R1/R2 recovery. Public routing remains the 50-tool COM/ezdxf release-candidate baseline. See `docs/evidence/g1-generic-cad-execution-2026-09-11.json`.
 
 Current implementation status is canonical in [`docs/CURRENT_CHECKPOINT.md`](docs/CURRENT_CHECKPOINT.md). Architecture details are in [`docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`](docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md), [`docs/SEMANTIC_STATE_PROTOCOL.md`](docs/SEMANTIC_STATE_PROTOCOL.md), [`docs/N2_PID_ACCEPTANCE.md`](docs/N2_PID_ACCEPTANCE.md), [`docs/NATIVE_BRIDGE_ACCEPTANCE.md`](docs/NATIVE_BRIDGE_ACCEPTANCE.md) and [`docs/ARCHITECTURE_UPGRADE_PLAN.md`](docs/ARCHITECTURE_UPGRADE_PLAN.md).
 

@@ -7,14 +7,18 @@ namespace CDT.AutoCAD.Bridge;
 
 internal static class EntityPidReader
 {
-    internal static string ReadRequired(DBObject databaseObject, Transaction transaction)
+    internal static string ReadRequired(DBObject databaseObject, Transaction transaction) =>
+        ReadOptional(databaseObject, transaction)
+        ?? throw new BridgeServiceException(
+            "ENTITY_PID_MISSING",
+            "semantic snapshot requires persistent PID metadata on every extracted entity"
+        );
+
+    internal static string? ReadOptional(DBObject databaseObject, Transaction transaction)
     {
         if (databaseObject.ExtensionDictionary.IsNull)
         {
-            throw new BridgeServiceException(
-                "ENTITY_PID_MISSING",
-                "semantic snapshot requires persistent PID metadata on every extracted entity"
-            );
+            return null;
         }
 
         DBDictionary extensionDictionary = (DBDictionary)transaction.GetObject(
@@ -23,10 +27,7 @@ internal static class EntityPidReader
         );
         if (!extensionDictionary.Contains(BridgeConstants.EntityPidRecordKey))
         {
-            throw new BridgeServiceException(
-                "ENTITY_PID_MISSING",
-                "semantic snapshot requires persistent PID metadata on every extracted entity"
-            );
+            return null;
         }
 
         Xrecord record = (Xrecord)transaction.GetObject(

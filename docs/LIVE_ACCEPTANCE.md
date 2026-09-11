@@ -1,7 +1,7 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-10 +07:00
-> Scope: current COM/A3 native baseline; staged .NET bridge N0–N6 + O1 accepted and N7 recovery acceptance tracked separately
+> Updated: 2026-09-11 +07:00
+> Scope: current COM/A3 native baseline; staged .NET bridge N0–N7 + O1 + G1 accepted internally; public 50-tool contract unchanged
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
 
 ## 1. Certification policy
@@ -184,3 +184,21 @@ The native architecture lane must ultimately prove, on real AutoCAD 2027, both n
 The .NET bridge is not promoted merely because internal native gates pass. The accepted O1/N7 bridge already has bounded semantic extraction, PID/fingerprint parent guards, typed mutation, R0/R1/R2 recovery, deterministic validation/state-chain and COM parity for selected families, but public-backend promotion still requires later explicit migration/promotion gates. **MP-2 Python MCP hot reload is CLOSED / LIVE PASS**: stable supervisor/process/stable-URL, protocol/contract-hash promotion, process `20` success + `10` injected failure, and `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge acceptance all passed. Canonical evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`.
 
 AutoCAD 2027 installs Microsoft .NET 10 when needed; the bridge build/runtime target must follow the AutoCAD 2027 Managed .NET compatibility requirements and secure loading policy.
+
+## G1 Generic Batch Geometry live evidence — 2026-09-11
+
+G1 is an internal native-bridge capability and does **not** add public MCP tools. The accepted bridge is `0.6.0-g1`; transport/protocol remain `cdt-autocad-native-v1` over the same Session-1 Named Pipe boundary.
+
+Live AutoCAD 2027 Interactive Session 1 evidence on `.171` proves:
+
+- `entity.batch.create`: LINE/CIRCLE/ARC/simple-LWPOLYLINE only; one native chunk is atomic, maximum 32 entities; cross-chunk atomicity is explicitly false; semantic verification is bounded at 2,048 entities.
+- 100-entity tier: 4 chunks (`32/32/32/4`), 100 unique persistent PIDs, exact injected R0 rollback, 1.529 s total, 154.179 ms maximum chunk latency.
+- 1,000-entity tier: 32 chunks, 1,000 unique persistent PIDs, exact injected R0 rollback, 7.845 s total, 249.987 ms maximum chunk latency; working-set delta +159,830,016 B and private-bytes delta +194,674,688 B for the measured AutoCAD process.
+- `entity.batch.transform`: persistent-PID targeting for LINE/CIRCLE/ARC/simple-LWPOLYLINE with only planar `translate`, `rotate_z` and `scale_uniform`; shear/general affine/non-uniform scale is not enabled.
+- `entity.batch.insert_blocks`: insertion is authorized by persistent `BLOCK_DEFINITION` PID already visible in the predecessor semantic fingerprint; block-name/Handle authority and unreferenced-definition insertion are not accepted.
+- G1-B/C live run: all three transform kinds `COMMITTED_VERIFIED`; injected transform and block-insert R0 faults `ROLLED_BACK_VERIFIED`; 4 committed inserts produced 4 unique PIDs; zero pending recoveries.
+- Batch R1: committed transform of 4 targets and committed insertion of 4 block references both compensated to the exact predecessor fingerprint and exact ModelSpace membership; zero pending recoveries.
+- Batch R2: committed insertion of 2 block references restored from immutable checkpoint through activation-safe document replacement; `runtime_document_id` changed as expected, predecessor fingerprint and ModelSpace membership were exact, zero pending recoveries.
+- Final regressions on the G1 production tree: Linux `270 passed / 5 skipped`; Windows `.171` `269 passed / 6 skipped`; native Release build 0 errors with the existing Autodesk-reference MSB3277 warning families; Linux/Windows compileall and `git diff --check` pass.
+
+Canonical evidence: `docs/evidence/g1-generic-cad-execution-2026-09-11.json`. Scale graduation beyond 1,000 entities remains open; 5,000/10,000 tiers are not claimed. Cross-chunk logical all-or-nothing semantics remains G3.

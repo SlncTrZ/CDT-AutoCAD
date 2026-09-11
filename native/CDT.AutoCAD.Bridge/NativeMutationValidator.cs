@@ -60,6 +60,180 @@ internal static class NativeMutationValidator
         }
     }
 
+    internal static void ValidateBatchCreate(
+        IReadOnlyList<string> affectedPids,
+        BatchCreateParams parameters,
+        Dictionary<string, object?> before,
+        Dictionary<string, object?> provisional
+    )
+    {
+        if (affectedPids.Count != parameters.Entities.Length)
+        {
+            throw new BridgeServiceException(
+                "PROVISIONAL_VALIDATION_FAILED",
+                "batch create PID count differs from requested entity count"
+            );
+        }
+
+        Dictionary<string, Dictionary<string, object?>> beforeEntities = EntitiesByPid(before);
+        Dictionary<string, Dictionary<string, object?>> afterEntities = EntitiesByPid(provisional);
+        string[] created = afterEntities.Keys.Except(beforeEntities.Keys).Order().ToArray();
+        string[] expectedCreated = affectedPids.Order(StringComparer.Ordinal).ToArray();
+        string[] deleted = beforeEntities.Keys.Except(afterEntities.Keys).Order().ToArray();
+        string[] modified = beforeEntities.Keys.Intersect(afterEntities.Keys)
+            .Where(pid => EntityKey(beforeEntities[pid]) != EntityKey(afterEntities[pid]))
+            .Order()
+            .ToArray();
+
+        Require(
+            created.SequenceEqual(expectedCreated) && modified.Length == 0 && deleted.Length == 0,
+            "batch create produced an unexpected PID delta"
+        );
+        Require(
+            DocumentInvariantsEqual(before, provisional),
+            "batch create changed invariant document/resource state"
+        );
+        Require(
+            !IntroducedDuplicate(beforeEntities, afterEntities),
+            "batch create introduced duplicate geometry"
+        );
+
+        for (int index = 0; index < affectedPids.Count; index++)
+        {
+            string pid = affectedPids[index];
+            BatchCreateEntitySpec spec = parameters.Entities[index];
+            Require(
+                afterEntities.TryGetValue(pid, out Dictionary<string, object?>? target),
+                "batch-created entity is missing from provisional state"
+            );
+            string expectedType = spec.Kind switch
+            {
+                "line" => "LINE",
+                "circle" => "CIRCLE",
+                "arc" => "ARC",
+                "lwpolyline" => "LWPOLYLINE",
+                _ => throw new BridgeServiceException(
+                    "PROVISIONAL_VALIDATION_FAILED",
+                    "unsupported batch create family"
+                ),
+            };
+            Require(
+                string.Equals(Convert.ToString(target!["entity_type"]), expectedType, StringComparison.Ordinal),
+                "batch-created entity type differs from requested family"
+            );
+            Require(
+                GeometryMatches(spec, target),
+                "batch-created provisional geometry differs from requested geometry"
+            );
+        }
+    }
+
+    internal static void ValidateBatchInsertBlocks(
+        IReadOnlyList<string> affectedPids,
+        BatchInsertBlocksParams parameters,
+        Dictionary<string, object?> before,
+        Dictionary<string, object?> provisional
+    )
+    {
+        if (affectedPids.Count != parameters.Inserts.Length)
+        {
+            throw new BridgeServiceException(
+                "PROVISIONAL_VALIDATION_FAILED",
+                "block insert PID count differs from requested insert count"
+            );
+        }
+        Dictionary<string, Dictionary<string, object?>> beforeEntities = EntitiesByPid(before);
+        Dictionary<string, Dictionary<string, object?>> afterEntities = EntitiesByPid(provisional);
+        string[] created = afterEntities.Keys.Except(beforeEntities.Keys).Order().ToArray();
+        string[] expectedCreated = affectedPids.Order(StringComparer.Ordinal).ToArray();
+        string[] deleted = beforeEntities.Keys.Except(afterEntities.Keys).Order().ToArray();
+        string[] modified = beforeEntities.Keys.Intersect(afterEntities.Keys)
+            .Where(pid => EntityKey(beforeEntities[pid]) != EntityKey(afterEntities[pid]))
+            .Order()
+            .ToArray();
+
+        Require(
+            created.SequenceEqual(expectedCreated) && deleted.Length == 0 && modified.Length == 0,
+            "block insert batch produced an unexpected semantic PID delta"
+        );
+        Require(
+            DocumentInvariantsEqual(before, provisional),
+            "block insert batch changed invariant document/resource state"
+        );
+        Require(
+            !IntroducedDuplicate(beforeEntities, afterEntities),
+            "block insert batch introduced duplicate geometry"
+        );
+
+        for (int index = 0; index < affectedPids.Count; index++)
+        {
+            BatchInsertBlockSpec spec = parameters.Inserts[index];
+            Require(
+                beforeEntities.TryGetValue(spec.DefinitionPid, out Dictionary<string, object?>? definition),
+                "block definition PID is not visible in predecessor semantic state"
+            );
+            Require(
+                string.Equals(
+                    Convert.ToString(definition!["entity_type"]),
+                    "BLOCK_DEFINITION",
+                    StringComparison.Ordinal
+                ),
+                "definition_pid does not identify a block definition"
+            );
+            Require(
+                afterEntities.TryGetValue(affectedPids[index], out Dictionary<string, object?>? inserted),
+                "inserted block reference is missing from provisional state"
+            );
+            Require(
+                BlockInsertMatches(definition!, inserted!, spec),
+                "inserted block reference differs from requested definition/transform"
+            );
+        }
+    }
+
+    internal static void ValidateBatchTransform(
+        IReadOnlyList<string> affectedPids,
+        BatchTransformParams parameters,
+        Dictionary<string, object?> before,
+        Dictionary<string, object?> provisional
+    )
+    {
+        Dictionary<string, Dictionary<string, object?>> beforeEntities = EntitiesByPid(before);
+        Dictionary<string, Dictionary<string, object?>> afterEntities = EntitiesByPid(provisional);
+        HashSet<string> targets = new(affectedPids, StringComparer.Ordinal);
+        string[] created = afterEntities.Keys.Except(beforeEntities.Keys).Order().ToArray();
+        string[] deleted = beforeEntities.Keys.Except(afterEntities.Keys).Order().ToArray();
+        string[] modified = beforeEntities.Keys.Intersect(afterEntities.Keys)
+            .Where(pid => EntityKey(beforeEntities[pid]) != EntityKey(afterEntities[pid]))
+            .Order()
+            .ToArray();
+
+        Require(created.Length == 0 && deleted.Length == 0, "batch transform changed entity identity membership");
+        Require(
+            modified.All(pid => targets.Contains(pid)),
+            "batch transform modified a non-target semantic PID"
+        );
+        Require(
+            DocumentInvariantsEqual(before, provisional),
+            "batch transform changed invariant document/resource state"
+        );
+        Require(
+            !IntroducedDuplicate(beforeEntities, afterEntities),
+            "batch transform introduced duplicate geometry"
+        );
+
+        foreach (string pid in affectedPids)
+        {
+            Require(beforeEntities.TryGetValue(pid, out Dictionary<string, object?>? predecessor), "batch transform predecessor is missing");
+            Require(afterEntities.TryGetValue(pid, out Dictionary<string, object?>? target), "batch transform target is missing");
+            Require(EnvelopeKey(predecessor!) == EnvelopeKey(target!), "batch transform changed layer/style/hierarchy/type");
+            Require(
+                GeometryMatchesTransform(predecessor!, target!, parameters.Transform),
+                "batch transform provisional geometry differs from requested transform"
+            );
+        }
+    }
+
     private static Dictionary<string, Dictionary<string, object?>> EntitiesByPid(Dictionary<string, object?> snapshot)
     {
         if (snapshot["entities"] is not List<Dictionary<string, object?>> entities)
@@ -161,6 +335,143 @@ internal static class NativeMutationValidator
     }
 
     private static bool GeometryMatches(
+        BatchCreateEntitySpec spec,
+        Dictionary<string, object?> entity
+    )
+    {
+        if (entity["geometry"] is not Dictionary<string, object?> geometry)
+        {
+            return false;
+        }
+        return spec.Kind switch
+        {
+            "line" => SameLine(geometry, spec.Start, spec.End),
+            "circle" => SameCircle(geometry, spec.Center, spec.Radius),
+            "arc" => SameArc(geometry, spec.Center, spec.Radius, spec.StartAngle, spec.EndAngle),
+            "lwpolyline" => SamePolyline(geometry, spec.Points, spec.Closed),
+            _ => false,
+        };
+    }
+
+    private static bool GeometryMatchesTransform(
+        Dictionary<string, object?> predecessor,
+        Dictionary<string, object?> target,
+        BatchTransformSpec transform
+    )
+    {
+        if (predecessor["geometry"] is not Dictionary<string, object?> beforeGeometry
+            || target["geometry"] is not Dictionary<string, object?> afterGeometry)
+        {
+            return false;
+        }
+        string type = Convert.ToString(predecessor["entity_type"]) ?? string.Empty;
+        switch (type)
+        {
+            case "LINE":
+                return beforeGeometry["start"] is double[] start
+                    && beforeGeometry["end"] is double[] end
+                    && SameLine(
+                        afterGeometry,
+                        TransformPoint3(start, transform),
+                        TransformPoint3(end, transform)
+                    );
+            case "CIRCLE":
+                return beforeGeometry["center"] is double[] circleCenter
+                    && Number(beforeGeometry["radius"], out double circleRadius)
+                    && SameCircle(
+                        afterGeometry,
+                        TransformPoint3(circleCenter, transform),
+                        circleRadius * ScaleFactor(transform)
+                    );
+            case "ARC":
+                return beforeGeometry["center"] is double[] arcCenter
+                    && Number(beforeGeometry["radius"], out double arcRadius)
+                    && Number(beforeGeometry["start_angle"], out double startAngle)
+                    && Number(beforeGeometry["end_angle"], out double endAngle)
+                    && SameArc(
+                        afterGeometry,
+                        TransformPoint3(arcCenter, transform),
+                        arcRadius * ScaleFactor(transform),
+                        NormalizeAngle(startAngle + RotationAngle(transform)),
+                        NormalizeAngle(endAngle + RotationAngle(transform))
+                    );
+            case "LWPOLYLINE":
+                if (beforeGeometry["vertices"] is not List<Dictionary<string, object?>> vertices
+                    || beforeGeometry["closed"] is not bool closed)
+                {
+                    return false;
+                }
+                double[][] points = vertices
+                    .Select(vertex => vertex["point"] is double[] point
+                        ? TransformPoint2(point, transform)
+                        : Array.Empty<double>())
+                    .ToArray();
+                return points.All(point => point.Length == 2)
+                    && SamePolyline(afterGeometry, points, closed);
+            default:
+                return false;
+        }
+    }
+
+    private static double[] TransformPoint3(double[] point, BatchTransformSpec transform)
+    {
+        if (point.Length != 3)
+        {
+            return [];
+        }
+        double[] xy = TransformPoint2([point[0], point[1]], transform);
+        return xy.Length == 2 ? [xy[0], xy[1], point[2]] : [];
+    }
+
+    private static double[] TransformPoint2(double[] point, BatchTransformSpec transform)
+    {
+        if (point.Length < 2)
+        {
+            return [];
+        }
+        double x = point[0];
+        double y = point[1];
+        return transform.Kind switch
+        {
+            "translate" => [x + transform.Delta![0], y + transform.Delta[1]],
+            "rotate_z" => RotatePoint(x, y, transform.Center!, transform.Angle!.Value),
+            "scale_uniform" => ScalePoint(x, y, transform.Center!, transform.Factor!.Value),
+            _ => [],
+        };
+    }
+
+    private static double[] RotatePoint(double x, double y, double[] center, double angle)
+    {
+        double dx = x - center[0];
+        double dy = y - center[1];
+        double cosine = Math.Cos(angle);
+        double sine = Math.Sin(angle);
+        return [
+            center[0] + dx * cosine - dy * sine,
+            center[1] + dx * sine + dy * cosine,
+        ];
+    }
+
+    private static double[] ScalePoint(double x, double y, double[] center, double factor) =>
+        [center[0] + (x - center[0]) * factor, center[1] + (y - center[1]) * factor];
+
+    private static double ScaleFactor(BatchTransformSpec transform) =>
+        string.Equals(transform.Kind, "scale_uniform", StringComparison.Ordinal)
+            ? transform.Factor!.Value
+            : 1.0;
+
+    private static double RotationAngle(BatchTransformSpec transform) =>
+        string.Equals(transform.Kind, "rotate_z", StringComparison.Ordinal)
+            ? transform.Angle!.Value
+            : 0.0;
+
+    private static double NormalizeAngle(double angle)
+    {
+        double result = angle % (Math.PI * 2.0);
+        return result < 0.0 ? result + Math.PI * 2.0 : result;
+    }
+
+    private static bool GeometryMatches(
         string family,
         Dictionary<string, object?> entity,
         EntityMutationParams parameters
@@ -178,6 +489,35 @@ internal static class NativeMutationValidator
             "lwpolyline" => SamePolyline(geometry, parameters.Points, parameters.Closed),
             _ => false,
         };
+    }
+
+    private static bool BlockInsertMatches(
+        Dictionary<string, object?> definition,
+        Dictionary<string, object?> inserted,
+        BatchInsertBlockSpec spec
+    )
+    {
+        if (!string.Equals(Convert.ToString(inserted["entity_type"]), "INSERT", StringComparison.Ordinal)
+            || definition["geometry"] is not Dictionary<string, object?> definitionGeometry
+            || inserted["geometry"] is not Dictionary<string, object?> geometry
+            || definitionGeometry["name"] is not string definitionName
+            || geometry["definition"] is not string actualDefinition
+            || !string.Equals(actualDefinition, definitionName, StringComparison.Ordinal)
+            || geometry["position"] is not double[] position
+            || !Same3(position, spec.Position)
+            || !Number(geometry["rotation"], out double rotation)
+            || !SameAngle(rotation, spec.Rotation)
+            || geometry["scale"] is not double[] scale
+            || scale.Length != 3
+            || !scale.All(value => Nearly(value, spec.Scale))
+            || geometry["normal"] is not double[] normal
+            || !Same3(normal, new[] { 0.0, 0.0, 1.0 })
+            || geometry["attributes"] is not List<Dictionary<string, object?>> attributes
+            || attributes.Count != 0)
+        {
+            return false;
+        }
+        return true;
     }
 
     private static bool SameLine(Dictionary<string, object?> geometry, double[]? start, double[]? end)
@@ -286,6 +626,15 @@ internal static class NativeMutationValidator
             number = 0.0;
             return false;
         }
+    }
+
+    private static bool SameAngle(double left, double right)
+    {
+        double period = Math.PI * 2.0;
+        double delta = (left - right) % period;
+        if (delta > Math.PI) delta -= period;
+        if (delta < -Math.PI) delta += period;
+        return Math.Abs(delta) <= Tolerance;
     }
 
     private static bool Nearly(double left, double right) => Math.Abs(left - right) <= Tolerance;

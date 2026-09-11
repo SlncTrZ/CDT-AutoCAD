@@ -14,6 +14,9 @@ from cdt_autocad.semantic.models import SemanticSnapshot
 from .protocol import (
     NATIVE_PROTOCOL_VERSION,
     ArcCreateParams,
+    BatchCreateParams,
+    BatchInsertBlocksParams,
+    BatchTransformParams,
     ArcTargetParams,
     BridgeProtocolError,
     BridgeRequest,
@@ -108,6 +111,74 @@ class NativeBridgeClient:
             return parse_native_snapshot(result, verify_fingerprint=verify_fingerprint)
         except BridgeProtocolError as exc:
             raise BridgeClientProtocolError(exc.code, exc.safe_message) from exc
+
+    def batch_create_chunk(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        entities: tuple[Mapping[str, Any], ...],
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute one bounded create-only native chunk; cross-chunk atomicity belongs to G3."""
+
+        params = BatchCreateParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "entities": [dict(item) for item in entities],
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            }
+        )
+        return self._request("entity.batch.create", params.to_dict())
+
+    def batch_insert_blocks_chunk(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        inserts: tuple[Mapping[str, Any], ...],
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        """Insert one bounded chunk of PID-bound block references."""
+
+        params = BatchInsertBlocksParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "inserts": [dict(item) for item in inserts],
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            }
+        )
+        return self._request("entity.batch.insert_blocks", params.to_dict())
+
+    def batch_transform_chunk(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        semantic_pids: tuple[str, ...],
+        transform: Mapping[str, Any],
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute one bounded in-place planar transform chunk over persistent semantic PIDs."""
+
+        params = BatchTransformParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "semantic_pids": list(semantic_pids),
+                "transform": dict(transform),
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            }
+        )
+        return self._request("entity.batch.transform", params.to_dict())
 
     def create_line(
         self,

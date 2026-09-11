@@ -12,18 +12,26 @@ internal sealed class NativeSemanticExtractor
     internal Dictionary<string, object?> Extract(
         Document document,
         Guid runtimeDocumentId,
-        string documentPid
+        string documentPid,
+        int maxEntities = BridgeConstants.MaxSnapshotEntities
     )
     {
         using Transaction transaction = document.Database.TransactionManager.StartOpenCloseTransaction();
-        return ExtractWithinTransaction(document, runtimeDocumentId, documentPid, transaction);
+        return ExtractWithinTransaction(
+            document,
+            runtimeDocumentId,
+            documentPid,
+            transaction,
+            maxEntities
+        );
     }
 
     internal Dictionary<string, object?> ExtractWithinTransaction(
         Document document,
         Guid runtimeDocumentId,
         string documentPid,
-        Transaction transaction
+        Transaction transaction,
+        int maxEntities = BridgeConstants.MaxSnapshotEntities
     )
     {
         if (!ReferenceEquals(document, AcApplication.DocumentManager.MdiActiveDocument))
@@ -51,13 +59,7 @@ internal sealed class NativeSemanticExtractor
             {
                 continue;
             }
-            if (entities.Count >= BridgeConstants.MaxSnapshotEntities)
-            {
-                throw new BridgeServiceException(
-                    "SNAPSHOT_TOO_LARGE",
-                    "semantic snapshot exceeds the bounded N4 entity limit"
-                );
-            }
+            EnsureCapacity(entities, maxEntities);
             if (transaction.GetObject(objectId, OpenMode.ForRead, false) is not Entity entity)
             {
                 continue;
@@ -86,7 +88,8 @@ internal sealed class NativeSemanticExtractor
                 transaction,
                 entities,
                 semanticPids,
-                visitedDefinitions
+                visitedDefinitions,
+                maxEntities
             );
         }
         entities.Sort((left, right) => string.CompareOrdinal(
@@ -136,14 +139,15 @@ internal sealed class NativeSemanticExtractor
         Transaction transaction,
         List<Dictionary<string, object?>> entities,
         HashSet<string> semanticPids,
-        HashSet<ObjectId> visitedDefinitions
+        HashSet<ObjectId> visitedDefinitions,
+        int maxEntities
     )
     {
         if (definitionId.IsNull || definitionId.IsErased || !visitedDefinitions.Add(definitionId))
         {
             return;
         }
-        EnsureCapacity(entities);
+        EnsureCapacity(entities, maxEntities);
         BlockTableRecord definition = (BlockTableRecord)transaction.GetObject(
             definitionId,
             OpenMode.ForRead,
@@ -179,7 +183,7 @@ internal sealed class NativeSemanticExtractor
             {
                 continue;
             }
-            EnsureCapacity(entities);
+            EnsureCapacity(entities, maxEntities);
             if (transaction.GetObject(objectId, OpenMode.ForRead, false) is not Entity entity)
             {
                 continue;
@@ -204,7 +208,8 @@ internal sealed class NativeSemanticExtractor
                 transaction,
                 entities,
                 semanticPids,
-                visitedDefinitions
+                visitedDefinitions,
+                maxEntities
             );
         }
     }
@@ -220,13 +225,16 @@ internal sealed class NativeSemanticExtractor
         }
     }
 
-    private static void EnsureCapacity(IReadOnlyCollection<Dictionary<string, object?>> entities)
+    private static void EnsureCapacity(
+        IReadOnlyCollection<Dictionary<string, object?>> entities,
+        int maxEntities
+    )
     {
-        if (entities.Count >= BridgeConstants.MaxSnapshotEntities)
+        if (maxEntities <= 0 || entities.Count >= maxEntities)
         {
             throw new BridgeServiceException(
                 "SNAPSHOT_TOO_LARGE",
-                "semantic snapshot exceeds the bounded N4 entity limit"
+                "semantic snapshot exceeds the bounded entity limit"
             );
         }
     }

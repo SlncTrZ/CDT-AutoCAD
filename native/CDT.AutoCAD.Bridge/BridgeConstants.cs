@@ -6,12 +6,14 @@ namespace CDT.AutoCAD.Bridge;
 internal static class BridgeConstants
 {
     internal const string ProtocolVersion = "cdt-autocad-native-v1";
-    internal const string BridgeVersion = "0.5.0-n7";
+    internal const string BridgeVersion = "0.6.0-g1";
     internal const int MaxFrameBytes = 65_536;
     internal const int MaxErrorMessageChars = 512;
     internal const int MaxPendingRequests = 32;
     internal const int MaxRequestsPerIdleTick = 4;
     internal const int MaxSnapshotEntities = 32;
+    internal const int MaxBatchChunkEntities = 32;
+    internal const int MaxBatchSemanticEntities = 2048;
     internal const int MaxSimplePolylineVertices = 128;
     internal static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
     internal static readonly TimeSpan IoTimeout = TimeSpan.FromSeconds(8);

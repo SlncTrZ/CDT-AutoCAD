@@ -33,6 +33,9 @@ internal sealed class NativeBridgeService
             "bridge.recovery.list" => _mutations.ListRecoveries(),
             "bridge.recovery.resolve" => RecoveryResolve(request),
             "bridge.recovery.finalize" => RecoveryFinalize(request),
+            "entity.batch.create" => BatchCreate(request),
+            "entity.batch.insert_blocks" => BatchInsertBlocks(request),
+            "entity.batch.transform" => BatchTransform(request),
             "entity.create.line" => EntityMutation(request),
             "entity.update.line" => EntityMutation(request),
             "entity.delete.line" => EntityMutation(request),
@@ -71,6 +74,10 @@ internal sealed class NativeBridgeService
             mutation_enabled = true,
             document_fp_schema_version = 2,
             two_phase_commit_integrity = true,
+            batch_chunk_atomic = true,
+            cross_chunk_atomic = false,
+            max_batch_chunk_entities = BridgeConstants.MaxBatchChunkEntities,
+            max_batch_semantic_entities = BridgeConstants.MaxBatchSemanticEntities,
             recovery_operations = new[]
             {
                 "bridge.recovery.list",
@@ -79,6 +86,9 @@ internal sealed class NativeBridgeService
             },
             mutation_operations = new[]
             {
+                "entity.batch.create",
+                "entity.batch.insert_blocks",
+                "entity.batch.transform",
                 "entity.create.line",
                 "entity.update.line",
                 "entity.delete.line",
@@ -102,6 +112,39 @@ internal sealed class NativeBridgeService
         DocumentIdentityParams parameters = request.DocumentIdentity
             ?? throw new BridgeServiceException("INVALID_PARAMS", "document identity params are required");
         return _documents.Resolve(parameters.RuntimeDocumentId, parameters.DocumentPid);
+    }
+
+    private object BatchCreate(BridgeRequest request)
+    {
+        BatchCreateParams parameters = request.BatchCreate
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "batch create params are required");
+        Document document = _documents.ResolveDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        return _mutations.ExecuteBatchCreate(document, request.RequestId, parameters);
+    }
+
+    private object BatchInsertBlocks(BridgeRequest request)
+    {
+        BatchInsertBlocksParams parameters = request.BatchInsertBlocks
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "batch insert blocks params are required");
+        Document document = _documents.ResolveDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        return _mutations.ExecuteBatchInsertBlocks(document, request.RequestId, parameters);
+    }
+
+    private object BatchTransform(BridgeRequest request)
+    {
+        BatchTransformParams parameters = request.BatchTransform
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "batch transform params are required");
+        Document document = _documents.ResolveDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        return _mutations.ExecuteBatchTransform(document, request.RequestId, parameters);
     }
 
     private object EntityMutation(BridgeRequest request)

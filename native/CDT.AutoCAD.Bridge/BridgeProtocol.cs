@@ -25,6 +25,58 @@ internal sealed record EntityMutationParams(
     string? FaultStage
 );
 
+internal sealed record BatchCreateEntitySpec(
+    string Kind,
+    double[]? Start,
+    double[]? End,
+    double[]? Center,
+    double? Radius,
+    double? StartAngle,
+    double? EndAngle,
+    double[][]? Points,
+    bool? Closed
+);
+
+internal sealed record BatchCreateParams(
+    Guid RuntimeDocumentId,
+    string DocumentPid,
+    string ExpectedParentFp,
+    BatchCreateEntitySpec[] Entities,
+    string? FaultStage
+);
+
+internal sealed record BatchTransformSpec(
+    string Kind,
+    double[]? Delta,
+    double[]? Center,
+    double? Angle,
+    double? Factor
+);
+
+internal sealed record BatchTransformParams(
+    Guid RuntimeDocumentId,
+    string DocumentPid,
+    string ExpectedParentFp,
+    string[] SemanticPids,
+    BatchTransformSpec Transform,
+    string? FaultStage
+);
+
+internal sealed record BatchInsertBlockSpec(
+    string DefinitionPid,
+    double[] Position,
+    double Rotation,
+    double Scale
+);
+
+internal sealed record BatchInsertBlocksParams(
+    Guid RuntimeDocumentId,
+    string DocumentPid,
+    string ExpectedParentFp,
+    BatchInsertBlockSpec[] Inserts,
+    string? FaultStage
+);
+
 internal sealed record RecoveryResolveParams(
     Guid RuntimeDocumentId,
     string DocumentPid,
@@ -48,7 +100,10 @@ internal sealed record BridgeRequest(
     DocumentIdentityParams? DocumentIdentity,
     EntityMutationParams? Mutation,
     RecoveryResolveParams? RecoveryResolve = null,
-    RecoveryFinalizeParams? RecoveryFinalize = null
+    RecoveryFinalizeParams? RecoveryFinalize = null,
+    BatchCreateParams? BatchCreate = null,
+    BatchTransformParams? BatchTransform = null,
+    BatchInsertBlocksParams? BatchInsertBlocks = null
 );
 
 internal sealed record BridgeResponse(
@@ -115,6 +170,9 @@ internal static class BridgeProtocol
         "bridge.recovery.list",
         "bridge.recovery.resolve",
         "bridge.recovery.finalize",
+        "entity.batch.create",
+        "entity.batch.insert_blocks",
+        "entity.batch.transform",
         "entity.create.line",
         "entity.update.line",
         "entity.delete.line",
@@ -141,6 +199,92 @@ internal static class BridgeProtocol
     {
         "runtime_document_id",
         "document_pid",
+    };
+
+    private static readonly HashSet<string> BatchCreateFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "entities",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> BatchInsertBlocksFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "inserts",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> BatchInsertBlockFields = new(StringComparer.Ordinal)
+    {
+        "definition_pid",
+        "position",
+        "rotation",
+        "scale",
+    };
+
+    private static readonly HashSet<string> BatchTransformFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "semantic_pids",
+        "transform",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> TranslateTransformFields = new(StringComparer.Ordinal)
+    {
+        "kind",
+        "delta",
+    };
+
+    private static readonly HashSet<string> RotateTransformFields = new(StringComparer.Ordinal)
+    {
+        "kind",
+        "center",
+        "angle",
+    };
+
+    private static readonly HashSet<string> ScaleTransformFields = new(StringComparer.Ordinal)
+    {
+        "kind",
+        "center",
+        "factor",
+    };
+
+    private static readonly HashSet<string> BatchLineFields = new(StringComparer.Ordinal)
+    {
+        "kind",
+        "start",
+        "end",
+    };
+
+    private static readonly HashSet<string> BatchCircleFields = new(StringComparer.Ordinal)
+    {
+        "kind",
+        "center",
+        "radius",
+    };
+
+    private static readonly HashSet<string> BatchArcFields = new(StringComparer.Ordinal)
+    {
+        "kind",
+        "center",
+        "radius",
+        "start_angle",
+        "end_angle",
+    };
+
+    private static readonly HashSet<string> BatchPolylineFields = new(StringComparer.Ordinal)
+    {
+        "kind",
+        "points",
+        "closed",
     };
 
     private static readonly HashSet<string> CreateLineFields = new(StringComparer.Ordinal)
@@ -336,6 +480,18 @@ internal static class BridgeProtocol
             }
 
             JsonElement parameters = RequireObject(root, "params", "INVALID_PARAMS", requestId);
+            if (string.Equals(operation, "entity.batch.create", StringComparison.Ordinal))
+            {
+                return ParseBatchCreate(requestId, operation, parameters);
+            }
+            if (string.Equals(operation, "entity.batch.insert_blocks", StringComparison.Ordinal))
+            {
+                return ParseBatchInsertBlocks(requestId, operation, parameters);
+            }
+            if (string.Equals(operation, "entity.batch.transform", StringComparison.Ordinal))
+            {
+                return ParseBatchTransform(requestId, operation, parameters);
+            }
             if (operation.StartsWith("entity.", StringComparison.Ordinal))
             {
                 return ParseEntityMutation(requestId, operation, parameters);
@@ -483,6 +639,430 @@ internal static class BridgeProtocol
                 acceptedPostFp
             )
         );
+    }
+
+    private static BridgeRequest ParseBatchCreate(
+        Guid requestId,
+        string operation,
+        JsonElement parameters
+    )
+    {
+        ValidateExactOrSubsetFields(parameters, BatchCreateFields, "INVALID_PARAMS", requestId);
+        Guid runtimeDocumentId = RequireCanonicalGuid(
+            parameters,
+            "runtime_document_id",
+            "INVALID_RUNTIME_DOCUMENT_ID",
+            requestId
+        );
+        string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
+        string expectedParentFp = RequireFingerprint(parameters, "expected_parent_fp", requestId);
+        if (!parameters.TryGetProperty("entities", out JsonElement entitiesElement)
+            || entitiesElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "entities must be an array of typed primitives",
+                requestId
+            );
+        }
+        JsonElement[] rawEntities = entitiesElement.EnumerateArray().ToArray();
+        if (rawEntities.Length < 1 || rawEntities.Length > BridgeConstants.MaxBatchChunkEntities)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"entities must contain 1..{BridgeConstants.MaxBatchChunkEntities} typed primitives",
+                requestId
+            );
+        }
+        BatchCreateEntitySpec[] entities = rawEntities
+            .Select(item => ParseBatchCreateEntity(item, requestId))
+            .ToArray();
+
+        string? faultStage = null;
+        if (parameters.TryGetProperty("fault_stage", out JsonElement faultElement))
+        {
+            faultStage = faultElement.ValueKind == JsonValueKind.String
+                ? faultElement.GetString()
+                : null;
+            if (!string.Equals(faultStage, "after_apply_before_commit", StringComparison.Ordinal))
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "batch create only enables the pre-commit fault stage",
+                    requestId
+                );
+            }
+        }
+        return new BridgeRequest(
+            requestId,
+            operation,
+            null,
+            null,
+            null,
+            null,
+            new BatchCreateParams(
+                runtimeDocumentId,
+                documentPid,
+                expectedParentFp,
+                entities,
+                faultStage
+            )
+        );
+    }
+
+    private static BatchCreateEntitySpec ParseBatchCreateEntity(JsonElement item, Guid requestId)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "batch entity must be a JSON object",
+                requestId
+            );
+        }
+        string kind = RequireString(item, "kind", "INVALID_PARAMS", requestId);
+        switch (kind)
+        {
+            case "line":
+            {
+                ValidateExactFields(item, BatchLineFields, "INVALID_PARAMS", requestId);
+                double[] start = RequirePoint3(item, "start", requestId);
+                double[] end = RequirePoint3(item, "end", requestId);
+                if (start.SequenceEqual(end))
+                {
+                    throw new BridgeProtocolException(
+                        "INVALID_PARAMS",
+                        "line start and end must differ",
+                        requestId
+                    );
+                }
+                return new BatchCreateEntitySpec(kind, start, end, null, null, null, null, null, null);
+            }
+            case "circle":
+                ValidateExactFields(item, BatchCircleFields, "INVALID_PARAMS", requestId);
+                return new BatchCreateEntitySpec(
+                    kind,
+                    null,
+                    null,
+                    RequirePoint3(item, "center", requestId),
+                    RequirePositiveDouble(item, "radius", requestId),
+                    null,
+                    null,
+                    null,
+                    null
+                );
+            case "arc":
+            {
+                ValidateExactFields(item, BatchArcFields, "INVALID_PARAMS", requestId);
+                double startAngle = RequireArcAngle(item, "start_angle", requestId);
+                double endAngle = RequireArcAngle(item, "end_angle", requestId);
+                if (Math.Abs(startAngle - endAngle) <= 1e-12)
+                {
+                    throw new BridgeProtocolException(
+                        "INVALID_PARAMS",
+                        "arc start_angle and end_angle must differ",
+                        requestId
+                    );
+                }
+                return new BatchCreateEntitySpec(
+                    kind,
+                    null,
+                    null,
+                    RequirePoint3(item, "center", requestId),
+                    RequirePositiveDouble(item, "radius", requestId),
+                    startAngle,
+                    endAngle,
+                    null,
+                    null
+                );
+            }
+            case "lwpolyline":
+            {
+                ValidateExactFields(item, BatchPolylineFields, "INVALID_PARAMS", requestId);
+                double[][] points = RequirePoint2Array(item, "points", requestId);
+                bool closed = RequireBoolean(item, "closed", requestId);
+                if (closed && (points.Length < 3 || SamePoint2(points[0], points[^1])))
+                {
+                    throw new BridgeProtocolException(
+                        "INVALID_PARAMS",
+                        "closed polyline requires at least three vertices and must not repeat the first point",
+                        requestId
+                    );
+                }
+                return new BatchCreateEntitySpec(kind, null, null, null, null, null, null, points, closed);
+            }
+            default:
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "batch entity kind is not enabled",
+                    requestId
+                );
+        }
+    }
+
+    private static BridgeRequest ParseBatchInsertBlocks(
+        Guid requestId,
+        string operation,
+        JsonElement parameters
+    )
+    {
+        ValidateExactOrSubsetFields(parameters, BatchInsertBlocksFields, "INVALID_PARAMS", requestId);
+        Guid runtimeDocumentId = RequireCanonicalGuid(
+            parameters,
+            "runtime_document_id",
+            "INVALID_RUNTIME_DOCUMENT_ID",
+            requestId
+        );
+        string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
+        string expectedParentFp = RequireFingerprint(parameters, "expected_parent_fp", requestId);
+        if (!parameters.TryGetProperty("inserts", out JsonElement insertsElement)
+            || insertsElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "inserts must be an array of typed block insert specs",
+                requestId
+            );
+        }
+        JsonElement[] rawInserts = insertsElement.EnumerateArray().ToArray();
+        if (rawInserts.Length < 1 || rawInserts.Length > BridgeConstants.MaxBatchChunkEntities)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"inserts must contain 1..{BridgeConstants.MaxBatchChunkEntities} block insert specs",
+                requestId
+            );
+        }
+        BatchInsertBlockSpec[] inserts = rawInserts
+            .Select(item => ParseBatchInsertBlock(item, requestId))
+            .ToArray();
+        string? faultStage = null;
+        if (parameters.TryGetProperty("fault_stage", out JsonElement faultElement))
+        {
+            faultStage = faultElement.ValueKind == JsonValueKind.String
+                ? faultElement.GetString()
+                : null;
+            if (!string.Equals(faultStage, "after_apply_before_commit", StringComparison.Ordinal))
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "batch block insert only enables the pre-commit fault stage",
+                    requestId
+                );
+            }
+        }
+        return new BridgeRequest(
+            requestId,
+            operation,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            new BatchInsertBlocksParams(
+                runtimeDocumentId,
+                documentPid,
+                expectedParentFp,
+                inserts,
+                faultStage
+            )
+        );
+    }
+
+    private static BatchInsertBlockSpec ParseBatchInsertBlock(JsonElement item, Guid requestId)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "block insert must be a JSON object",
+                requestId
+            );
+        }
+        ValidateExactFields(item, BatchInsertBlockFields, "INVALID_PARAMS", requestId);
+        if (!item.TryGetProperty("definition_pid", out JsonElement definitionPidElement))
+        {
+            throw new BridgeProtocolException("INVALID_PARAMS", "definition_pid is required", requestId);
+        }
+        string definitionPid = RequireCanonicalEntityPid(definitionPidElement, requestId);
+        double[] position = RequirePoint3(item, "position", requestId);
+        if (position[2] != 0.0)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "block insert position must be planar with z=0",
+                requestId
+            );
+        }
+        double rotation = RequireFiniteDouble(item, "rotation", requestId);
+        if (Math.Abs(rotation) > Math.PI * 2.0)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "block insert rotation must be finite within [-2pi, 2pi]",
+                requestId
+            );
+        }
+        double scale = RequireFiniteDouble(item, "scale", requestId);
+        if (scale < 1e-6 || scale > 1e6)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "block insert scale must be finite within [1e-6, 1e6]",
+                requestId
+            );
+        }
+        return new BatchInsertBlockSpec(definitionPid, position, rotation, scale);
+    }
+
+    private static BridgeRequest ParseBatchTransform(
+        Guid requestId,
+        string operation,
+        JsonElement parameters
+    )
+    {
+        ValidateExactOrSubsetFields(parameters, BatchTransformFields, "INVALID_PARAMS", requestId);
+        Guid runtimeDocumentId = RequireCanonicalGuid(
+            parameters,
+            "runtime_document_id",
+            "INVALID_RUNTIME_DOCUMENT_ID",
+            requestId
+        );
+        string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
+        string expectedParentFp = RequireFingerprint(parameters, "expected_parent_fp", requestId);
+        if (!parameters.TryGetProperty("semantic_pids", out JsonElement pidsElement)
+            || pidsElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "semantic_pids must be an array of canonical pid:<uuid> values",
+                requestId
+            );
+        }
+        JsonElement[] rawPids = pidsElement.EnumerateArray().ToArray();
+        if (rawPids.Length < 1 || rawPids.Length > BridgeConstants.MaxBatchChunkEntities)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"semantic_pids must contain 1..{BridgeConstants.MaxBatchChunkEntities} targets",
+                requestId
+            );
+        }
+        string[] semanticPids = rawPids
+            .Select(item => RequireCanonicalEntityPid(item, requestId))
+            .ToArray();
+        if (semanticPids.Distinct(StringComparer.Ordinal).Count() != semanticPids.Length)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "semantic_pids must be unique",
+                requestId
+            );
+        }
+        JsonElement transformElement = RequireObject(
+            parameters,
+            "transform",
+            "INVALID_PARAMS",
+            requestId
+        );
+        BatchTransformSpec transform = ParseBatchTransformSpec(transformElement, requestId);
+        string? faultStage = null;
+        if (parameters.TryGetProperty("fault_stage", out JsonElement faultElement))
+        {
+            faultStage = faultElement.ValueKind == JsonValueKind.String
+                ? faultElement.GetString()
+                : null;
+            if (!string.Equals(faultStage, "after_apply_before_commit", StringComparison.Ordinal))
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "batch transform only enables the pre-commit fault stage",
+                    requestId
+                );
+            }
+        }
+        return new BridgeRequest(
+            requestId,
+            operation,
+            null,
+            null,
+            null,
+            null,
+            null,
+            new BatchTransformParams(
+                runtimeDocumentId,
+                documentPid,
+                expectedParentFp,
+                semanticPids,
+                transform,
+                faultStage
+            )
+        );
+    }
+
+    private static BatchTransformSpec ParseBatchTransformSpec(
+        JsonElement transform,
+        Guid requestId
+    )
+    {
+        string kind = RequireString(transform, "kind", "INVALID_PARAMS", requestId);
+        switch (kind)
+        {
+            case "translate":
+            {
+                ValidateExactFields(transform, TranslateTransformFields, "INVALID_PARAMS", requestId);
+                double[] delta = RequirePoint3(transform, "delta", requestId);
+                if (delta[2] != 0.0 || (delta[0] == 0.0 && delta[1] == 0.0))
+                {
+                    throw new BridgeProtocolException(
+                        "INVALID_PARAMS",
+                        "translate must be a non-zero planar XY displacement with z=0",
+                        requestId
+                    );
+                }
+                return new BatchTransformSpec(kind, delta, null, null, null);
+            }
+            case "rotate_z":
+            {
+                ValidateExactFields(transform, RotateTransformFields, "INVALID_PARAMS", requestId);
+                double[] center = RequirePoint3(transform, "center", requestId);
+                double angle = RequireFiniteDouble(transform, "angle", requestId);
+                if (center[2] != 0.0 || Math.Abs(angle) <= 1e-12 || Math.Abs(angle) > Math.PI * 2.0)
+                {
+                    throw new BridgeProtocolException(
+                        "INVALID_PARAMS",
+                        "rotate_z requires center.z=0 and a non-zero finite angle within [-2pi, 2pi]",
+                        requestId
+                    );
+                }
+                return new BatchTransformSpec(kind, null, center, angle, null);
+            }
+            case "scale_uniform":
+            {
+                ValidateExactFields(transform, ScaleTransformFields, "INVALID_PARAMS", requestId);
+                double[] center = RequirePoint3(transform, "center", requestId);
+                double factor = RequireFiniteDouble(transform, "factor", requestId);
+                if (center[2] != 0.0
+                    || factor < 1e-6
+                    || factor > 1e6
+                    || Math.Abs(factor - 1.0) <= 1e-12)
+                {
+                    throw new BridgeProtocolException(
+                        "INVALID_PARAMS",
+                        "scale_uniform requires center.z=0 and factor in [1e-6, 1e6] excluding 1",
+                        requestId
+                    );
+                }
+                return new BatchTransformSpec(kind, null, center, null, factor);
+            }
+            default:
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "transform kind is not enabled",
+                    requestId
+                );
+        }
     }
 
     private static BridgeRequest ParseEntityMutation(
@@ -664,6 +1244,33 @@ internal static class BridgeProtocol
         return value;
     }
 
+    private static string RequireCanonicalEntityPid(JsonElement value, Guid requestId)
+    {
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "semantic_pids must contain canonical pid:<uuid> values",
+                requestId
+            );
+        }
+        string text = value.GetString() ?? string.Empty;
+        if (!text.StartsWith("pid:", StringComparison.Ordinal)
+            || text.Length != 40
+            || !Guid.TryParseExact(text[4..], "D", out Guid parsed)
+            || !string.Equals(text, "pid:" + parsed.ToString("D"), StringComparison.Ordinal)
+            || text[18] != '4'
+            || "89ab".IndexOf(text[23]) < 0)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "semantic_pids must contain canonical pid:<uuid> values",
+                requestId
+            );
+        }
+        return text;
+    }
+
     private static string RequireFingerprint(JsonElement element, string name, Guid requestId)
     {
         string value = RequireString(element, name, "INVALID_PARAMS", requestId);
@@ -724,6 +1331,26 @@ internal static class BridgeProtocol
                 );
             }
             result[index] = coordinate;
+        }
+        return result;
+    }
+
+    private static double RequireFiniteDouble(
+        JsonElement element,
+        string name,
+        Guid requestId
+    )
+    {
+        if (!element.TryGetProperty(name, out JsonElement value)
+            || value.ValueKind != JsonValueKind.Number
+            || !value.TryGetDouble(out double result)
+            || !double.IsFinite(result))
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"{name} must be a finite number",
+                requestId
+            );
         }
         return result;
     }

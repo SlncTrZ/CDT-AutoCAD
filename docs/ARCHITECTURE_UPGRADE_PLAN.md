@@ -483,11 +483,11 @@ The next architecture program is governed by `docs/ADR-002-GENERIC-CAD-EXECUTION
 
 The approved implementation sequence is:
 
-- **G1 Generic Batch Geometry** — typed batch creation, generic transforms and block insertion with bounded chunking/yield so >1,000-entity work does not become one unbounded UI-blocking native transaction;
+- **G1 Generic Batch Geometry — CLOSED / LIVE PASS** — typed batch creation for LINE/CIRCLE/ARC/simple-LWPOLYLINE, planar similarity transforms, and referenced block insertion by definition PID; native chunk limit 32, semantic verification limit 2,048, 100/1,000 scale live-pass, and exact batch R0/R1/R2 evidence; cross-chunk atomicity remains explicitly false;
 - **G2 Schema-Agnostic Metadata** — namespaced canonical JSON get/set/query over Extension Dictionary/XRecord, with provider-owned PID/recovery namespaces reserved and generic storage/query work strictly bounded;
 - **G3 Chunked Logical Atomicity** — a logical batch is accepted only as `COMMITTED_VERIFIED`; any failed chunk triggers reverse compensation and exact predecessor read-back/fingerprint proof for `ROLLED_BACK_VERIFIED`; unverifiable recovery blocks later mutation as uncertain state;
 - **graduation ladder** — 100, 1,000, 5,000 and 10,000 entities, measuring correctness, injected failures, longest continuous UI-blocked interval, total latency, memory, recovery latency, modal/busy behavior and process leaks.
 
 G3 explicitly does not keep one AutoCAD `DocumentLock + Transaction` open across thousands of entities. Intermediate chunk state may temporarily exist in the live DWG until the logical operation reaches final verification or verified compensation. A requirement for invisible intermediate state would require a separate staging/off-document Database architecture.
 
-G-series implementation does not automatically publish tools or promote the native bridge. Public contract/version/routing changes remain N8/N10 decisions after live native acceptance. Future individual entity-family expansion remains separately bounded; no family or scale tier inherits certification from another automatically.
+G1 closure does not publish tools or promote the native bridge; later G-series implementation likewise does not automatically publish tools or promote it. Public contract/version/routing changes remain N8/N10 decisions after live native acceptance. Future individual entity-family expansion remains separately bounded; no family or scale tier inherits certification from another automatically.

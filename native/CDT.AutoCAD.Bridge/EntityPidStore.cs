@@ -45,6 +45,109 @@ internal static class EntityPidStore
         transaction.AddNewlyCreatedDBObject(created, true);
     }
 
+    internal static IReadOnlyDictionary<string, ObjectId> ResolveBlockDefinitions(
+        Database database,
+        IReadOnlyCollection<string> definitionPids,
+        Transaction transaction
+    )
+    {
+        HashSet<string> targets = new(definitionPids, StringComparer.Ordinal);
+        if (targets.Count == 0)
+        {
+            throw new BridgeServiceException("INVALID_PID", "block definition PID set must not be empty");
+        }
+
+        Dictionary<string, ObjectId> matches = new(StringComparer.Ordinal);
+        BlockTable blockTable = (BlockTable)transaction.GetObject(
+            database.BlockTableId,
+            OpenMode.ForRead
+        );
+        foreach (ObjectId recordId in blockTable)
+        {
+            BlockTableRecord record = (BlockTableRecord)transaction.GetObject(
+                recordId,
+                OpenMode.ForRead,
+                false
+            );
+            string? pid = EntityPidReader.ReadOptional(record, transaction);
+            if (pid is null || !targets.Contains(pid))
+            {
+                continue;
+            }
+            if (record.IsLayout || record.IsFromExternalReference)
+            {
+                throw new BridgeServiceException(
+                    "UNSUPPORTED_BLOCK_DEFINITION",
+                    "block insertion does not target layout or external-reference definitions"
+                );
+            }
+            if (!matches.TryAdd(pid, recordId))
+            {
+                throw new BridgeServiceException(
+                    "DUPLICATE_SEMANTIC_PID",
+                    "multiple block definitions share a target semantic PID"
+                );
+            }
+        }
+        if (matches.Count != targets.Count)
+        {
+            throw new BridgeServiceException(
+                "BLOCK_DEFINITION_NOT_FOUND",
+                "one or more target block definition PIDs are unavailable"
+            );
+        }
+        return matches;
+    }
+
+    internal static IReadOnlyDictionary<string, ObjectId> ResolveCurrentSpaceEntities(
+        Database database,
+        IReadOnlyCollection<string> semanticPids,
+        Transaction transaction
+    )
+    {
+        HashSet<string> targets = new(semanticPids, StringComparer.Ordinal);
+        if (targets.Count != semanticPids.Count || targets.Count == 0)
+        {
+            throw new BridgeServiceException(
+                "INVALID_PID",
+                "batch target semantic PIDs must be non-empty and unique"
+            );
+        }
+
+        Dictionary<string, ObjectId> matches = new(StringComparer.Ordinal);
+        BlockTableRecord space = (BlockTableRecord)transaction.GetObject(
+            database.CurrentSpaceId,
+            OpenMode.ForRead
+        );
+        foreach (ObjectId objectId in space)
+        {
+            if (transaction.GetObject(objectId, OpenMode.ForRead, false) is not Entity entity)
+            {
+                continue;
+            }
+            string pid = EntityPidReader.ReadRequired(entity, transaction);
+            if (!targets.Contains(pid))
+            {
+                continue;
+            }
+            if (!matches.TryAdd(pid, objectId))
+            {
+                throw new BridgeServiceException(
+                    "DUPLICATE_SEMANTIC_PID",
+                    "multiple current-space entities share a target semantic PID"
+                );
+            }
+        }
+        if (matches.Count != targets.Count)
+        {
+            throw new BridgeServiceException(
+                "ENTITY_NOT_FOUND",
+                "one or more target semantic PIDs are not present in the active current space"
+            );
+        }
+        return matches;
+    }
+
     internal static ObjectId ResolveCurrentSpaceEntity(
         Database database,
         string semanticPid,
