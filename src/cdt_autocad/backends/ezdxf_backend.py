@@ -403,7 +403,11 @@ class EzdxfBackend(AutoCADBackend):
             except TimeoutError as exc:
                 if integrity_sensitive:
                     self._quarantined = True
-                raise BackendTimeoutError(f"ezdxf operation exceeded {deadline:g}s") from exc
+                raise BackendTimeoutError(
+                    f"ezdxf operation exceeded {deadline:g}s",
+                    retryable=not integrity_sensitive,
+                    completion_unknown=integrity_sensitive,
+                ) from exc
 
     async def document_new(self) -> dict[str, Any]:
         doc = await self._run(lambda: ezdxf.new(dxfversion="R2010"), quarantine_exit=True)

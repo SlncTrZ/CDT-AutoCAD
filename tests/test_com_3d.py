@@ -166,7 +166,7 @@ class _FakeDoc:
         return self.objects[key]
 
 
-async def _inline_run(func):
+async def _inline_run(func, **_kwargs):
     return func()
 
 

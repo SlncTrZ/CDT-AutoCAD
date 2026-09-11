@@ -17,12 +17,17 @@ import re
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, TypeVar
 
 from ..config import Settings
-from ..errors import BackendTimeoutError, StateConflictError, UnsupportedCapabilityError
+from ..errors import (
+    BackendQuarantinedError,
+    BackendTimeoutError,
+    StateConflictError,
+    UnsupportedCapabilityError,
+)
 from ..models import BlockInfo, Capability, EntityInfo, LayerInfo
 from ..security import resolve_autocad_document_path, resolve_pdf_path
 from .base import AutoCADBackend
@@ -498,6 +503,8 @@ class ComBackend(AutoCADBackend):
         self._application_metadata: dict[str, Any] | None = None
         self._transaction_depth = 0
         self._timeout_uncertain = False
+        self._uncertain_future: Future[Any] | None = None
+        self._mutation_gate = asyncio.Lock()
         self._document_scope_key: tuple[str, str] | None = None
         self._created_viewport_handles: set[str] = set()
         if _COM_IMPORTS_OK:
@@ -627,6 +634,9 @@ class ComBackend(AutoCADBackend):
             "attach_policy": self.settings.com_attach_policy,
             "transaction_depth": self._transaction_depth,
             "timeout_uncertain": self._timeout_uncertain,
+            "uncertain_call_running": bool(
+                self._uncertain_future is not None and not self._uncertain_future.done()
+            ),
             "a2_implementation_state": "release_candidate",
             "a2_live_verification": "pending_real_autocad",
             "live_certification": {
@@ -724,39 +734,74 @@ class ComBackend(AutoCADBackend):
             return None
         return next((name for name in cls._collection_names(collection) if name.lower() == wanted), None)
 
-    async def _run(self, func) -> _T:
+    def _latch_uncertain_completion(self, future: Future[Any]) -> None:
+        self._timeout_uncertain = True
+        self._uncertain_future = future
+        self._connected = False
+        self._application_metadata = None
+        self._created_viewport_handles.clear()
+
+    async def _run(
+        self,
+        func,
+        *,
+        may_mutate_document: bool = True,
+    ) -> _T:
+        if may_mutate_document:
+            async with self._mutation_gate:
+                return await self._run_after_mutation_gate(
+                    func,
+                    may_mutate_document=True,
+                )
+        return await self._run_after_mutation_gate(
+            func,
+            may_mutate_document=False,
+        )
+
+    async def _run_after_mutation_gate(
+        self,
+        func,
+        *,
+        may_mutate_document: bool,
+    ) -> _T:
         executor = self._executor
         if executor is None:
             reason = self._runtime_reason() or "executor_unavailable"
             raise RuntimeError(f"AutoCAD COM backend unavailable: {reason}")
 
+        if self._timeout_uncertain and may_mutate_document:
+            raise BackendQuarantinedError(
+                "AutoCAD COM backend is quarantined after an unknown mutation completion; "
+                "verify the live drawing with read-only calls and restart the provider before "
+                "mutating again"
+            )
+
         loop = asyncio.get_running_loop()
-        future = loop.run_in_executor(executor, func)
+        concurrent_future = executor.submit(func)
+        future = asyncio.wrap_future(concurrent_future, loop=loop)
         deadline = self.settings.com_call_timeout_seconds
         try:
-            return await asyncio.wait_for(future, timeout=deadline)
-        except TimeoutError as exc:
-            if not future.cancelled():
-                raise
-
-            self._timeout_uncertain = True
-            self._connected = False
-            self._application_metadata = None
-            self._created_viewport_handles.clear()
-            stuck = self._executor
-            old_generation = self._generation
-            self._executor = self._new_executor() if self.runtime_available else None
-            if stuck is not None:
-                try:
-                    stuck.submit(self._teardown_generation, old_generation)
-                except Exception:
-                    pass
-                stuck.shutdown(wait=False)
-            raise BackendTimeoutError(
-                f"AutoCAD COM call exceeded {deadline:g}s. The abandoned call may still "
-                "complete inside AutoCAD; verify the live drawing before retrying because "
-                "a blind retry can double-apply a mutation."
-            ) from exc
+            done, _ = await asyncio.wait({future}, timeout=deadline)
+            if future not in done:
+                if may_mutate_document:
+                    self._latch_uncertain_completion(concurrent_future)
+                    message = (
+                        f"AutoCAD COM mutation exceeded {deadline:g}s after dispatch. The call may "
+                        "still complete; later mutations are quarantined until provider restart so "
+                        "a blind retry cannot double-apply the mutation."
+                    )
+                else:
+                    message = f"AutoCAD COM read exceeded {deadline:g}s"
+                raise BackendTimeoutError(
+                    message,
+                    retryable=not may_mutate_document,
+                    completion_unknown=may_mutate_document,
+                )
+            return future.result()
+        except asyncio.CancelledError:
+            if may_mutate_document:
+                self._latch_uncertain_completion(concurrent_future)
+            raise
         except _COM_ERROR as exc:
             self._connected = False
             self._application_metadata = None
@@ -903,6 +948,7 @@ class ComBackend(AutoCADBackend):
         result = await self._run(_sync)
         self._transaction_depth = 0
         self._timeout_uncertain = False
+        self._uncertain_future = None
         self._document_scope_key = None
         self._created_viewport_handles.clear()
         return result
@@ -925,6 +971,7 @@ class ComBackend(AutoCADBackend):
         result = await self._run(_sync)
         self._transaction_depth = 0
         self._timeout_uncertain = False
+        self._uncertain_future = None
         self._document_scope_key = None
         self._created_viewport_handles.clear()
         return result
@@ -963,7 +1010,7 @@ class ComBackend(AutoCADBackend):
                 "default_coordinate_frame": "wcs",
             }
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def document_save(self, path: str | None = None) -> dict[str, Any]:
         if path is not None:
@@ -973,7 +1020,7 @@ class ComBackend(AutoCADBackend):
             doc = self._doc()
             return str(getattr(doc, "FullName", "") or "")
 
-        raw_path = await self._run(_current_path)
+        raw_path = await self._run(_current_path, may_mutate_document=False)
         if not raw_path or not Path(raw_path).is_absolute():
             raise StateConflictError("Unsaved live AutoCAD document requires an explicit save path")
         target = resolve_autocad_document_path(
@@ -1112,10 +1159,13 @@ class ComBackend(AutoCADBackend):
                     break
             return result
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def object_get(self, object_id: str) -> EntityInfo:
-        return await self._run(lambda: _entity_info(self._entity_by_id(object_id)))
+        return await self._run(
+            lambda: _entity_info(self._entity_by_id(object_id)),
+            may_mutate_document=False,
+        )
 
     async def object_count(
         self,
@@ -1134,7 +1184,7 @@ class ComBackend(AutoCADBackend):
                 count += 1
             return count
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def object_measure(self, object_id: str) -> dict[str, Any]:
         def _sync() -> dict[str, Any]:
@@ -1170,7 +1220,7 @@ class ComBackend(AutoCADBackend):
                 result["centroid"] = _com_vector_property(entity, "Centroid")
             return result
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def drawing_extents(self) -> dict[str, Any]:
         def _sync() -> dict[str, Any]:
@@ -1194,7 +1244,7 @@ class ComBackend(AutoCADBackend):
                 "coordinate_frame": "wcs",
             }
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def object_intersections(
         self, first_id: str, second_id: str, extend_mode: str = "none"
@@ -1230,7 +1280,7 @@ class ComBackend(AutoCADBackend):
                 "count": len(points),
             }
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def object_set_properties(
         self,
@@ -1661,7 +1711,7 @@ class ComBackend(AutoCADBackend):
                 for index in range(int(doc.Layers.Count))
             ]
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def layer_create(self, name: str, color: int = 7) -> LayerInfo:
         wanted = str(name).strip()
@@ -1716,7 +1766,7 @@ class ComBackend(AutoCADBackend):
                 )
             return rows
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def block_create(
         self,
@@ -1797,7 +1847,7 @@ class ComBackend(AutoCADBackend):
                 "current": str(doc.ActiveLayout.Name),
             }
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def layout_create(self, name: str) -> dict[str, Any]:
         wanted = str(name).strip()
@@ -1971,7 +2021,7 @@ class ComBackend(AutoCADBackend):
                 ),
             }
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def viewport_set_scale(self, handle: str, scale: float) -> dict[str, Any]:
         if scale <= 0:
@@ -2037,7 +2087,7 @@ class ComBackend(AutoCADBackend):
             app.ZoomExtents()
             return {"ok": True, "mode": "extents"}
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def view_zoom_window(
         self, x1: float, y1: float, x2: float, y2: float
@@ -2058,7 +2108,7 @@ class ComBackend(AutoCADBackend):
                 "max": [high_x, high_y],
             }
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def view_screenshot(self) -> bytes:
         if not _PIL_OK:
@@ -2079,7 +2129,7 @@ class ComBackend(AutoCADBackend):
                 raise RuntimeError("AutoCAD screenshot capture did not produce a PNG")
             return png
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=False)
 
     async def view_set_direction(self, dx: float, dy: float, dz: float) -> dict[str, Any]:
         length = math.sqrt(float(dx) ** 2 + float(dy) ** 2 + float(dz) ** 2)
@@ -2518,7 +2568,10 @@ class ComBackend(AutoCADBackend):
         return await self._run(_sync)
 
     async def solid_inspect(self, handle: str) -> dict[str, Any]:
-        return await self._run(lambda: self._solid_info(self._solid_by_id(handle)))
+        return await self._run(
+            lambda: self._solid_info(self._solid_by_id(handle)),
+            may_mutate_document=False,
+        )
 
     async def transaction_begin(self) -> dict[str, Any]:
         if self._transaction_depth >= self.settings.transaction_depth:

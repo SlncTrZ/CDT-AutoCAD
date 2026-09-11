@@ -23,3 +23,14 @@ class BackendQuarantinedError(StateConflictError):
 
 class BackendTimeoutError(AutoCADProviderError):
     """Raised when a backend operation exceeds its configured deadline."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool = False,
+        completion_unknown: bool = False,
+    ):
+        super().__init__(message)
+        self.retryable = retryable
+        self.completion_unknown = completion_unknown

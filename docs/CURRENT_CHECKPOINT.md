@@ -1,9 +1,9 @@
 # Current Checkpoint — CDT-AutoCAD
 
 > Updated: 2026-09-11 +07:00
-> Status: **MP0-T00 CLOSED / PASS · A-01 NEXT · N0–N6 CLOSED · O1 CLOSED / LIVE PASS · N7 PRESERVED / NOT CLOSED**
+> Status: **MP0-T00 CLOSED / PASS · A-01 CLOSED / PASS · A-02 NEXT · N0–N6 CLOSED · O1 CLOSED / LIVE PASS · N7 PRESERVED / NOT CLOSED**
 > Accepted implementation baseline: `04ff820` (`Feat: expand native typed shape mutations`)
-> Working implementation checkpoint: N7 two-phase native commit integrity + R0/R1/R2 recovery remains uncommitted and preserved; Master Plan ordering is MP0-T00 → A-01 → A-02 → A-03 → resume N7
+> Working implementation checkpoint: N7 two-phase native commit integrity + R0/R1/R2 recovery remains uncommitted and preserved; Master Plan ordering is MP0-T00 → A-01 → A-02 → A-03 → resume N7, with MP0-T00 and A-01 now closed
 > Primary native target: AutoCAD 2027 full · Windows x64 · COM `26.0` · Managed .NET `net10.0-windows`
 
 ## 1. Public runtime
@@ -25,6 +25,7 @@ The N-series Managed .NET bridge is **not yet the public provider backend**.
 | Phase | State | What is proven |
 | --- | --- | --- |
 | MP0-T00 | **CLOSED / PASS** | platform-specific PEP 751 dependency locks from one canonical resolver workflow; source/build/DLL/runtime provenance; baseline threat model; structured request diagnostics/correlation with telemetry separated from recovery journal truth |
+| A-01 | **CLOSED / PASS** | COM timeout/cancel after dispatch is non-retryable unknown completion; one STA executor + mutation gate fence queued writers; late completion remains quarantined; read-only reconciliation stays available; document_new/open cannot clear quarantine |
 | N0 | **CLOSED** | architecture/documentation freeze and migration boundary |
 | N1 | **CLOSED / PASS** | Python semantic models, canonicalization/fingerprint primitives, rollback receipts and state-chain primitives |
 | N2 | **CLOSED / LIVE PASS** | persistent document/entity PID carrier and clone/reconciliation policy on real AutoCAD 2027, P0–P10 |
@@ -178,6 +179,18 @@ MP0-T00 closure evidence on isolated clean gates derived from `1957ad8` and cont
 - canonical MP0 evidence: `docs/evidence/mp0-t00-baseline-2026-09-11.json`, with Linux/Windows runtime manifests beside it;
 - observed installed `.171` bridge DLL SHA-256 remains `8f3c28b7f765c1420afaeafc9f54f726e5c24306de6a852ea3f38758158b3767`; MP0 records it as **OBSERVED_ONLY**, not as a newly certified native artifact.
 
+A-01 closure evidence on isolated clean gates derived from `4e0a714` and containing no N7 dirty files:
+
+- focused timeout-safety suite: **8/8 PASS** on Linux and Windows `.171`;
+- clean Linux locked environment + full suite: **212 passed / 4 skipped**;
+- clean Windows `.171` locked environment + full suite: **211 passed / 5 skipped** with AutoCAD 2027 running in Session 1;
+- unknown mutation completion uses one COM STA executor plus an async mutation gate before dispatch; a request queued before the first timeout is fenced before its callable reaches AutoCAD;
+- mutation timeout/cancel reports `retryable=false` + `completion_unknown=true`; read-only timeout remains retryable and does not quarantine;
+- late completion does not clear quarantine; read-only calls remain available for reconciliation; `document_new`/`document_open` do not clear quarantine; mutation resumes only after verified operator recovery and provider-process restart;
+- changed-file Ruff, compileall and `git diff --check`: PASS on Linux and Windows; `ezdxf_backend.py:157 B905` remains a documented pre-existing lint finding outside the A-01 hunk;
+- real live timeout injection was intentionally not performed because forcing unknown mutation completion would itself create uncontrolled CAD state; deterministic Windows fault-injection covers the state machine while the full suite runs on the target platform;
+- canonical evidence: `docs/evidence/a01-com-timeout-safety-2026-09-11.json`.
+
 Accepted regression/evidence on the O1 closure tree:
 
 - focused O1/N5/N6 native-protocol + semantic regression: **76 passed**;
@@ -211,7 +224,7 @@ SHA-256 4ad2d4138d6e71a8fa91281ea5482c592e2a0c04cb5d41ec5f2452b7cff31484
 
 ## 7. Current boundary / next activity
 
-Master Plan execution order is now authoritative: **MP0-T00 is CLOSED/PASS; next is A-01, then A-02, then A-03, and only then resume N7.** The existing N7 working tree is intentionally preserved unchanged while the public-safety fixes execute in front of it.
+Master Plan execution order is now authoritative: **MP0-T00 and A-01 are CLOSED/PASS; next is A-02, then A-03, and only then resume N7.** The existing N7 working tree is intentionally preserved unchanged while the public-safety fixes execute in front of it.
 
 **N7 remains open / NOT CLOSED.** Its immediate recovery blocker is R2 document replacement safety: the bridge must not close/replace an active AutoCAD document from an unsafe application-context callback. When N7 resumes after A-03, the next recovery slice must switch activation safely, close only inactive documents, reopen the restored original, rebind runtime identity, and independently prove `document_pid + document_fp` before returning `ROLLED_BACK_VERIFIED`.
 

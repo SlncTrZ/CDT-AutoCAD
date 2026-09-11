@@ -18,7 +18,7 @@ from cdt_autocad.errors import UnsupportedCapabilityError
 pytestmark = pytest.mark.asyncio
 
 
-async def _inline_run(func):
+async def _inline_run(func, **_kwargs):
     return func()
 
 

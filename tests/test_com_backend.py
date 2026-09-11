@@ -549,7 +549,7 @@ class _FakeDoc:
         raise KeyError(handle)
 
 
-async def _inline_run(func):
+async def _inline_run(func, **_kwargs):
     return func()
 
 

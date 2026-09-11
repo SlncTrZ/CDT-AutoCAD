@@ -91,7 +91,14 @@ def _classify_error(exc: Exception) -> tuple[str, dict[str, Any], str] | None:
         if isinstance(item, StateConflictError):
             return "conflict", {"retryable": False}, str(item)
         if isinstance(item, BackendTimeoutError):
-            return "timeout", {"retryable": True}, str(item)
+            return (
+                "timeout",
+                {
+                    "retryable": item.retryable,
+                    "completion_unknown": item.completion_unknown,
+                },
+                str(item),
+            )
         if isinstance(item, FileNotFoundError | KeyError):
             return "not_found", {"retryable": False}, str(item).strip("'")
         if isinstance(item, ValueError | TypeError):

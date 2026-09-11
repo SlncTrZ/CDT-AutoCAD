@@ -1,6 +1,6 @@
 # Threat Model — CDT-AutoCAD
 
-> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-10 +07:00
+> Baseline: MP0-T00 · Version: 2 · Updated: 2026-09-11 +07:00
 > Scope: public MCP/COM/ezdxf, staged native IPC/bridge, filesystem/artifacts, recovery state and runtime lifecycle.
 > Status: **ACTIVE BASELINE** — update by threat-model delta before enabling a materially new risky capability.
 
@@ -45,7 +45,7 @@ Non-negotiable invariants:
 | T01 | Unauthorized MCP caller or exposed endpoint | Unapproved read/write operations | Fail-closed HTTP auth; loopback-safe defaults; capability/path policy | HTTP/client auth tests; config review | Provider maintainer |
 | T02 | Path traversal, symlink/junction/UNC or path swap | Read/write outside authorized roots | Resolve/validate actual target at side-effect boundary; platform-specific TOCTOU tests | Negative path suite on Linux + Windows | Provider maintainer |
 | T03 | User/client switches active document between validation and mutation | Mutation lands on wrong drawing | Bind concrete document/runtime identity through operation; revalidate before side effect/read-back | Document-switch/interleave acceptance | Provider + native bridge |
-| T04 | Timeout/cancel/disconnect/retry after dispatch | Duplicate write or concurrent writers | Unknown-completion latch, writer fencing, idempotency/request identity, explicit reconciliation | Queued/running/late-completion/retry fault tests | Provider maintainer |
+| T04 | Timeout/cancel/disconnect/retry after dispatch | Duplicate write or concurrent writers | Unknown-completion latch; one COM STA executor; async mutation gate before dispatch; mutation timeout/cancel becomes non-retryable `completion_unknown`; later mutation stays quarantined after late completion; read-only reconciliation remains allowed; provider-process restart only after state verification | A-01 focused 8/8 PASS on Linux + Windows; clean full regression 212/4 Linux and 211/5 Windows; queued/running/cancel/late/read-timeout/document-new-negative cases | Provider maintainer |
 | T05 | IPC spoof/replay/cross-session client | Native action executed by wrong process/session | Local current-user/current-session pipe boundary, typed protocol/version, bounded frames, replay/ownership checks | Session mismatch + protocol/adversarial tests | Native bridge |
 | T06 | Malicious DWG/DXF/xref/underlay/plugin content | Code/resource load, path escape or parser abuse | No arbitrary command surface; explicit external-resource policy; bounded parser/input behavior | Malicious/unsupported input fixtures before related promotion | Provider + reviewer |
 | T07 | Oversized request/snapshot/selection/queue/journal/checkpoint growth | DoS, memory/disk exhaustion, partial state | Explicit byte/entity/point/depth/time/disk budgets; refusal without silent truncation | Boundary + 1k/10k/100k or declared scale tests | Provider maintainer |
