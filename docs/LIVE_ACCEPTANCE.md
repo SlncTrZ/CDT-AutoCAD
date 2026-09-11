@@ -174,7 +174,7 @@ provider extension contract intentionally adds the analysis tools. Until then,
 
 ## 11. Architecture migration acceptance
 
-The current COM lane remains the public/runtime migration baseline. The accepted target architecture is an in-process AutoCAD Managed .NET bridge plus the provider-level Semantic State Loop. N0–N6 and O1 have passed their bounded native gates; N7 two-phase post-commit recovery is in progress and remains unaccepted because final R2 document-lifecycle testing exposed an AutoCAD active-document crash. Remaining recovery, parity and promotion gates are defined in `docs/NATIVE_BRIDGE_ACCEPTANCE.md` and the unfinished N7 handoff is `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
+The current COM lane remains the public/runtime migration baseline. The accepted target architecture is an in-process AutoCAD Managed .NET bridge plus the provider-level Semantic State Loop. N0–N7 and O1 have passed their bounded native gates; N7 two-phase post-commit recovery now includes activation-safe R2 restore after a real AutoCAD restart. Remaining parity and promotion gates are defined in `docs/NATIVE_BRIDGE_ACCEPTANCE.md`; canonical N7 closure evidence is `docs/evidence/n7-native-recovery-2026-09-11.json`.
 
 The native architecture lane must ultimately prove, on real AutoCAD 2027, both non-negotiable pillars:
 

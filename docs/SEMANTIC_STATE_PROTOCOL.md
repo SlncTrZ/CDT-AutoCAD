@@ -1,7 +1,7 @@
 # Semantic State Protocol — CDT-AutoCAD Target Contract
 
 > Updated: 2026-09-10 +07:00
-> Status: CONTRACT BASELINE · N1–N6 + O1 implemented/accepted for bounded scopes · N7 recovery IN PROGRESS / NOT CLOSED
+> Status: CONTRACT BASELINE · N1–N7 + O1 implemented/accepted for bounded scopes
 > Scope: source semantics, native extraction, PID, canonicalization, fingerprinting, diff, rollback and deterministic validation
 
 ## 1. System invariant
@@ -29,7 +29,7 @@ As of the current checkpoint:
 - N6 live-verifies deterministic semantic delta, requested-geometry/allowed-effects validation, duplicate detection, state-chain continuity, manual-drift blocking and post-dispatch uncertainty latching;
 - O1 live-verifies that the same parent-PID-transaction-N6 chain model extends internally to CIRCLE, ARC and simple LWPOLYLINE create/update/delete, for an exact 12-operation staged allowlist including LINE;
 - N7 is actively implementing provisional in-transaction validation, independent persisted-state comparison, provider-owned checkpoint manifests/artifact hashes, typed recovery list/resolve/finalize, R1 compensation and R2 checkpoint restoration;
-- N7 is not accepted because final R2-after-restart acceptance exposed an AutoCAD active-document lifecycle crash; the accepted O1/N6 behavior therefore remains the authority until N7 closes.
+- N7 is accepted for its bounded checkpoint-backed post-commit recovery scope; activation-safe R2 after real AutoCAD restart passed with exact predecessor PID/fingerprint verification. Public routing/promotion remains separate.
 
 Accordingly, the protocol below is partly implemented and partly normative target contract. The working N7 candidate attempts to convert post-commit validation/integrity failures from `STATE_UNCERTAIN` into verified R1/R2 restoration, but no such recovery may be treated as accepted until the N7 close gate passes. Current status authority: `docs/CURRENT_CHECKPOINT.md`; unfinished N7 details: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
 
@@ -362,7 +362,7 @@ A delta is computed from pre/post semantic states, assisted by native database e
 
 Native events are evidence/optimization, not the sole truth source. Post-action extraction remains authoritative.
 
-`allowed_effects` in the ActionSpec is compared against this delta. In the accepted N6+O1 scope, validation independently checks requested geometry for LINE/CIRCLE/ARC/simple-LWPOLYLINE, target type/layer/style/hierarchy invariants, invariant document/style-resource state, affected-PID consistency and newly introduced duplicate geometry. O1 LWPOLYLINE is intentionally simple 2D: finite XY vertices, zero elevation, +Z normal and zero bulge/vertex widths; complex existing polylines are refused before write. On the accepted O1/N6 baseline, a broader semantic failure found after native commit becomes `STATE_UNCERTAIN` and blocks continuation. The working N7 candidate moves deterministic validation into the write transaction where possible and adds checkpoint-backed post-commit R1/R2 recovery, but that behavior remains unaccepted until final N7 live acceptance is crash-free.
+`allowed_effects` in the ActionSpec is compared against this delta. In the accepted N7+O1 scope, validation independently checks requested geometry for LINE/CIRCLE/ARC/simple-LWPOLYLINE, target type/layer/style/hierarchy invariants, invariant document/style-resource state, affected-PID consistency and newly introduced duplicate geometry. O1 LWPOLYLINE is intentionally simple 2D: finite XY vertices, zero elevation, +Z normal and zero bulge/vertex widths; complex existing polylines are refused before write. Deterministic violations are rejected inside the native write transaction where possible; post-commit integrity failures use checkpoint-backed R1/R2 recovery and advance no state-chain entry unless the commit is accepted.
 
 ## 9. Deterministic ValidationRuleSet
 
@@ -521,7 +521,7 @@ During migration:
 - the staged .NET bridge provides N4 bounded native extraction and typed native mutation; N6 provides deterministic delta/state-chain validation and O1 extends the internal accepted mutation set to LINE/CIRCLE/ARC/simple-LWPOLYLINE without changing the public MCP surface;
 - document fingerprint schema v1 evidence remains historical; N5+ parent-state binding uses schema v2, which excludes volatile `saved/DBMOD` from semantic identity;
 - current native snapshots expose no relation/topology data, so N6 does not claim topology validation that is not present in authoritative extraction;
-- N7 post-commit recovery/R1/R2 is IN PROGRESS on an internal candidate; its final gate remains open because R2 active-document lifecycle safety is not yet proven;
+- N7 post-commit recovery/R1/R2 is CLOSED / LIVE PASS for the bounded internal candidate, including activation-safe R2 after real AutoCAD restart;
 - Python MCP/provider hot reload is a mandatory prerequisite before deep N8/N9/N10 migration: one authoritative generation, deterministic in-flight drain/refusal, health-proven generation switch and fail-safe rollback to the previous healthy generation are required;
 - missing semantic fields must be reported as unsupported/unknown, never fabricated;
 - old and new adapters should be dual-run on disposable drawings until parity/integrity gates close.

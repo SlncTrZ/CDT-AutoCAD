@@ -1,6 +1,6 @@
 # Initial Handoff — Agent A / AutoCAD
 
-> Historical bootstrap document updated with current handoff pointer on 2026-09-10. For implementation status, use `docs/CURRENT_CHECKPOINT.md`; for unfinished N7 work, use `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
+> Historical bootstrap document. N7 closed/live-passed on 2026-09-11; for current implementation status use `docs/CURRENT_CHECKPOINT.md`. `docs/N7_WORKING_CHECKPOINT_2026-09-10.md` is retained only as the historical N7 incident/handoff record.
 
 ## Repository
 
@@ -48,9 +48,9 @@ Known implementation state:
 
 ## Current handoff task
 
-N0–N6 and O1 are complete for their bounded scopes; accepted implementation baseline is `main@04ff820`. N7 two-phase commit/recovery is open and implemented on an uncommitted working tree. The current blocker is crash-safe R2 document replacement: final R2-after-restart acceptance exposed an AutoCAD active-document access-violation crash. Continue from `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`; do not call N7 closed until activation-safe R2, full regressions, review and canonical evidence pass.
+N0–N7 and O1 are complete for their bounded scopes. N7 `0.5.0-n7` closed/live-passed on AutoCAD 2027 Session 1 with activation-safe R2 recovery before and after a real process restart; canonical evidence is `docs/evidence/n7-native-recovery-2026-09-11.json`.
 
-The Python MCP/provider also has a new mandatory hot-reload requirement before deep N8/N9/N10 migration. `.171` has `cloudflared` available for later endpoint/tunnel deployment, but tunnel/service configuration has not yet been audited or changed for CDT-AutoCAD.
+The next mandatory runtime task is Python MCP/provider hot reload before deep N8/N9/N10 migration. `.171` has `cloudflared` available for later endpoint/tunnel deployment, but tunnel/service configuration has not yet been audited or changed for CDT-AutoCAD.
 
 The current COM/ezdxf runtime remains the comparison/public baseline. New implementation must not weaken or silently replace current public behavior until real AutoCAD parity/integrity and explicit promotion gates pass.
 

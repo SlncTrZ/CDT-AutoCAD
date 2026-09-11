@@ -25,11 +25,30 @@ internal sealed record EntityMutationParams(
     string? FaultStage
 );
 
+internal sealed record RecoveryResolveParams(
+    Guid RuntimeDocumentId,
+    string DocumentPid,
+    string CheckpointId,
+    string CheckpointArtifactFp,
+    string ExpectedRestoreFp,
+    string Strategy
+);
+
+internal sealed record RecoveryFinalizeParams(
+    Guid RuntimeDocumentId,
+    string DocumentPid,
+    string CheckpointId,
+    string CheckpointArtifactFp,
+    string AcceptedPostFp
+);
+
 internal sealed record BridgeRequest(
     Guid RequestId,
     string Operation,
     DocumentIdentityParams? DocumentIdentity,
-    EntityMutationParams? Mutation
+    EntityMutationParams? Mutation,
+    RecoveryResolveParams? RecoveryResolve = null,
+    RecoveryFinalizeParams? RecoveryFinalize = null
 );
 
 internal sealed record BridgeResponse(
@@ -93,6 +112,9 @@ internal static class BridgeProtocol
         "bridge.documents.list",
         "bridge.document.identity",
         "bridge.document.snapshot",
+        "bridge.recovery.list",
+        "bridge.recovery.resolve",
+        "bridge.recovery.finalize",
         "entity.create.line",
         "entity.update.line",
         "entity.delete.line",
@@ -218,6 +240,25 @@ internal static class BridgeProtocol
         "fault_stage",
     };
 
+    private static readonly HashSet<string> RecoveryResolveFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "checkpoint_id",
+        "checkpoint_artifact_fp",
+        "expected_restore_fp",
+        "strategy",
+    };
+
+    private static readonly HashSet<string> RecoveryFinalizeFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "checkpoint_id",
+        "checkpoint_artifact_fp",
+        "accepted_post_fp",
+    };
+
     private static readonly JsonSerializerOptions ResponseOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -299,6 +340,14 @@ internal static class BridgeProtocol
             {
                 return ParseEntityMutation(requestId, operation, parameters);
             }
+            if (string.Equals(operation, "bridge.recovery.resolve", StringComparison.Ordinal))
+            {
+                return ParseRecoveryResolve(requestId, operation, parameters);
+            }
+            if (string.Equals(operation, "bridge.recovery.finalize", StringComparison.Ordinal))
+            {
+                return ParseRecoveryFinalize(requestId, operation, parameters);
+            }
             if (!string.Equals(operation, "bridge.document.identity", StringComparison.Ordinal)
                 && !string.Equals(operation, "bridge.document.snapshot", StringComparison.Ordinal))
             {
@@ -362,6 +411,78 @@ internal static class BridgeProtocol
                 null
             );
         }
+    }
+
+    private static BridgeRequest ParseRecoveryResolve(
+        Guid requestId,
+        string operation,
+        JsonElement parameters
+    )
+    {
+        ValidateExactOrSubsetFields(parameters, RecoveryResolveFields, "INVALID_PARAMS", requestId);
+        Guid runtimeDocumentId = RequireCanonicalGuid(
+            parameters,
+            "runtime_document_id",
+            "INVALID_RUNTIME_DOCUMENT_ID",
+            requestId
+        );
+        string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
+        string checkpointId = RequireCheckpointId(parameters, "checkpoint_id", requestId);
+        string artifactFp = RequireFingerprint(parameters, "checkpoint_artifact_fp", requestId);
+        string expectedRestoreFp = RequireFingerprint(parameters, "expected_restore_fp", requestId);
+        string strategy = RequireString(parameters, "strategy", "INVALID_PARAMS", requestId);
+        if (!string.Equals(strategy, "R1_COMPENSATE", StringComparison.Ordinal)
+            && !string.Equals(strategy, "R2_CHECKPOINT_RESTORE", StringComparison.Ordinal))
+        {
+            throw new BridgeProtocolException("INVALID_PARAMS", "recovery strategy is not enabled", requestId);
+        }
+        return new BridgeRequest(
+            requestId,
+            operation,
+            null,
+            null,
+            new RecoveryResolveParams(
+                runtimeDocumentId,
+                documentPid,
+                checkpointId,
+                artifactFp,
+                expectedRestoreFp,
+                strategy
+            )
+        );
+    }
+
+    private static BridgeRequest ParseRecoveryFinalize(
+        Guid requestId,
+        string operation,
+        JsonElement parameters
+    )
+    {
+        ValidateExactOrSubsetFields(parameters, RecoveryFinalizeFields, "INVALID_PARAMS", requestId);
+        Guid runtimeDocumentId = RequireCanonicalGuid(
+            parameters,
+            "runtime_document_id",
+            "INVALID_RUNTIME_DOCUMENT_ID",
+            requestId
+        );
+        string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
+        string checkpointId = RequireCheckpointId(parameters, "checkpoint_id", requestId);
+        string artifactFp = RequireFingerprint(parameters, "checkpoint_artifact_fp", requestId);
+        string acceptedPostFp = RequireFingerprint(parameters, "accepted_post_fp", requestId);
+        return new BridgeRequest(
+            requestId,
+            operation,
+            null,
+            null,
+            null,
+            new RecoveryFinalizeParams(
+                runtimeDocumentId,
+                documentPid,
+                checkpointId,
+                artifactFp,
+                acceptedPostFp
+            )
+        );
     }
 
     private static BridgeRequest ParseEntityMutation(
@@ -486,12 +607,15 @@ internal static class BridgeProtocol
         string? faultStage = null;
         if (parameters.TryGetProperty("fault_stage", out JsonElement faultElement))
         {
-            if (faultElement.ValueKind != JsonValueKind.String
-                || !string.Equals(
-                    faultElement.GetString(),
-                    "after_apply_before_commit",
-                    StringComparison.Ordinal
-                ))
+            string? requestedFault = faultElement.ValueKind == JsonValueKind.String
+                ? faultElement.GetString()
+                : null;
+            if (requestedFault is not (
+                "after_apply_before_commit"
+                or "before_commit_add_stray"
+                or "after_commit_corrupt_target"
+                or "after_commit_add_stray"
+            ))
             {
                 throw new BridgeProtocolException(
                     "INVALID_PARAMS",
@@ -499,7 +623,7 @@ internal static class BridgeProtocol
                     requestId
                 );
             }
-            faultStage = "after_apply_before_commit";
+            faultStage = requestedFault;
         }
 
         return new BridgeRequest(
@@ -522,6 +646,36 @@ internal static class BridgeProtocol
                 faultStage
             )
         );
+    }
+
+    private static string RequireCheckpointId(JsonElement element, string name, Guid requestId)
+    {
+        string value = RequireString(element, name, "INVALID_PARAMS", requestId);
+        if (!value.StartsWith("cp:", StringComparison.Ordinal)
+            || !Guid.TryParseExact(value[3..], "D", out Guid parsed)
+            || !string.Equals(value, "cp:" + parsed.ToString("D"), StringComparison.Ordinal))
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"{name} must be canonical cp:<uuid>",
+                requestId
+            );
+        }
+        return value;
+    }
+
+    private static string RequireFingerprint(JsonElement element, string name, Guid requestId)
+    {
+        string value = RequireString(element, name, "INVALID_PARAMS", requestId);
+        if (!IsCanonicalFingerprint(value))
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"{name} must be a lowercase sha256 fingerprint",
+                requestId
+            );
+        }
+        return value;
     }
 
     private static bool IsCanonicalFingerprint(string value)

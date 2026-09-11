@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
@@ -58,6 +59,7 @@ class SemanticStepResult:
     validation: ValidationResult | None
     chain_entry: StateChainEntry | None
     native_receipt: dict[str, Any]
+    runtime_document_id: str | None = None
 
 
 class JsonlStateJournal:
@@ -193,6 +195,7 @@ class NativeSemanticExecutor:
         try:
             self._validate_receipt_identity(action, native_receipt, actual_parent_fp)
             outcome = self._receipt_outcome(native_receipt)
+            checkpoint = self._recovery_checkpoint(native_receipt, actual_parent_fp)
         except SemanticStepError as exc:
             self._raise_uncertain_after_dispatch(
                 runtime_document_id,
@@ -209,6 +212,20 @@ class NativeSemanticExecutor:
                 document_pid=action.document_pid,
             )
         except Exception as exc:
+            if checkpoint is not None and outcome in {
+                MutationOutcome.COMMITTED_VERIFIED,
+                MutationOutcome.COMMIT_INTEGRITY_FAIL,
+            }:
+                return self._recover_after_commit(
+                    runtime_document_id,
+                    action,
+                    before,
+                    None,
+                    native_receipt,
+                    checkpoint,
+                    reason="independent semantic read-back failed after native commit",
+                    recovery_cause={"type": type(exc).__name__, "message": str(exc)},
+                )
             self._raise_uncertain_after_dispatch(
                 runtime_document_id,
                 action,
@@ -251,8 +268,19 @@ class NativeSemanticExecutor:
                 validation=None,
                 chain_entry=None,
                 native_receipt=native_receipt,
+                runtime_document_id=runtime_document_id,
             )
 
+        if outcome is MutationOutcome.COMMIT_INTEGRITY_FAIL and checkpoint is not None:
+            return self._recover_after_commit(
+                runtime_document_id,
+                action,
+                before,
+                after,
+                native_receipt,
+                checkpoint,
+                reason="native post-commit read-back differs from provisional state",
+            )
         if outcome is not MutationOutcome.COMMITTED_VERIFIED:
             return self._uncertain(
                 action,
@@ -262,6 +290,16 @@ class NativeSemanticExecutor:
                 f"native mutation returned non-advancing outcome {outcome.value}",
             )
         if native_receipt.get("post_document_fp") != after_fp:
+            if checkpoint is not None:
+                return self._recover_after_commit(
+                    runtime_document_id,
+                    action,
+                    before,
+                    after,
+                    native_receipt,
+                    checkpoint,
+                    reason="native post_document_fp does not match independent semantic read-back",
+                )
             return self._uncertain(
                 action,
                 before,
@@ -269,12 +307,35 @@ class NativeSemanticExecutor:
                 native_receipt,
                 "native post_document_fp does not match independent semantic read-back",
             )
+        if checkpoint is not None:
+            provisional_fp = native_receipt.get("provisional_document_fp")
+            if provisional_fp != after_fp:
+                return self._recover_after_commit(
+                    runtime_document_id,
+                    action,
+                    before,
+                    after,
+                    native_receipt,
+                    checkpoint,
+                    reason="provisional fingerprint does not match independent persisted state",
+                )
 
         try:
             delta = compute_semantic_delta(before, after, self.profile)
             delta, validation = validate_action_delta(action, before, after, delta, self.profile)
             self._validate_committed_affected_pid(action, native_receipt, delta)
         except SemanticStepError as exc:
+            if checkpoint is not None:
+                return self._recover_after_commit(
+                    runtime_document_id,
+                    action,
+                    before,
+                    after,
+                    native_receipt,
+                    checkpoint,
+                    reason=str(exc),
+                    recovery_cause={"code": exc.code},
+                )
             self._raise_uncertain_after_dispatch(
                 runtime_document_id,
                 action,
@@ -286,6 +347,17 @@ class NativeSemanticExecutor:
                 attempt_readback=False,
             )
         except Exception as exc:
+            if checkpoint is not None:
+                return self._recover_after_commit(
+                    runtime_document_id,
+                    action,
+                    before,
+                    after,
+                    native_receipt,
+                    checkpoint,
+                    reason="deterministic semantic validation raised after native commit",
+                    recovery_cause={"type": type(exc).__name__, "message": str(exc)},
+                )
             self._raise_uncertain_after_dispatch(
                 runtime_document_id,
                 action,
@@ -298,6 +370,18 @@ class NativeSemanticExecutor:
                 attempt_readback=False,
             )
         if validation.status is not ValidationStatus.PASS:
+            if checkpoint is not None:
+                return self._recover_after_commit(
+                    runtime_document_id,
+                    action,
+                    before,
+                    after,
+                    native_receipt,
+                    checkpoint,
+                    reason="committed native mutation failed deterministic semantic validation",
+                    delta=delta,
+                    validation=validation,
+                )
             self.blocked_reason = "STATE_UNCERTAIN"
             self._append_or_block(
                 {
@@ -313,7 +397,7 @@ class NativeSemanticExecutor:
             )
             raise SemanticStepError(
                 "VALIDATION_FAILED",
-                "committed native mutation failed deterministic semantic validation; N7 recovery is not available",
+                "committed native mutation failed deterministic semantic validation and recovery is unavailable",
                 detail=validation,
             )
 
@@ -330,6 +414,19 @@ class NativeSemanticExecutor:
             )
             verify_state_chain((*self._entries, chain_entry), self.profile)
         except Exception as exc:
+            if checkpoint is not None:
+                return self._recover_after_commit(
+                    runtime_document_id,
+                    action,
+                    before,
+                    after,
+                    native_receipt,
+                    checkpoint,
+                    reason="state-chain construction or verification failed after native commit",
+                    recovery_cause={"type": type(exc).__name__, "message": str(exc)},
+                    delta=delta,
+                    validation=validation,
+                )
             self._raise_uncertain_after_dispatch(
                 runtime_document_id,
                 action,
@@ -353,6 +450,40 @@ class NativeSemanticExecutor:
             committed_state=True,
         )
         self._entries.append(chain_entry)
+        if checkpoint is not None:
+            try:
+                finalized = self.client.finalize_recovery(
+                    runtime_document_id,
+                    document_pid=action.document_pid,
+                    checkpoint_id=checkpoint["checkpoint_id"],
+                    checkpoint_artifact_fp=checkpoint["checkpoint_artifact_fp"],
+                    accepted_post_fp=after_fp,
+                )
+                if (
+                    finalized.get("schema_version") != 1
+                    or finalized.get("status") != "FINALIZED"
+                    or finalized.get("checkpoint_id") != checkpoint["checkpoint_id"]
+                ):
+                    raise SemanticStepError(
+                        "INVALID_RECOVERY_RECEIPT",
+                        "checkpoint finalize receipt does not match the committed step",
+                    )
+            except Exception as exc:
+                self.blocked_reason = "RECOVERY_PENDING"
+                self._append_or_block(
+                    {
+                        "event": "checkpoint_finalize_failed",
+                        "action": action.to_dict(),
+                        "checkpoint": checkpoint,
+                        "post_state_fp": after_fp,
+                        "error": {"type": type(exc).__name__, "message": str(exc)},
+                    },
+                    committed_state=True,
+                )
+                raise SemanticStepError(
+                    "RECOVERY_PENDING",
+                    "step committed and journaled but its recovery checkpoint could not be finalized",
+                ) from exc
         return SemanticStepResult(
             outcome=MutationOutcome.COMMITTED_VERIFIED,
             action=action,
@@ -362,6 +493,7 @@ class NativeSemanticExecutor:
             validation=validation,
             chain_entry=chain_entry,
             native_receipt=native_receipt,
+            runtime_document_id=runtime_document_id,
         )
 
     def _dispatch(self, runtime_document_id: str, action: ActionSpec) -> dict[str, Any]:
@@ -574,6 +706,208 @@ class NativeSemanticExecutor:
         return bool(
             isinstance(rollback, dict)
             and rollback.get("strategy") == "R0_ABORT"
+            and rollback.get("status") == "ROLLED_BACK_VERIFIED"
+            and rollback.get("expected_restore_fp") == parent_fp
+            and rollback.get("actual_restore_fp") == parent_fp
+        )
+
+    @staticmethod
+    def _recovery_checkpoint(
+        receipt: dict[str, Any],
+        parent_fp: str,
+    ) -> dict[str, str] | None:
+        raw = receipt.get("recovery_checkpoint")
+        if raw is None:
+            return None
+        if not isinstance(raw, Mapping) or set(raw) != {
+            "checkpoint_id",
+            "checkpoint_artifact_fp",
+            "expected_restore_fp",
+        }:
+            raise SemanticStepError(
+                "INVALID_NATIVE_RECEIPT",
+                "recovery checkpoint metadata does not use the exact N7 schema",
+            )
+        checkpoint_id = raw.get("checkpoint_id")
+        artifact_fp = raw.get("checkpoint_artifact_fp")
+        restore_fp = raw.get("expected_restore_fp")
+        if (
+            not isinstance(checkpoint_id, str)
+            or not checkpoint_id.startswith("cp:")
+            or not isinstance(artifact_fp, str)
+            or len(artifact_fp) != 71
+            or not artifact_fp.startswith("sha256:")
+            or restore_fp != parent_fp
+        ):
+            raise SemanticStepError(
+                "INVALID_NATIVE_RECEIPT",
+                "recovery checkpoint identity/fingerprint does not match the mutation predecessor",
+            )
+        return {
+            "checkpoint_id": checkpoint_id,
+            "checkpoint_artifact_fp": artifact_fp,
+            "expected_restore_fp": parent_fp,
+        }
+
+    def _recover_after_commit(
+        self,
+        runtime_document_id: str,
+        action: ActionSpec,
+        before: SemanticSnapshot,
+        observed_state: SemanticSnapshot | None,
+        native_receipt: dict[str, Any],
+        checkpoint: dict[str, str],
+        *,
+        reason: str,
+        recovery_cause: dict[str, Any] | None = None,
+        delta: SemanticDelta | None = None,
+        validation: ValidationResult | None = None,
+    ) -> SemanticStepResult:
+        parent_fp = self._document_fp(before)
+        attempts: list[dict[str, Any]] = []
+        candidate_runtime = runtime_document_id
+
+        for strategy in ("R1_COMPENSATE", "R2_CHECKPOINT_RESTORE"):
+            if strategy == "R2_CHECKPOINT_RESTORE":
+                candidate_runtime = self._recovery_runtime(candidate_runtime, action.document_pid)
+            try:
+                recovery_receipt = self.client.resolve_recovery(
+                    candidate_runtime,
+                    document_pid=action.document_pid,
+                    checkpoint_id=checkpoint["checkpoint_id"],
+                    checkpoint_artifact_fp=checkpoint["checkpoint_artifact_fp"],
+                    expected_restore_fp=parent_fp,
+                    strategy=strategy,
+                )
+            except Exception as exc:
+                attempts.append(
+                    {
+                        "strategy": strategy,
+                        "status": "ERROR",
+                        "error": {"type": type(exc).__name__, "message": str(exc)},
+                    }
+                )
+                continue
+
+            receipt_runtime = recovery_receipt.get("runtime_document_id")
+            if isinstance(receipt_runtime, str) and receipt_runtime:
+                candidate_runtime = receipt_runtime
+            verified = self._verified_recovery_receipt(
+                recovery_receipt,
+                checkpoint_id=checkpoint["checkpoint_id"],
+                parent_fp=parent_fp,
+                strategy=strategy,
+            )
+            attempt: dict[str, Any] = {
+                "strategy": strategy,
+                "status": recovery_receipt.get("outcome"),
+                "runtime_document_id": candidate_runtime,
+                "receipt": recovery_receipt,
+            }
+            attempts.append(attempt)
+            if not verified:
+                continue
+
+            try:
+                restored = self.client.document_snapshot(
+                    candidate_runtime,
+                    document_pid=action.document_pid,
+                )
+            except Exception as exc:
+                attempt["readback_error"] = {
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                }
+                continue
+            actual_restore_fp = self._document_fp(restored)
+            attempt["independent_restore_fp"] = actual_restore_fp
+            if actual_restore_fp != parent_fp:
+                continue
+
+            evidence: dict[str, Any] = {
+                "event": "post_commit_recovered",
+                "action": action.to_dict(),
+                "reason": reason,
+                "parent_state_fp": parent_fp,
+                "runtime_document_id": candidate_runtime,
+                "checkpoint": checkpoint,
+                "attempts": attempts,
+            }
+            if recovery_cause is not None:
+                evidence["cause"] = recovery_cause
+            if observed_state is not None:
+                evidence["observed_post_state_fp"] = self._document_fp(observed_state)
+            if delta is not None:
+                evidence["delta"] = delta.to_dict()
+            if validation is not None:
+                evidence["validation"] = validation.to_dict()
+            self._append_or_block(evidence, committed_state=True)
+
+            combined_receipt = dict(native_receipt)
+            combined_receipt["recovery_receipt"] = recovery_receipt
+            combined_receipt["recovery_reason"] = reason
+            return SemanticStepResult(
+                outcome=MutationOutcome.ROLLED_BACK_VERIFIED,
+                action=action,
+                before=before,
+                after=restored,
+                delta=delta,
+                validation=validation,
+                chain_entry=None,
+                native_receipt=combined_receipt,
+                runtime_document_id=candidate_runtime,
+            )
+
+        self.blocked_reason = "ROLLBACK_FAILED"
+        event = {
+            "event": "rollback_failed",
+            "action": action.to_dict(),
+            "reason": reason,
+            "parent_state_fp": parent_fp,
+            "checkpoint": checkpoint,
+            "attempts": attempts,
+        }
+        if recovery_cause is not None:
+            event["cause"] = recovery_cause
+        if observed_state is not None:
+            event["observed_post_state_fp"] = self._document_fp(observed_state)
+        self._append_or_block(event, committed_state=True)
+        raise SemanticStepError(
+            "ROLLBACK_FAILED",
+            "R1/R2 recovery could not independently prove restoration of the exact predecessor state",
+        )
+
+    def _recovery_runtime(self, current_runtime: str, document_pid: str) -> str:
+        documents_list = getattr(self.client, "documents_list", None)
+        if documents_list is None:
+            return current_runtime
+        try:
+            documents = documents_list()
+        except Exception:
+            return current_runtime
+        matches = [
+            item.get("runtime_document_id")
+            for item in documents
+            if isinstance(item, Mapping) and item.get("document_pid") == document_pid
+        ]
+        valid = [item for item in matches if isinstance(item, str) and item]
+        return valid[0] if len(valid) == 1 else current_runtime
+
+    @staticmethod
+    def _verified_recovery_receipt(
+        receipt: Mapping[str, Any],
+        *,
+        checkpoint_id: str,
+        parent_fp: str,
+        strategy: str,
+    ) -> bool:
+        rollback = receipt.get("rollback")
+        return bool(
+            receipt.get("schema_version") == 1
+            and receipt.get("outcome") == "ROLLED_BACK_VERIFIED"
+            and receipt.get("checkpoint_id") == checkpoint_id
+            and isinstance(rollback, Mapping)
+            and rollback.get("strategy") == strategy
             and rollback.get("status") == "ROLLED_BACK_VERIFIED"
             and rollback.get("expected_restore_fp") == parent_fp
             and rollback.get("actual_restore_fp") == parent_fp

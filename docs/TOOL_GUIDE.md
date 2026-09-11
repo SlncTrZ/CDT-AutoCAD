@@ -1,7 +1,7 @@
 # AutoCAD Provider Tool Guide
 
 > Contract version: `autocad-a2-v1-rc1` · Provider version: `0.3.0rc1` · Updated: 2026-09-11 +07:00
-> Public surface remains exactly 50 tools. N0–N6 + O1 native work is staged/internal; N7 recovery is in progress/not closed and does not change this guide's public contract.
+> Public surface remains exactly 50 tools. N0–N7 + O1 native work is staged/internal and live-verified for its documented bounded scopes; N7 recovery closure does not change this guide's public contract.
 
 ## Runtime scope
 

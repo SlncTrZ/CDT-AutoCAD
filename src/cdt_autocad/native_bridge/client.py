@@ -24,6 +24,8 @@ from .protocol import (
     LineTargetParams,
     PolylineCreateParams,
     PolylineTargetParams,
+    RecoveryFinalizeParams,
+    RecoveryResolveParams,
 )
 from .semantic import parse_native_snapshot
 
@@ -386,6 +388,58 @@ class NativeBridgeClient:
             require_geometry=False,
         )
         return self._request("entity.delete.lwpolyline", params.to_dict())
+
+    def resolve_recovery(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        checkpoint_id: str,
+        checkpoint_artifact_fp: str,
+        expected_restore_fp: str,
+        strategy: str,
+    ) -> dict[str, Any]:
+        params = RecoveryResolveParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "checkpoint_id": checkpoint_id,
+                "checkpoint_artifact_fp": checkpoint_artifact_fp,
+                "expected_restore_fp": expected_restore_fp,
+                "strategy": strategy,
+            }
+        )
+        return self._request("bridge.recovery.resolve", params.to_dict())
+
+    def finalize_recovery(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        checkpoint_id: str,
+        checkpoint_artifact_fp: str,
+        accepted_post_fp: str,
+    ) -> dict[str, Any]:
+        params = RecoveryFinalizeParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "checkpoint_id": checkpoint_id,
+                "checkpoint_artifact_fp": checkpoint_artifact_fp,
+                "accepted_post_fp": accepted_post_fp,
+            }
+        )
+        return self._request("bridge.recovery.finalize", params.to_dict())
+
+    def recoveries_list(self) -> list[dict[str, Any]]:
+        result = self._request("bridge.recovery.list", {})
+        recoveries = result.get("recoveries")
+        if not isinstance(recoveries, list) or not all(isinstance(item, dict) for item in recoveries):
+            raise BridgeClientProtocolError(
+                "INVALID_RESPONSE",
+                "bridge.recovery.list result.recoveries must be an array of objects",
+            )
+        return recoveries
 
     def _request(self, operation: str, params: Mapping[str, Any]) -> dict[str, Any]:
         request_id = self.request_id_factory()

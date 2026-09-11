@@ -1,7 +1,7 @@
 # Architecture Upgrade Plan — Native Bridge + Semantic State Loop
 
 > Updated: 2026-09-10 +07:00
-> Status: N0–N6 CLOSED · O1 CLOSED / LIVE PASS · N7 IN PROGRESS / NOT CLOSED
+> Status: N0–N7 CLOSED · O1 CLOSED / LIVE PASS · N7 LIVE PASS · N8/N9/N10 NOT STARTED
 > Current runtime remains `ezdxf + COM` until migration gates close.
 > Acceptance companion: `docs/NATIVE_BRIDGE_ACCEPTANCE.md`
 
@@ -316,7 +316,7 @@ Gate — **PASS**:
 
 ### N7 — Two-phase native commit integrity
 
-**Status: IN PROGRESS / NOT CLOSED.** Detailed working handoff: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
+**Status: CLOSED / LIVE PASS (2026-09-11).** Historical working handoff: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`; canonical closure evidence: `docs/evidence/n7-native-recovery-2026-09-11.json`.
 
 Implemented on the current working tree:
 
@@ -330,9 +330,9 @@ Implemented on the current working tree:
 8. Python semantic executor recovery orchestration that attempts R1 then R2 and advances no state-chain entry for recovered failures;
 9. corrupt recovery manifests fail closed and block later mutation.
 
-Development verification has reached 10/10 combined N7 recovery contract tests, 45/45 N7+N6 focused recovery/state-chain tests, 86/86 broader native/semantic focused tests and repeated 0-error C# candidate builds. Real AutoCAD 2027 Session 1 runs have exercised R0, provisional-abort, post-commit mismatch, R1 exact restore, R2 exact restore/runtime rebound, executor R1→R2 recovery and restart-persisted recovery metadata.
+Final verification is 40/40 focused recovery/semantic/bridge PASS, 227 PASS / 5 SKIP full Linux, 226 PASS / 6 SKIP full Windows, and a 0-error C# x64 Release build using .NET SDK 10.0.401. Real AutoCAD 2027 Session 1 passed R0, provisional-abort, post-commit mismatch, R1 exact restore, activation-safe R2 exact restore/runtime rebound, executor R1→R2 recovery, continued execution after recovery and restart-persisted recovery metadata.
 
-**Current blocker:** final R2-after-restart acceptance exposed an AutoCAD `FATAL ERROR: Unhandled Access Violation` while the bridge closed/restored the active document from application context. Earlier semantic R2 success is therefore not sufficient to close N7.
+The historical R2 active-document crash is resolved by deferring the same recovery request across AutoCAD Idle ticks, explicitly activating a checkpoint document before closing the original, then activating the restored original before closing the checkpoint. Only inactive documents are closed; activation ambiguity fails closed and retains persisted recovery evidence.
 
 Required fix/gate:
 
@@ -341,7 +341,7 @@ Required fix/gate:
 - restored `document_pid` and exact predecessor `document_fp` must be independently re-read;
 - any activation/close/reopen ambiguity remains `ROLLBACK_FAILED` and retains recovery evidence;
 - no AutoCAD crash, Drawing Recovery dependency or hidden modal-dialog intervention may be required for the accepted path;
-- final Linux/Windows regressions, C# build, review, canonical N7 evidence and separate implementation commit/push remain outstanding.
+- final Linux/Windows regressions, C# build, live AutoCAD 2027 Session 1 recovery, review and canonical N7 evidence all pass on the closure tree.
 
 ### N8 — Migrate current live operations
 
@@ -469,8 +469,8 @@ The architecture documentation may lead implementation; runtime claims must cont
 
 ## 7. Current implementation frontier
 
-**N0 through N6 and O1 are complete for their documented bounded scopes. N7 is now actively implemented but remains NOT CLOSED.**
+**N0 through N7 and O1 are complete for their documented bounded scopes.**
 
-The accepted staged native executor remains O1 (`0.4.0-o1`) for LINE, CIRCLE, ARC and simple LWPOLYLINE. The working `0.5.0-n7` candidate adds two-phase validation/checkpoint/recovery machinery, but the R2 active-document lifecycle crash blocks acceptance and commit. N8/N9/N10 remain unopened.
+The accepted staged native executor is now `0.5.0-n7` for the bounded LINE, CIRCLE, ARC and simple LWPOLYLINE recovery scope. N7 adds two-phase validation/checkpoint/recovery machinery and activation-safe R2 restore, but still does not make the native bridge public. Python MCP/provider hot reload is the next mandatory runtime gate before deep N8/N9/N10 migration; N8/N9/N10 remain unopened.
 
 Python MCP hot reload is now a mandatory prerequisite before deep formal migration. It is not yet implemented. Future operation-family expansion may proceed only as separately bounded and accepted work; TEXT/MTEXT, ELLIPSE/SPLINE, BLOCK/DIM/HATCH remain open.

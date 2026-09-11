@@ -24,6 +24,7 @@ _READ_ONLY_OPERATIONS = frozenset(
         "bridge.documents.list",
         "bridge.document.identity",
         "bridge.document.snapshot",
+        "bridge.recovery.list",
     }
 )
 _MUTATION_OPERATIONS = frozenset(
@@ -42,7 +43,13 @@ _MUTATION_OPERATIONS = frozenset(
         "entity.delete.lwpolyline",
     }
 )
-_ALLOWED_OPERATIONS = _READ_ONLY_OPERATIONS | _MUTATION_OPERATIONS
+_RECOVERY_OPERATIONS = frozenset(
+    {
+        "bridge.recovery.resolve",
+        "bridge.recovery.finalize",
+    }
+)
+_ALLOWED_OPERATIONS = _READ_ONLY_OPERATIONS | _MUTATION_OPERATIONS | _RECOVERY_OPERATIONS
 _REQUEST_FIELDS = frozenset({"protocol", "request_id", "operation", "params"})
 _DOCUMENT_IDENTITY_FIELDS = frozenset({"runtime_document_id", "document_pid"})
 _MUTATION_BINDING_FIELDS = frozenset(
@@ -50,7 +57,16 @@ _MUTATION_BINDING_FIELDS = frozenset(
 )
 _FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ERROR_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
-_FAULT_STAGES = frozenset({"after_apply_before_commit"})
+_CHECKPOINT_ID_RE = re.compile(r"^cp:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+_FAULT_STAGES = frozenset(
+    {
+        "after_apply_before_commit",
+        "before_commit_add_stray",
+        "after_commit_corrupt_target",
+        "after_commit_add_stray",
+    }
+)
+_RECOVERY_STRATEGIES = frozenset({"R1_COMPENSATE", "R2_CHECKPOINT_RESTORE"})
 
 
 class BridgeProtocolError(ValueError):
@@ -117,6 +133,121 @@ class DocumentIdentityParams:
         if self.document_pid is not None:
             result["document_pid"] = self.document_pid
         return result
+
+
+def _canonical_fingerprint(value: Any, field_name: str) -> str:
+    if not isinstance(value, str) or _FINGERPRINT_RE.fullmatch(value) is None:
+        raise BridgeProtocolError("INVALID_PARAMS", f"{field_name} must be a canonical sha256 fingerprint")
+    return value
+
+
+def _canonical_checkpoint_id(value: Any) -> str:
+    if not isinstance(value, str) or _CHECKPOINT_ID_RE.fullmatch(value) is None:
+        raise BridgeProtocolError("INVALID_PARAMS", "checkpoint_id must be cp:<canonical-v4-uuid>")
+    return value
+
+
+@dataclass(frozen=True)
+class RecoveryResolveParams:
+    runtime_document_id: str
+    document_pid: str
+    checkpoint_id: str
+    checkpoint_artifact_fp: str
+    expected_restore_fp: str
+    strategy: str
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> RecoveryResolveParams:
+        allowed = {
+            "runtime_document_id",
+            "document_pid",
+            "checkpoint_id",
+            "checkpoint_artifact_fp",
+            "expected_restore_fp",
+            "strategy",
+        }
+        if set(value) != allowed:
+            raise BridgeProtocolError("INVALID_PARAMS", "recovery resolve params must use the exact typed schema")
+        runtime_id = _canonical_uuid(
+            value.get("runtime_document_id"),
+            code="INVALID_RUNTIME_DOCUMENT_ID",
+            field_name="runtime_document_id",
+        )
+        document_pid = value.get("document_pid")
+        if not isinstance(document_pid, str) or not document_pid.strip():
+            raise BridgeProtocolError("INVALID_PARAMS", "document_pid is required for recovery")
+        strategy = value.get("strategy")
+        if strategy not in _RECOVERY_STRATEGIES:
+            raise BridgeProtocolError("INVALID_PARAMS", "recovery strategy is not enabled")
+        return cls(
+            runtime_document_id=runtime_id,
+            document_pid=document_pid,
+            checkpoint_id=_canonical_checkpoint_id(value.get("checkpoint_id")),
+            checkpoint_artifact_fp=_canonical_fingerprint(
+                value.get("checkpoint_artifact_fp"), "checkpoint_artifact_fp"
+            ),
+            expected_restore_fp=_canonical_fingerprint(
+                value.get("expected_restore_fp"), "expected_restore_fp"
+            ),
+            strategy=strategy,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "checkpoint_id": self.checkpoint_id,
+            "checkpoint_artifact_fp": self.checkpoint_artifact_fp,
+            "expected_restore_fp": self.expected_restore_fp,
+            "strategy": self.strategy,
+        }
+
+
+@dataclass(frozen=True)
+class RecoveryFinalizeParams:
+    runtime_document_id: str
+    document_pid: str
+    checkpoint_id: str
+    checkpoint_artifact_fp: str
+    accepted_post_fp: str
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> RecoveryFinalizeParams:
+        allowed = {
+            "runtime_document_id",
+            "document_pid",
+            "checkpoint_id",
+            "checkpoint_artifact_fp",
+            "accepted_post_fp",
+        }
+        if set(value) != allowed:
+            raise BridgeProtocolError("INVALID_PARAMS", "recovery finalize params must use the exact typed schema")
+        runtime_id = _canonical_uuid(
+            value.get("runtime_document_id"),
+            code="INVALID_RUNTIME_DOCUMENT_ID",
+            field_name="runtime_document_id",
+        )
+        document_pid = value.get("document_pid")
+        if not isinstance(document_pid, str) or not document_pid.strip():
+            raise BridgeProtocolError("INVALID_PARAMS", "document_pid is required for recovery")
+        return cls(
+            runtime_document_id=runtime_id,
+            document_pid=document_pid,
+            checkpoint_id=_canonical_checkpoint_id(value.get("checkpoint_id")),
+            checkpoint_artifact_fp=_canonical_fingerprint(
+                value.get("checkpoint_artifact_fp"), "checkpoint_artifact_fp"
+            ),
+            accepted_post_fp=_canonical_fingerprint(value.get("accepted_post_fp"), "accepted_post_fp"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "checkpoint_id": self.checkpoint_id,
+            "checkpoint_artifact_fp": self.checkpoint_artifact_fp,
+            "accepted_post_fp": self.accepted_post_fp,
+        }
 
 
 def _mutation_binding(value: Mapping[str, Any], allowed: frozenset[str]) -> tuple[str, str, str, str | None]:
@@ -547,6 +678,8 @@ class BridgeRequest:
         | ArcTargetParams
         | PolylineCreateParams
         | PolylineTargetParams
+        | RecoveryResolveParams
+        | RecoveryFinalizeParams
         | Mapping[str, Any]
     )
 
@@ -585,6 +718,8 @@ class BridgeRequest:
                 | ArcTargetParams
                 | PolylineCreateParams
                 | PolylineTargetParams
+                | RecoveryResolveParams
+                | RecoveryFinalizeParams
                 | Mapping[str, Any]
             ) = DocumentIdentityParams.from_dict(raw_params)
         elif operation == "entity.create.line":
@@ -611,6 +746,10 @@ class BridgeRequest:
             params = PolylineTargetParams.from_dict(raw_params, require_geometry=True)
         elif operation == "entity.delete.lwpolyline":
             params = PolylineTargetParams.from_dict(raw_params, require_geometry=False)
+        elif operation == "bridge.recovery.resolve":
+            params = RecoveryResolveParams.from_dict(raw_params)
+        elif operation == "bridge.recovery.finalize":
+            params = RecoveryFinalizeParams.from_dict(raw_params)
         else:
             if raw_params:
                 raise BridgeProtocolError("INVALID_PARAMS", f"{operation} does not accept parameters")

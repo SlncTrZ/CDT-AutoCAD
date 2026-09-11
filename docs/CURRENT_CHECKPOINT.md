@@ -1,9 +1,9 @@
 # Current Checkpoint — CDT-AutoCAD
 
 > Updated: 2026-09-11 +07:00
-> Status: **MP0-T00 CLOSED / PASS · A-01 CLOSED / PASS · A-02 CLOSED / LIVE PASS · A-03+A-06 CLOSED / PASS · N0–N6 CLOSED · O1 CLOSED / LIVE PASS · N7 RESUME NEXT / NOT CLOSED**
+> Status: **MP0-T00 CLOSED / PASS · A-01 CLOSED / PASS · A-02 CLOSED / LIVE PASS · A-03+A-06 CLOSED / PASS · N0–N7 CLOSED · O1 CLOSED / LIVE PASS · N7 LIVE PASS**
 > Accepted implementation baseline: `04ff820` (`Feat: expand native typed shape mutations`)
-> Working implementation checkpoint: N7 two-phase native commit integrity + R0/R1/R2 recovery remains uncommitted and preserved; Master Plan ordering MP0-T00 → A-01 → A-02 → A-03/A-06 is now closed, so the next active task is resume N7 final R2 lifecycle recovery
+> Working implementation checkpoint: N7 two-phase native commit integrity + checkpointed R0/R1/R2 recovery has passed the final activation-safe AutoCAD 2027 Session 1 gate; next mandatory runtime gate is Python MCP/provider hot reload before deep N8/N9/N10 migration
 > Primary native target: AutoCAD 2027 full · Windows x64 · COM `26.0` · Managed .NET `net10.0-windows`
 
 ## 1. Public runtime
@@ -36,14 +36,14 @@ The N-series Managed .NET bridge is **not yet the public provider backend**.
 | N5 | **CLOSED / LIVE PASS** | fixed-schema native LINE create/update/delete, composite parent binding, semantic document-FP v2, R0 abort verification and pre-write capacity guard |
 | N6 | **CLOSED / LIVE PASS** | deterministic semantic delta, ActionSpec geometry/effect validation, duplicate detection, state-chain continuity, manual-drift blocking and post-dispatch uncertainty latch |
 | O1 | **CLOSED / LIVE PASS** | internal typed CIRCLE/ARC/simple-LWPOLYLINE create/update/delete added to the N5/N6 parent-PID-transaction-semantic-chain foundation |
-| N7 | **IN PROGRESS / NOT CLOSED** | provisional in-transaction validation, persisted checkpoint/recovery protocol and R0/R1/R2 implementation exist on the working tree; final R2 lifecycle acceptance is blocked by an AutoCAD active-document crash |
+| N7 | **CLOSED / LIVE PASS** | two-phase native commit integrity, immutable checkpoint manifests/artifact hashes, R0/R1/R2 recovery, executor R1→R2 cascade, restart-persisted recovery and activation-safe R2 document replacement/rebinding all passed on real AutoCAD 2027 Session 1 |
 | N8 | **NOT STARTED** | formal incremental COM-to-.NET/public operation migration |
 | N9 | **NOT STARTED** | semantic drawing-workflow migration |
 | N10 | **NOT STARTED** | explicit public contract/promotion decision |
 
-## 3. Accepted native runtime truth — N6 + O1; N7 candidate is not accepted
+## 3. Accepted native runtime truth — N7 closed; public backend unchanged
 
-N6 provides the accepted Python semantic orchestration layer; O1 extends the staged C# typed mutation allowlist without changing the public MCP contract. The accepted bridge baseline remains O1 (`0.4.0-o1`). N7 development uses a `0.5.0-n7` candidate, but that candidate is **not accepted, not committed and not the public provider backend**.
+N6 provides the Python semantic orchestration layer; O1 extends the staged C# typed mutation allowlist without changing the public MCP contract. N7 (`0.5.0-n7`) is now accepted for its documented internal recovery scope after the final AutoCAD 2027 Session 1 lifecycle gate. It is **still not the public provider backend** and does not publish new MCP tools or capabilities.
 
 Enabled internal operations:
 
@@ -104,7 +104,7 @@ Measured invariants:
 - every accepted `COMMITTED_VERIFIED` semantic step appends exactly one tamper-evident `StateChainEntry`; verified R0 rollback does not advance the chain;
 - before every later step, current native `document_fp` must equal both the action parent and chain tip; measured manual COM geometry drift is refused as `STATE_DRIFT` before a new native mutation is dispatched;
 - on the accepted O1/N6 baseline, any unverified condition after mutation dispatch begins—including malformed receipt, unknown transport completion, post-commit bridge error, independent read-back failure, validator failure or chain-construction failure—latches `STATE_UNCERTAIN` and blocks later mutation;
-- on the accepted O1/N6 baseline, allowed-effects or duplicate-geometry failure discovered only after native commit also latches `STATE_UNCERTAIN`; the working N7 candidate is specifically replacing those post-commit uncertainty paths with checkpoint-backed R1/R2 recovery, but that behavior is not yet accepted;
+- N7 now replaces deterministic post-commit semantic-integrity failures with checkpoint-backed R1/R2 recovery: the state chain advances only for accepted commits, verified recovery restores the exact predecessor, and unresolved/ambiguous recovery remains fail-closed;
 - N6 records append-only JSONL evidence with `fsync`; journal write failure blocks execution, and non-empty journals are not silently resumed across a new executor process;
 - native relation extraction remains empty in the current bridge, so N6 does not claim topology validation beyond the semantic fields actually present.
 
@@ -133,7 +133,7 @@ Two pillars remain non-negotiable:
 1. **Data Integrity / Rollback** — future native mutation may advance only from a known parent state and must end as `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`; uncertain state blocks later mutation.
 2. **Precise Identity / PID + Fingerprinting** — native `ObjectId`/Handle is insufficient semantic identity; persistent PID, runtime-document binding and deterministic fingerprints are required.
 
-N2 has proven PID carrier/storage and clone semantics. N3 has proven runtime-document disambiguation over IPC. N4 provides authoritative native parent-state snapshots. N5 enforces composite runtime-document + lineage PID + semantic `expected_parent_fp` binding and proves R0 rollback. N6 independently validates semantic delta/effects and advances a tamper-evident state chain only for accepted steps. O1 live-proves that the same integrity model extends to CIRCLE, ARC and simple LWPOLYLINE. **N7 post-commit recovery is now IN PROGRESS but remains unaccepted until its R2 document-lifecycle crash is eliminated and the full gate passes.**
+N2 has proven PID carrier/storage and clone semantics. N3 has proven runtime-document disambiguation over IPC. N4 provides authoritative native parent-state snapshots. N5 enforces composite runtime-document + lineage PID + semantic `expected_parent_fp` binding and proves R0 rollback. N6 independently validates semantic delta/effects and advances a tamper-evident state chain only for accepted steps. O1 live-proves that the same integrity model extends to CIRCLE, ARC and simple LWPOLYLINE. **N7 now closes bounded post-commit integrity/recovery: R1 compensation and activation-safe R2 checkpoint restore both require exact predecessor read-back before `ROLLED_BACK_VERIFIED`.**
 
 ## 5. Semantic State Loop implementation status
 
@@ -159,11 +159,11 @@ Current implementation coverage is partial:
 - N5: bounded typed LINE mutation + `expected_parent_fp` + native transaction/R0 rollback is implemented and live-verified;
 - N6: deterministic semantic delta, requested-geometry/allowed-effects validation, duplicate detection, state-chain continuity, manual-drift blocking and uncertainty latching are implemented and live-verified;
 - O1: the same internal mutation/semantic loop is live-verified for CIRCLE, ARC and simple LWPOLYLINE create/update/delete;
-- N7 working candidate: provisional extraction inside the write transaction, deterministic native validation, post-commit provisional-vs-persisted comparison, provider-owned checkpoint manifests/artifact hashes, typed recovery list/resolve/finalize operations, R1 compensation and R2 checkpoint restore are implemented on the working tree; Python executor recovery TDD and several real AutoCAD R0/R1/R2 paths have passed during development;
-- N7 close gate: **OPEN** because the final R2-after-restart acceptance exposed an AutoCAD `FATAL ERROR: Unhandled Access Violation` while the bridge closed/restored an active document; the implementation must be activation-safe before acceptance;
+- N7 accepted scope: provisional extraction inside the write transaction, deterministic native validation, post-commit provisional-vs-persisted comparison, provider-owned immutable checkpoint manifests/artifact hashes, typed recovery list/resolve/finalize, R1 compensation, R2 checkpoint restore and Python executor R1→R2 orchestration;
+- N7 R2 lifecycle is activation-safe: the bridge defers one recovery request across AutoCAD Idle ticks, activates a temporary checkpoint document first, closes only inactive documents, reopens/reactivates the restored original, then proves runtime rebound + document PID + exact predecessor fingerprint before success;
 - N8/N9/N10: formal broader migration, drawing-workflow migration and public promotion remain **NOT STARTED**.
 
-Therefore the accepted staged native executor still covers four basic 2D families under the O1/N6 integrity loop. N7 code exists but does **not** yet constitute accepted post-commit recovery capability.
+Therefore the accepted staged native executor covers four basic 2D families under the N7 integrity/recovery loop. This is internal staged capability only; it does not imply whole-DWG coverage or public routing.
 
 ## 6. Verification checkpoint
 
@@ -233,14 +233,17 @@ Accepted regression/evidence on the O1 closure tree:
 - O1 changed-file `ruff check`, `compileall` and `git diff --check`: PASS;
 - full-repository Ruff currently reports **14 pre-existing findings outside the N6 change set**; they remain separate lint debt and are not treated as N6 pass evidence.
 
-N7 development evidence beyond the accepted O1 baseline:
+N7 closure evidence:
 
-- N7 recovery protocol/client combined contract: **10/10 PASS** at the latest focused checkpoint;
-- N7 + N6 recovery/state-chain focused checkpoint: **45/45 PASS**;
-- broader native/semantic focused checkpoint: **86/86 PASS**;
-- N7 C# candidate build on AutoCAD 2027 SDK: **0 errors** with the same documented `MSB3277` warning families;
-- real AutoCAD 2027 development runs have exercised R0 exact restore, provisional-abort, post-commit mismatch detection, R1 exact restore, R2 exact restore/runtime rebound, executor R1→R2 recovery, restart-persisted recovery metadata and corrupt-manifest fail-closed behavior;
-- these results are **not N7 closure evidence** because the final R2 document lifecycle still has a reproducible/observed AutoCAD crash path.
+- final focused recovery/semantic/bridge regression: **40/40 PASS**;
+- final Linux full Python suite: **227 passed / 5 skipped**;
+- final Windows `.171` full Python suite: **226 passed / 6 skipped**;
+- C# Release x64 build with user-local .NET SDK `10.0.401`: **0 errors**, retaining only the documented `MSB3277` warning families (`Microsoft.VisualBasic`, `System.Drawing`, `WindowsBase`);
+- real AutoCAD 2027 Session 1 full recovery runner: **PASS / exit 0 / TaskScheduler result 0**; AutoCAD restarted during the test and remained alive in Session 1 afterward;
+- live checks all PASS: exact 12 typed mutations, typed recovery surface, R0 exact predecessor, provisional abort, checkpoint finalize, post-commit mismatch detection, R1 exact restore, corrupt-manifest fail-closed, R1 failure retains checkpoint, R2 exact restore/runtime rebound, executor auto R1→R2 + continued execution, restart-persisted manifest, restart R1 unavailable fail-closed, restart R2 exact predecessor, no pending recovery and no arbitrary execution surface;
+- final restored fingerprint `sha256:2ab0d6ce7dab33530d600fce060ffbd125d561b442d0175c40b3c70644cc6984` exactly matches the accepted pre-corruption chain tip after real process restart;
+- deployed/live bridge DLL SHA-256 `4b76e362f20122b9a8b8b18471a3a1a3d9a77718dc749bf8b8a25cfb65bb578d`; live summary SHA-256 `a38e17556b04c1c5201e8d5049e3880e16a05a75fac539da1fec3dafadfbd44f`;
+- canonical evidence: `docs/evidence/n7-native-recovery-2026-09-11.json`.
 
 Native bridge DLL accepted for O1:
 
@@ -250,11 +253,11 @@ SHA-256 4ad2d4138d6e71a8fa91281ea5482c592e2a0c04cb5d41ec5f2452b7cff31484
 
 ## 7. Current boundary / next activity
 
-Master Plan public-safety prework is now CLOSED: **MP0-T00, A-01, A-02 and A-03/A-06 are CLOSED/PASS. N7 is the next active task.** The existing N7 working tree remained intentionally preserved through those commits and can now resume from its documented R2 lifecycle blocker.
+Master Plan public-safety prework and N7 are now CLOSED: **MP0-T00, A-01, A-02, A-03/A-06 and N7 are CLOSED/PASS.** N7 eliminated the active-document crash path by splitting R2 across verified AutoCAD Idle activation phases and closing only inactive documents.
 
-**N7 remains open / NOT CLOSED.** Its immediate recovery blocker is R2 document replacement safety: the bridge must not close/replace an active AutoCAD document from an unsafe application-context callback. When N7 resumes after A-03, the next recovery slice must switch activation safely, close only inactive documents, reopen the restored original, rebind runtime identity, and independently prove `document_pid + document_fp` before returning `ROLLED_BACK_VERIFIED`.
+The next mandatory infrastructure/runtime gate is **Python MCP/provider hot reload** before deep N8/N9/N10 migration. Public COM/ezdxf behavior and the 50-tool contract remain unchanged.
 
-Detailed unfinished-N7 handoff: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
+Historical N7 handoff/incident record: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`; canonical closure evidence: `docs/evidence/n7-native-recovery-2026-09-11.json`.
 
 A new mandatory infrastructure/runtime requirement is also recorded: **the Python MCP/provider must support a fail-safe hot-reload lifecycle before the formal N8/N9/N10 migration is considered complete.** Python hot reload is not yet implemented. The `.171` Windows host has `cloudflared` available per operator infrastructure; its tunnel/service configuration has not yet been audited or modified for CDT-AutoCAD.
 

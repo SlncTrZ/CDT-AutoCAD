@@ -1,5 +1,5 @@
-// NativeSemanticExtractor — authoritative read-only N4 snapshot from the active AutoCAD Database.
-// Wing: code | Topic: native-bridge-n4 | Updated: 2026-09-10 13:07
+// NativeSemanticExtractor — authoritative bounded snapshot, including in-transaction provisional reads.
+// Wing: code | Topic: native-bridge-n7 | Updated: 2026-09-10 20:30
 
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -15,6 +15,17 @@ internal sealed class NativeSemanticExtractor
         string documentPid
     )
     {
+        using Transaction transaction = document.Database.TransactionManager.StartOpenCloseTransaction();
+        return ExtractWithinTransaction(document, runtimeDocumentId, documentPid, transaction);
+    }
+
+    internal Dictionary<string, object?> ExtractWithinTransaction(
+        Document document,
+        Guid runtimeDocumentId,
+        string documentPid,
+        Transaction transaction
+    )
+    {
         if (!ReferenceEquals(document, AcApplication.DocumentManager.MdiActiveDocument))
         {
             throw new BridgeServiceException(
@@ -26,8 +37,6 @@ internal sealed class NativeSemanticExtractor
         Database database = document.Database;
         int dbmod = Convert.ToInt32(AcApplication.GetSystemVariable("DBMOD"));
         string currentSpace = database.TileMode ? "Model" : "Paper";
-
-        using Transaction transaction = database.TransactionManager.StartOpenCloseTransaction();
         BlockTableRecord space = (BlockTableRecord)transaction.GetObject(
             database.CurrentSpaceId,
             OpenMode.ForRead
@@ -38,6 +47,10 @@ internal sealed class NativeSemanticExtractor
         List<ObjectId> referencedBlockDefinitions = [];
         foreach (ObjectId objectId in space)
         {
+            if (objectId.IsErased)
+            {
+                continue;
+            }
             if (entities.Count >= BridgeConstants.MaxSnapshotEntities)
             {
                 throw new BridgeServiceException(
@@ -126,7 +139,7 @@ internal sealed class NativeSemanticExtractor
         HashSet<ObjectId> visitedDefinitions
     )
     {
-        if (definitionId.IsNull || !visitedDefinitions.Add(definitionId))
+        if (definitionId.IsNull || definitionId.IsErased || !visitedDefinitions.Add(definitionId))
         {
             return;
         }
@@ -162,6 +175,10 @@ internal sealed class NativeSemanticExtractor
         List<ObjectId> nestedDefinitions = [];
         foreach (ObjectId objectId in definition)
         {
+            if (objectId.IsErased)
+            {
+                continue;
+            }
             EnsureCapacity(entities);
             if (transaction.GetObject(objectId, OpenMode.ForRead, false) is not Entity entity)
             {

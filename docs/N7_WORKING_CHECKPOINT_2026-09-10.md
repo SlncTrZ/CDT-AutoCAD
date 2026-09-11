@@ -1,7 +1,7 @@
 # N7 Working Checkpoint — Two-Phase Native Commit Integrity
 
-> Updated: 2026-09-10 +07:00
-> Status: **IN PROGRESS / NOT CLOSED / NOT COMMITTED AS IMPLEMENTATION**
+> Updated: 2026-09-11 +07:00
+> Status: **HISTORICAL HANDOFF · N7 CLOSED / LIVE PASS ON 2026-09-11**
 > Baseline commit: `04ff820` (`Feat: expand native typed shape mutations`)
 > Public MCP contract: unchanged at 50 tools / `0.3.0rc1`
 
@@ -42,26 +42,23 @@ Real AutoCAD 2027 Session 1 development acceptance has independently exercised a
 - persisted recovery manifest surviving AutoCAD restart while R1 in-memory context is intentionally unavailable;
 - corrupt-manifest fail-closed behavior for both recovery listing and attempted new mutation.
 
-These are development results only. N7 is not closed because the complete final acceptance run is not yet stable.
+These development results were superseded by the final 2026-09-11 closure run. Canonical closure evidence is `docs/evidence/n7-native-recovery-2026-09-11.json`.
 
-## 3. Current blocker — R2 document lifecycle crash
+## 3. Historical blocker — R2 document lifecycle crash — RESOLVED
 
-The current final blocker is a real AutoCAD process crash in the R2-after-restart path. During final live acceptance AutoCAD displayed `FATAL ERROR: Unhandled Access Violation` while the recovery implementation was closing/restoring the active document from bridge application context.
+The earlier final blocker was a real AutoCAD process crash in the R2-after-restart path while recovery closed/restored the active document from bridge application context. That unsafe sequence remains rejected.
 
-The unsafe R2 sequence is therefore rejected even though earlier R2 semantic-fingerprint checks could pass. N7 may not close while that lifecycle can crash `acad.exe`.
+The accepted implementation now uses one deferred recovery request across AutoCAD `Application.Idle` ticks:
 
-The next implementation change is to make R2 document replacement activation-safe:
+1. open the immutable checkpoint as a temporary read-only AutoCAD document and request activation;
+2. on the next Idle tick, prove the checkpoint document is active and the original is inactive before closing the original;
+3. replace original DWG bytes from the checkpoint artifact and reopen the restored original;
+4. request restored-original activation and defer again;
+5. on the next Idle tick, prove the restored original is active and the checkpoint is inactive before closing the checkpoint;
+6. resolve the rebound runtime-document identity;
+7. verify restored document PID and exact predecessor `document_fp` before returning `ROLLED_BACK_VERIFIED`.
 
-1. open the immutable checkpoint as a temporary AutoCAD document;
-2. wait until that temporary document is active;
-3. close the original document only after it is inactive;
-4. replace the original DWG bytes from the checkpoint artifact;
-5. open the restored original path and wait until it is active;
-6. close the temporary checkpoint document only after it is inactive;
-7. resolve the new runtime-document binding;
-8. verify restored document PID and exact predecessor `document_fp` before returning `ROLLED_BACK_VERIFIED`.
-
-Any activation/close/reopen ambiguity must return failure and retain the recovery checkpoint; it must not be converted to success by retry loops.
+No bridge sleep/retry loop is used. Activation ambiguity returns `ROLLBACK_FAILED` and retains persisted recovery evidence. The final runner also proved the same R2 sequence after a real AutoCAD restart without a crash.
 
 ## 4. Checkpoint capture findings
 
@@ -69,23 +66,24 @@ Checkpoint creation originally dirtied a clean drawing because full-database clo
 
 `Database.Wblock()` was also rejected as the canonical R2 artifact because it did not reproduce the exact semantic predecessor and initially omitted the document-lineage PID from the checkpoint database. The current candidate uses a full `Database.SaveAs()` checkpoint under DBMOD preservation, with source-path and artifact-existence verification.
 
-## 5. N7 close gate still outstanding
+## 5. N7 close gate — PASS
 
-Before N7 can be called CLOSED, all of the following must pass on one final reviewed tree:
+The final reviewed tree passed the close gate on 2026-09-11:
 
-- activation-safe R2 with no AutoCAD crash;
-- R0, provisional-abort, post-commit mismatch, R1 and R2 live acceptance;
-- R2 exact restore after real AutoCAD process restart;
-- PID/fingerprint/runtime-binding verification after restore;
-- corrupt-manifest and artifact-mismatch fail-closed tests;
-- no pending recovery checkpoint after successful finalize/restore;
-- Python focused + full Linux + full Windows regression;
-- changed-file Ruff, compileall and `git diff --check`;
-- C# bridge build with 0 errors;
-- code review with no unresolved blocking findings;
-- canonical `docs/evidence/n7-...json` evidence;
-- CURRENT_CHECKPOINT / architecture / acceptance docs updated to the final measured result;
-- separate N7 implementation commit + push.
+- activation-safe R2 with no AutoCAD crash: PASS;
+- R0, provisional-abort, post-commit mismatch, R1 and R2 live acceptance: PASS;
+- R2 exact restore after real AutoCAD process restart: PASS;
+- PID/fingerprint/runtime-binding verification after restore: PASS;
+- corrupt-manifest fail-closed and pending-recovery mutation blocking: PASS;
+- no pending recovery checkpoint after successful restore: PASS;
+- focused recovery/semantic/bridge regression: 40 PASS;
+- full Linux: 227 PASS / 5 SKIP; full Windows: 226 PASS / 6 SKIP;
+- changed-file Ruff, compileall and `git diff --check`: PASS;
+- C# Release x64 bridge build: 0 errors; only the three historical `MSB3277` warning families remain;
+- review: no unresolved blocking findings;
+- canonical evidence: `docs/evidence/n7-native-recovery-2026-09-11.json`.
+
+This document remains as the historical handoff/incident record; `docs/CURRENT_CHECKPOINT.md` is the current authority.
 
 ## 6. Mandatory Python MCP hot reload requirement
 

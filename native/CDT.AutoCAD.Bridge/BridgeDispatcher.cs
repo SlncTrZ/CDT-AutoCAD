@@ -1,13 +1,21 @@
 // BridgeDispatcher — bounded queue drained only from AutoCAD Application.Idle.
-// Wing: code | Topic: native-bridge-n5 | Updated: 2026-09-10 14:10
+// Wing: code | Topic: native-bridge-n7 | Updated: 2026-09-11 08:20
 
 using System.Threading.Channels;
 
 namespace CDT.AutoCAD.Bridge;
 
+internal sealed class DeferredBridgeResult
+{
+    internal static readonly DeferredBridgeResult Instance = new();
+
+    private DeferredBridgeResult() { }
+}
+
 internal sealed class BridgeDispatcher
 {
     private readonly Channel<PendingRequest> _queue;
+    private readonly Queue<PendingRequest> _deferred = new();
     private readonly NativeBridgeService _service;
 
     internal BridgeDispatcher(NativeBridgeService service)
@@ -31,14 +39,23 @@ internal sealed class BridgeDispatcher
 
     internal void DrainIdle()
     {
+        int deferredAtStart = _deferred.Count;
         for (int i = 0; i < BridgeConstants.MaxRequestsPerIdleTick; i++)
         {
-            if (!_queue.Reader.TryRead(out PendingRequest? pending))
+            PendingRequest? pending;
+            if (deferredAtStart > 0)
+            {
+                pending = _deferred.Dequeue();
+                deferredAtStart--;
+            }
+            else if (!_queue.Reader.TryRead(out pending))
             {
                 return;
             }
+
             if (pending.IsCancelled)
             {
+                _service.Cancel(pending.Request);
                 continue;
             }
 
@@ -46,6 +63,11 @@ internal sealed class BridgeDispatcher
             try
             {
                 object result = _service.Handle(pending.Request);
+                if (ReferenceEquals(result, DeferredBridgeResult.Instance))
+                {
+                    _deferred.Enqueue(pending);
+                    continue;
+                }
                 response = BridgeResponse.Success(pending.Request.RequestId, result);
             }
             catch (BridgeServiceException exc)
@@ -71,16 +93,26 @@ internal sealed class BridgeDispatcher
     internal void Complete()
     {
         _queue.Writer.TryComplete();
+        while (_deferred.Count > 0)
+        {
+            CompleteStopping(_deferred.Dequeue());
+        }
         while (_queue.Reader.TryRead(out PendingRequest? pending))
         {
-            pending.Cancel();
-            pending.Completion.TrySetResult(
-                BridgeResponse.Failure(
-                    pending.Request.RequestId,
-                    "BRIDGE_STOPPING",
-                    "native bridge is stopping"
-                )
-            );
+            CompleteStopping(pending);
         }
+    }
+
+    private void CompleteStopping(PendingRequest pending)
+    {
+        pending.Cancel();
+        _service.Cancel(pending.Request);
+        pending.Completion.TrySetResult(
+            BridgeResponse.Failure(
+                pending.Request.RequestId,
+                "BRIDGE_STOPPING",
+                "native bridge is stopping"
+            )
+        );
     }
 }

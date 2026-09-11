@@ -64,6 +64,19 @@ internal sealed class DocumentRegistry
         return identity;
     }
 
+    internal Guid RuntimeIdFor(Document document)
+    {
+        Refresh();
+        if (_byDocument.TryGetValue(document, out Guid runtimeId))
+        {
+            return runtimeId;
+        }
+        throw new BridgeServiceException(
+            "DOCUMENT_NOT_FOUND",
+            "opened document could not be registered with a runtime binding"
+        );
+    }
+
     internal Document ResolveDocument(Guid runtimeDocumentId, string? assertedDocumentPid)
     {
         Refresh();

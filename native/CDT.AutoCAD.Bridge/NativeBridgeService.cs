@@ -19,7 +19,7 @@ internal sealed class NativeBridgeService
         _bridgeInstanceId = bridgeInstanceId;
         _pipeName = pipeName;
         _documents = documents;
-        _mutations = new NativeMutationService(_semantic);
+        _mutations = new NativeMutationService(_semantic, _documents);
     }
 
     internal object Handle(BridgeRequest request)
@@ -30,6 +30,9 @@ internal sealed class NativeBridgeService
             "bridge.documents.list" => new { documents = _documents.List() },
             "bridge.document.identity" => DocumentIdentity(request),
             "bridge.document.snapshot" => DocumentSnapshot(request),
+            "bridge.recovery.list" => _mutations.ListRecoveries(),
+            "bridge.recovery.resolve" => RecoveryResolve(request),
+            "bridge.recovery.finalize" => RecoveryFinalize(request),
             "entity.create.line" => EntityMutation(request),
             "entity.update.line" => EntityMutation(request),
             "entity.delete.line" => EntityMutation(request),
@@ -67,6 +70,13 @@ internal sealed class NativeBridgeService
             same_windows_session_only = true,
             mutation_enabled = true,
             document_fp_schema_version = 2,
+            two_phase_commit_integrity = true,
+            recovery_operations = new[]
+            {
+                "bridge.recovery.list",
+                "bridge.recovery.resolve",
+                "bridge.recovery.finalize",
+            },
             mutation_operations = new[]
             {
                 "entity.create.line",
@@ -102,7 +112,33 @@ internal sealed class NativeBridgeService
             parameters.RuntimeDocumentId,
             parameters.DocumentPid
         );
-        return _mutations.Execute(document, request.Operation, parameters);
+        return _mutations.Execute(document, request.RequestId, request.Operation, parameters);
+    }
+
+    internal void Cancel(BridgeRequest request)
+    {
+        if (string.Equals(request.Operation, "bridge.recovery.resolve", StringComparison.Ordinal))
+        {
+            _mutations.CancelRecoveryRequest(request.RequestId);
+        }
+    }
+
+    private object RecoveryResolve(BridgeRequest request)
+    {
+        RecoveryResolveParams parameters = request.RecoveryResolve
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "recovery resolve params are required");
+        return _mutations.ResolveRecovery(request.RequestId, parameters);
+    }
+
+    private object RecoveryFinalize(BridgeRequest request)
+    {
+        RecoveryFinalizeParams parameters = request.RecoveryFinalize
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "recovery finalize params are required");
+        Document document = _documents.ResolveDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        return _mutations.FinalizeRecovery(document, parameters);
     }
 
     private object DocumentSnapshot(BridgeRequest request)

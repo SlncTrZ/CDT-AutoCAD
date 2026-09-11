@@ -1,7 +1,7 @@
 # ADR-001 — Native .NET Bridge + Semantic State Loop
 
 > Date: 2026-09-10
-> Status: ACCEPTED ARCHITECTURE · N0–N6 + O1 CLOSED/LIVE-VERIFIED · N7 IN PROGRESS / NOT CLOSED
+> Status: ACCEPTED ARCHITECTURE · N0–N7 + O1 CLOSED/LIVE-VERIFIED
 > Scope: CDT-AutoCAD target architecture; current COM/ezdxf runtime remains supported during migration
 
 ## 1. Decision
@@ -216,6 +216,6 @@ Provider-specific geometry remains provider-owned; common semantic concepts shou
 
 ## 12. Compatibility rule
 
-This ADR defines the **target architecture** and records a decision that predates implementation. Current status authority is `docs/CURRENT_CHECKPOINT.md`. As of the latest 2026-09-10 checkpoint, N0–N6 and O1 are closed/live-verified for their bounded scopes; the staged bridge has typed LINE/CIRCLE/ARC/simple-LWPOLYLINE mutations. N7 two-phase recovery is actively implemented but not accepted because final R2 document-lifecycle testing exposed an AutoCAD active-document crash. The public MCP provider remains the unchanged 50-tool COM/ezdxf release-candidate baseline. Python MCP hot reload is now a mandatory prerequisite before deep N8/N9/N10 migration.
+This ADR defines the **target architecture** and records a decision that predates implementation. Current status authority is `docs/CURRENT_CHECKPOINT.md`. As of the 2026-09-11 checkpoint, N0–N7 and O1 are closed/live-verified for their bounded scopes; the staged bridge has typed LINE/CIRCLE/ARC/simple-LWPOLYLINE mutation plus checkpoint-backed R0/R1/R2 recovery, including activation-safe R2 after real AutoCAD restart. The public MCP provider remains the unchanged 50-tool COM/ezdxf release-candidate baseline. Python MCP hot reload is now the mandatory prerequisite before deep N8/N9/N10 migration.
 
 The existing `ezdxf` + COM provider remains the public/runtime migration baseline until later native semantic, rollback, parity and promotion gates are implemented, tested on real AutoCAD and explicitly promoted. See `docs/CURRENT_CHECKPOINT.md` for the authoritative current frontier.
