@@ -93,6 +93,12 @@ When a durable operational event sink is later introduced, its queue size, backp
 
 ## 7. MP-2 enrichment requirements
 
-Hot reload must replace `generation="static"` with a real supervisor generation/build identity and preserve correlation across drain/fence/activation. Health/status and structured events together must let a client determine which generation handled a request.
+MP-2 replaces `generation="static"` for supervised workers with a real generation/build identity sourced from the supervisor environment. The stable supervisor owns reload phase, active generation/build, active request count, success/failure counters and drop-count telemetry; worker diagnostics inherit the promoted runtime generation. **This behavior is CLOSED / LIVE PASS.**
 
-Native bridge correlation should be propagated in a typed IPC field only after the protocol change has its own compatibility/version review; it must not be smuggled through free-text commands or logs.
+Reload operational events cover bootstrap/start/fence/completion/failure with reload ID, phase, active/candidate generation, outcome/error and latency. Telemetry sink failure increments an explicit drop counter and cannot alter generation promotion/fallback semantics. Full process `20` success + `10` injected failure acceptance and Windows AutoCAD 2027 Session 1 acceptance passed with stable generation correlation and zero post-run worker orphans.
+
+`system_status` fields include protocol version, contract version/hash, generation, provider build, policy fingerprint, supervised profile, bridge build/readiness and pending recovery. Candidate promotion validates protocol/contract hash in addition to generation/build/tool-count/policy identity, preventing an incompatible worker from becoming authoritative.
+
+Native bridge correlation should be propagated in a typed IPC field only after the protocol change has its own compatibility/version review; it must not be smuggled through free-text commands or logs. Control-plane edits to `hot_reload.py` or `supervisor.py` require supervisor restart; worker-source hot reload intentionally does not claim to replace its own supervisor.
+
+Canonical closure evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`.

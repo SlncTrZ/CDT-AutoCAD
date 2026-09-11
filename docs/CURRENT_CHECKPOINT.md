@@ -1,9 +1,9 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-11 +07:00
-> Status: **MP0-T00 CLOSED / PASS · A-01 CLOSED / PASS · A-02 CLOSED / LIVE PASS · A-03+A-06 CLOSED / PASS · N0–N7 CLOSED · O1 CLOSED / LIVE PASS · N7 LIVE PASS**
-> Accepted implementation baseline: `04ff820` (`Feat: expand native typed shape mutations`)
-> Working implementation checkpoint: N7 two-phase native commit integrity + checkpointed R0/R1/R2 recovery has passed the final activation-safe AutoCAD 2027 Session 1 gate; next mandatory runtime gate is Python MCP/provider hot reload before deep N8/N9/N10 migration
+> Updated: 2026-09-11 11:10 +07:00
+> Status: **MP0-T00 CLOSED / PASS · A-01 CLOSED / PASS · A-02 CLOSED / LIVE PASS · A-03+A-06 CLOSED / PASS · N0–N7 CLOSED · O1 CLOSED / LIVE PASS · MP-2 HOT RELOAD CLOSED / LIVE PASS**
+> Accepted implementation baseline before MP-2 closure commit: `7304687` (`Feat: close N7 native recovery lifecycle`)
+> Working implementation checkpoint: **MP-2 Python MCP/provider hot reload CLOSED / LIVE PASS** on top of `7304687`; canonical evidence is `docs/evidence/mp2-hot-reload-2026-09-11.json` and the public 50-tool contract remains unchanged
 > Primary native target: AutoCAD 2027 full · Windows x64 · COM `26.0` · Managed .NET `net10.0-windows`
 
 ## 1. Public runtime
@@ -37,6 +37,7 @@ The N-series Managed .NET bridge is **not yet the public provider backend**.
 | N6 | **CLOSED / LIVE PASS** | deterministic semantic delta, ActionSpec geometry/effect validation, duplicate detection, state-chain continuity, manual-drift blocking and post-dispatch uncertainty latch |
 | O1 | **CLOSED / LIVE PASS** | internal typed CIRCLE/ARC/simple-LWPOLYLINE create/update/delete added to the N5/N6 parent-PID-transaction-semantic-chain foundation |
 | N7 | **CLOSED / LIVE PASS** | two-phase native commit integrity, immutable checkpoint manifests/artifact hashes, R0/R1/R2 recovery, executor R1→R2 cascade, restart-persisted recovery and activation-safe R2 document replacement/rebinding all passed on real AutoCAD 2027 Session 1 |
+| MP-2 | **CLOSED / LIVE PASS** | stable authenticated ASGI supervisor, replaceable stateless FastMCP workers, generation fencing/drain/fallback, protocol/contract-hash + runtime generation/build/policy identity, bounded native-bridge readiness probe and source watcher; focused `41 passed`, Linux `254/5`, Windows `.171` `253/6`, process `20` success + `10` injected failure PASS, AutoCAD 2027 Session 1 COM + required bridge `2` success + `1` failure PASS, TaskScheduler result `0`, zero worker orphans |
 | N8 | **NOT STARTED** | formal incremental COM-to-.NET/public operation migration |
 | N9 | **NOT STARTED** | semantic drawing-workflow migration |
 | N10 | **NOT STARTED** | explicit public contract/promotion decision |
@@ -87,7 +88,7 @@ Measured invariants:
 - native document fingerprint matches the N1 canonical fingerprint byte-for-byte for the accepted fixture;
 - repeated reads keep `DBMOD=0`, and save/reopen preserves the semantic document fingerprint;
 - a snapshot whose serialized result exceeds the 65,536-byte frame fails as correlated `RESPONSE_TOO_LARGE`; the bridge remains alive and the read attempt does not change `DBMOD`;
-- current bridge version is `0.4.0-o1`; `mutation_enabled=true` only for the exact 12 typed LINE/CIRCLE/ARC/LWPOLYLINE operations listed above;
+- accepted staged bridge version is `0.5.0-n7`; `mutation_enabled=true` only for the exact 12 typed LINE/CIRCLE/ARC/LWPOLYLINE operations listed above;
 - every mutation requires `runtime_document_id + document_pid + expected_parent_fp`; update/delete additionally target a persistent `semantic_pid` rather than Handle/ObjectId;
 - `expected_parent_fp` is re-read through the native semantic extractor before the write transaction; mismatch fails with `STATE_DRIFT` before mutation;
 - create assigns a fresh persistent PID for LINE/CIRCLE/ARC/LWPOLYLINE; update preserves PID/Handle; delete removes the PID-bearing entity from the semantic snapshot;
@@ -255,13 +256,15 @@ SHA-256 4ad2d4138d6e71a8fa91281ea5482c592e2a0c04cb5d41ec5f2452b7cff31484
 
 Master Plan public-safety prework and N7 are now CLOSED: **MP0-T00, A-01, A-02, A-03/A-06 and N7 are CLOSED/PASS.** N7 eliminated the active-document crash path by splitting R2 across verified AutoCAD Idle activation phases and closing only inactive documents.
 
-The next mandatory infrastructure/runtime gate is **Python MCP/provider hot reload** before deep N8/N9/N10 migration. Public COM/ezdxf behavior and the 50-tool contract remain unchanged.
+**MP-2 Python MCP/provider hot reload is CLOSED / LIVE PASS.** The runtime now uses a stable authenticated ASGI supervisor over replaceable stateless FastMCP worker generations, with request fencing/drain, last-healthy fallback, frozen policy identity, protocol/contract-hash promotion validation, runtime generation/build provenance and bounded native-bridge readiness probing. Public COM/ezdxf behavior and the 50-tool contract remain unchanged.
 
-Historical N7 handoff/incident record: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`; canonical closure evidence: `docs/evidence/n7-native-recovery-2026-09-11.json`.
+Final MP-2 evidence: focused `41 passed`; Linux full `254 passed / 5 skipped`; Windows `.171` full `253 passed / 6 skipped`; process-level `20` successful source reloads + `10` injected startup failures PASS; AutoCAD 2027 Interactive Session 1 COM + required native bridge `2` success + `1` injected failure PASS with TaskScheduler result `0`, bridge `0.5.0-n7`, pending recovery `0`, and zero post-run worker orphans. Canonical evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`. Control-plane edits to `hot_reload.py` or `supervisor.py` require supervisor restart by design.
 
-A new mandatory infrastructure/runtime requirement is also recorded: **the Python MCP/provider must support a fail-safe hot-reload lifecycle before the formal N8/N9/N10 migration is considered complete.** Python hot reload is not yet implemented. The `.171` Windows host has `cloudflared` available per operator infrastructure; its tunnel/service configuration has not yet been audited or modified for CDT-AutoCAD.
+`.171` currently has `cloudflared` running but no CDT-AutoCAD ingress route; its config remains unmodified. Tunnel/process presence is not provider readiness and must never replace authenticated MCP + required bridge health checks.
 
-After N7 is closed, Python MCP hot reload should be implemented and accepted before deep N8/N9/N10 migration. Future operation-family work must still keep bounded typed contracts, TDD, native build, AutoCAD Session 1 acceptance, semantic-chain evidence, review and separate commits. TEXT/MTEXT, ELLIPSE/SPLINE, BLOCK/DIM/HATCH and later families remain future work until explicitly implemented and accepted.
+Historical MP-2 implementation handoff: `docs/SESSION_HANDOFF_2026-09-11_MP2_HOT_RELOAD.md`; canonical MP-2 closure evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`. Historical N7 handoff/incident record: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`; canonical N7 closure evidence: `docs/evidence/n7-native-recovery-2026-09-11.json`.
+
+Future operation-family work must still keep bounded typed contracts, TDD, native build, AutoCAD Session 1 acceptance, semantic-chain evidence, review and separate commits. TEXT/MTEXT, ELLIPSE/SPLINE, BLOCK/DIM/HATCH and later families remain future work until explicitly implemented and accepted.
 
 ## 8. Status authority
 

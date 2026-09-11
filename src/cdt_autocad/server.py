@@ -5,9 +5,6 @@ Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 16:13
 from __future__ import annotations
 
 import argparse
-import hashlib
-from importlib import resources
-from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
@@ -21,6 +18,14 @@ from .backends.base import AutoCADBackend
 from .backends.com_backend import ComBackend
 from .backends.ezdxf_backend import EzdxfBackend
 from .config import Settings
+from .contract_identity import (
+    COMMON_CONTRACT_VERSION as _COMMON_CONTRACT_VERSION,
+    CONTRACT_VERSION as _CONTRACT_VERSION,
+    PROTOCOL_VERSION as _PROTOCOL_VERSION,
+    UPDATED_AT as _UPDATED_AT,
+    contract_hash as _contract_hash,
+    contract_material as _contract_material,
+)
 from .diagnostics import DiagnosticSink, ProviderDiagnosticMiddleware
 from .errors import (
     BackendQuarantinedError,
@@ -28,10 +33,8 @@ from .errors import (
     StateConflictError,
     UnsupportedCapabilityError,
 )
+from .runtime_identity import RuntimeIdentity
 
-_CONTRACT_VERSION = "autocad-a2-v1-rc1"
-_COMMON_CONTRACT_VERSION = "cdt-common-v1-draft"
-_UPDATED_AT = "2026-09-11"
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _HTTP_TRANSPORTS = {"http", "sse", "streamable-http"}
 
@@ -239,24 +242,16 @@ _TOOL_DESCRIPTIONS = {
 }
 
 
-def _guide_content() -> str:
-    source_path = Path(__file__).resolve().parents[2] / "docs" / "TOOL_GUIDE.md"
-    if source_path.is_file():
-        return source_path.read_text(encoding="utf-8")
-    packaged = resources.files("cdt_autocad").joinpath("docs").joinpath("TOOL_GUIDE.md")
-    return packaged.read_text(encoding="utf-8")
-
-
 def _help_payload(backend: AutoCADBackend) -> dict[str, Any]:
-    content = _guide_content()
+    content, contract_hash = _contract_material()
     return {
         "provider_name": "autocad",
         "provider_version": __version__,
-        "protocol_version": "MCP",
+        "protocol_version": _PROTOCOL_VERSION,
         "contract_version": _CONTRACT_VERSION,
         "common_contract_version": _COMMON_CONTRACT_VERSION,
         "provider_extension_version": _CONTRACT_VERSION,
-        "contract_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "contract_hash": contract_hash,
         "updated_at": _UPDATED_AT,
         "authentication": "Bearer token required for HTTP transport; credentials are never returned",
         "capabilities": backend.capabilities(),
@@ -395,6 +390,7 @@ def create_mcp(
     diagnostic_sink: DiagnosticSink | None = None,
 ) -> FastMCP:
     settings = settings or Settings.from_env()
+    runtime_identity = RuntimeIdentity.from_env()
     backend: AutoCADBackend
     if settings.backend == "com":
         backend = ComBackend(settings)
@@ -425,6 +421,7 @@ def create_mcp(
             backend_name=backend.name,
             provider_version=__version__,
             sink=diagnostic_sink,
+            generation=runtime_identity.generation,
         )
     )
     app.add_middleware(ProviderErrorMiddleware(backend))
@@ -451,12 +448,16 @@ def create_mcp(
     @provider_tool(tags={"identity", "read"})
     async def system_status() -> dict[str, Any]:
         backend_status = backend.status()
+        contract_hash = _contract_hash()
         return {
             "provider": "autocad",
             "provider_version": __version__,
+            "protocol_version": _PROTOCOL_VERSION,
             "contract_version": _CONTRACT_VERSION,
+            "contract_hash": contract_hash,
             **backend_status,
             **_status_contract(backend, backend_status),
+            **runtime_identity.status(backend_name=backend.name),
         }
 
     @provider_tool(tags={"identity", "read"})

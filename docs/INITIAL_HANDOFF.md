@@ -1,6 +1,6 @@
 # Initial Handoff — Agent A / AutoCAD
 
-> Historical bootstrap document. N7 closed/live-passed on 2026-09-11; for current implementation status use `docs/CURRENT_CHECKPOINT.md`. `docs/N7_WORKING_CHECKPOINT_2026-09-10.md` is retained only as the historical N7 incident/handoff record.
+> Historical bootstrap document. N7 and MP-2 closed/live-passed on 2026-09-11. Use `docs/CURRENT_CHECKPOINT.md` for current status; `docs/SESSION_HANDOFF_2026-09-11_MP2_HOT_RELOAD.md` and `docs/N7_WORKING_CHECKPOINT_2026-09-10.md` are retained as historical implementation/handoff records.
 
 ## Repository
 
@@ -24,9 +24,10 @@
 11. `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
 12. `docs/DRAWING_QUALITY_ACCEPTANCE.md`
 13. `specs/MCP_PROVIDER_STANDARD.md`
-14. `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`
-15. `specs/ARCHITECTURE.md`
-16. `specs/CONTRACTS.md`
+14. `docs/SESSION_HANDOFF_2026-09-11_MP2_HOT_RELOAD.md`
+15. `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`
+16. `specs/ARCHITECTURE.md`
+17. `specs/CONTRACTS.md`
 
 ## Historical starting state
 
@@ -50,7 +51,7 @@ Known implementation state:
 
 N0–N7 and O1 are complete for their bounded scopes. N7 `0.5.0-n7` closed/live-passed on AutoCAD 2027 Session 1 with activation-safe R2 recovery before and after a real process restart; canonical evidence is `docs/evidence/n7-native-recovery-2026-09-11.json`.
 
-The next mandatory runtime task is Python MCP/provider hot reload before deep N8/N9/N10 migration. `.171` has `cloudflared` available for later endpoint/tunnel deployment, but tunnel/service configuration has not yet been audited or changed for CDT-AutoCAD.
+**MP-2 Python MCP/provider hot reload is CLOSED / LIVE PASS.** The stable supervisor + replaceable stateless worker runtime passed protocol/contract-hash promotion validation, process-level `20` success + `10` injected failure acceptance, Windows `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge acceptance, full Linux/Windows regressions and review. Canonical evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`. `.171` has `cloudflared` running but no CDT-AutoCAD ingress route; its config was not changed for MP-2.
 
 The current COM/ezdxf runtime remains the comparison/public baseline. New implementation must not weaken or silently replace current public behavior until real AutoCAD parity/integrity and explicit promotion gates pass.
 

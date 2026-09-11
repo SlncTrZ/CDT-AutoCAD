@@ -480,9 +480,11 @@ Current verification on the O1 closure tree:
 
 ### Next gates
 
-Immediate gate after N7: implement and accept Python MCP/provider hot reload with generation/build identity, deterministic in-flight draining and failed-reload fallback before deep N8/N9/N10 migration. The accepted public COM/ezdxf 50-tool runtime remains unchanged.
+Immediate gate after N7, **MP-2 Python MCP/provider hot reload, is CLOSED / LIVE PASS**. The runtime has a stable authenticated ASGI supervisor, replaceable stateless worker generations, deterministic request fence/drain, last-healthy fallback, protocol/contract-hash + generation/build/policy identity, source watching and bounded native-bridge readiness probing. The accepted public COM/ezdxf 50-tool runtime remains unchanged.
 
-Before deep N8/N9/N10 migration, the Python MCP/provider must gain mandatory fail-safe hot reload. Required behavior includes deterministic in-flight drain/refusal, a single authoritative generation, health-proven generation switch, rollback/preservation of the previous healthy generation on failed reload, and unchanged auth/path-policy/public-contract invariants. `.171` has `cloudflared` available for endpoint deployment; tunnel/service configuration remains unaudited/unmodified in this checkpoint.
+Final MP-2 evidence: focused `41 passed`; process-level `20` successful source reloads + `10` injected startup failures PASS; Windows `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge `2` success + `1` injected failure PASS with TaskScheduler result `0`; Linux full `254 passed / 5 skipped`; Windows full `253 passed / 6 skipped`; zero post-run worker orphans. `.171` has `cloudflared` running but no CDT-AutoCAD ingress route; tunnel/service configuration remains unmodified and cannot substitute for provider readiness.
+
+Canonical closure evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`. Historical implementation handoff: `docs/SESSION_HANDOFF_2026-09-11_MP2_HOT_RELOAD.md`.
 
 Any further native operation-family expansion should remain one bounded family at a time with its own typed contract, TDD, AutoCAD Session 1 acceptance, COM parity where relevant, semantic-chain evidence and separate commit. Candidate future order remains TEXT/MTEXT → ELLIPSE/SPLINE → BLOCK/DIM/HATCH. Journal resume, topology extraction and formal N8/public migration remain separately gated work. Existing Autodesk-reference warning debt and pre-existing repository lint debt remain tracked separately.
 
