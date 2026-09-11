@@ -626,6 +626,14 @@ class ComBackend(AutoCADBackend):
         return {key: value.to_dict() for key, value in capabilities.items()}
 
     def status(self) -> dict[str, Any]:
+        application = (
+            dict(self._application_metadata) if self._application_metadata is not None else None
+        )
+        current_release_match = (
+            None
+            if application is None
+            else str(application.get("release") or "") == _PRIMARY_CERTIFICATION_RELEASE
+        )
         return {
             "backend": self.name,
             "runtime_available": self.runtime_available,
@@ -638,9 +646,12 @@ class ComBackend(AutoCADBackend):
                 self._uncertain_future is not None and not self._uncertain_future.done()
             ),
             "a2_implementation_state": "release_candidate",
-            "a2_live_verification": "pending_real_autocad",
+            "a2_live_verification": "historical_primary_target_pass_current_process_unverified",
             "live_certification": {
-                "state": "pending_real_autocad",
+                "state": "historical_primary_target_pass",
+                "current_process_certified": False,
+                "current_release_match": current_release_match,
+                "evidence_reference": "docs/LIVE_ACCEPTANCE.md",
                 "primary_release": _PRIMARY_CERTIFICATION_RELEASE,
                 "primary_com_version": _PRIMARY_CERTIFICATION_COM_VERSION,
                 "primary_progid": _PRIMARY_CERTIFICATION_PROGID,
@@ -648,9 +659,7 @@ class ComBackend(AutoCADBackend):
                 "required_platform": "windows_x64",
                 "compatibility_policy": "explicit_native_matrix_required",
             },
-            "application": (
-                dict(self._application_metadata) if self._application_metadata is not None else None
-            ),
+            "application": application,
             "platform": sys.platform,
         }
 

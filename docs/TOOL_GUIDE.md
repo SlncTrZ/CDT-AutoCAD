@@ -1,6 +1,6 @@
 # AutoCAD Provider Tool Guide
 
-> Contract version: `autocad-a2-v1-rc1` · Provider version: `0.3.0rc1` · Updated: 2026-09-10 +07:00
+> Contract version: `autocad-a2-v1-rc1` · Provider version: `0.3.0rc1` · Updated: 2026-09-11 +07:00
 > Public surface remains exactly 50 tools. N0–N6 + O1 native work is staged/internal; N7 recovery is in progress/not closed and does not change this guide's public contract.
 
 ## Runtime scope
@@ -13,7 +13,7 @@ A2 is code-complete and **live-verified** on the primary AutoCAD 2027 Windows Ac
 
 ## Architecture-upgrade notice
 
-This guide documents the **current public 50-tool runtime**. A staged/internal C# Managed .NET bridge now exists and is live-verified for N3 read-only health/document identity over local typed IPC, but it is not a public MCP backend and exposes no mutation endpoint. The next architecture phase adds native semantic extraction while public tool semantics remain unchanged during migration.
+This guide documents the **current public 50-tool runtime**. The staged/internal C# Managed .NET bridge has closed N3–N6 plus O1 for their documented bounded scopes, including read-only identity/snapshot extraction, persistent PID/fingerprint binding, typed LINE/CIRCLE/ARC/simple-LWPOLYLINE mutation, verified rollback and semantic state-chain enforcement. It is still **not a public MCP backend**. N7 post-commit recovery is in progress/not closed, so public tool semantics remain on the current COM/ezdxf baseline.
 
 The two target invariants are **Data Integrity / Rollback** and **Precise Identity / PID + Fingerprinting**. Future engineering mutation steps must verify the parent state, execute transactionally, extract native semantic state, validate/fingerprint/diff, and end only in `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`.
 
@@ -32,9 +32,8 @@ See `ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`, `SEMANTIC_STATE_PROTOCOL.md`
 ## Identity
 
 - `help` — read-only provider guide and contract fingerprint.
-- `system_status` — backend/runtime state, transaction state, primary live-certification target and,
-  after COM attachment, detected AutoCAD application/version/release metadata.
-- `system_capabilities` — machine-readable capability map for the selected backend.
+- `system_status` — separates implementation/public-surface state, current runtime readiness, historical certification evidence and lightweight build identity. A historical PASS never certifies the current process without a matching provenance manifest. After COM attachment it also reports detected AutoCAD application/version/release metadata.
+- `system_capabilities` — machine-readable capability map for the selected backend. Capability metadata describes availability and side-effect planning; it is not authorization.
 
 ## Documents
 
@@ -136,13 +135,9 @@ require `force=true` for deletion because ActiveX exposes no reliable main-viewp
 - `undo`
 - `redo`
 
-`ezdxf` uses compressed bounded snapshots. Current `com` uses native AutoCAD undo marks. The N3 .NET bridge is currently read-only; native database mutation transactions plus verified semantic rollback/read-back belong to N5+ and are not yet implemented or public. COM additionally
-tracks the active document: switching documents while a tracked transaction is open is refused, so a
-commit cannot accidentally close an undo mark in the wrong drawing.
+`ezdxf` uses compressed bounded snapshots. Current public `com` uses native AutoCAD undo marks. The staged .NET bridge has already live-verified typed N5/N6/O1 mutation plus verified semantic rollback/read-back for its bounded internal entity scope, but it is not public and N7 post-commit recovery is still open. COM additionally tracks the active document: switching documents while a tracked transaction is open is refused, so a commit cannot accidentally close an undo mark in the wrong drawing.
 
-A timed-out COM mutation is fundamentally different from a timed-out headless worker: the abandoned
-STA call cannot be force-cancelled and **may still complete in AutoCAD**. The provider marks that state
-uncertain and warns against blind retry because a retry can double-apply the mutation.
+A timed-out COM mutation is fundamentally different from a timed-out headless worker: the dispatched STA call cannot be force-cancelled and **may still complete in AutoCAD**. The provider therefore keeps one STA executor, latches unknown completion, fences later mutations before dispatch, exposes the timeout as non-retryable/`completion_unknown=true`, and permits only read-only reconciliation until verified operator recovery plus provider restart. Blind retry is not merely discouraged; it is blocked.
 
 ## Backend configuration
 

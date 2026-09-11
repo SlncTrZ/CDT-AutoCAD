@@ -270,8 +270,14 @@ def test_status_declares_primary_2027_certification_target_before_connection(set
     status = backend.status()
 
     assert status["application"] is None
+    assert status["a2_live_verification"] == (
+        "historical_primary_target_pass_current_process_unverified"
+    )
     assert status["live_certification"] == {
-        "state": "pending_real_autocad",
+        "state": "historical_primary_target_pass",
+        "current_process_certified": False,
+        "current_release_match": None,
+        "evidence_reference": "docs/LIVE_ACCEPTANCE.md",
         "primary_release": "2027",
         "primary_com_version": "26.0",
         "primary_progid": "AutoCAD.Application.26",
@@ -279,6 +285,21 @@ def test_status_declares_primary_2027_certification_target_before_connection(set
         "required_platform": "windows_x64",
         "compatibility_policy": "explicit_native_matrix_required",
     }
+
+
+def test_matching_autocad_release_does_not_self_certify_current_process(settings):
+    backend = ComBackend(replace(settings, backend="com"))
+    backend._application_metadata = {
+        "release": "2027",
+        "version": "26.0",
+        "com_version": "26.0",
+    }
+
+    status = backend.status()
+
+    assert status["live_certification"]["current_release_match"] is True
+    assert status["live_certification"]["current_process_certified"] is False
+    assert status["live_certification"]["state"] == "historical_primary_target_pass"
 
 
 def test_direct_settings_construction_rejects_unsafe_com_policy(settings):

@@ -4,6 +4,7 @@ Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 19:01
 
 from __future__ import annotations
 
+import sys
 import tomllib
 from dataclasses import replace
 from pathlib import Path
@@ -86,6 +87,42 @@ async def test_a2_rc_tool_surface_is_bounded_and_explicit(settings):
     assert len(names) == 50
 
 
+@pytest.mark.asyncio
+async def test_public_tool_catalog_has_unique_semantic_descriptions_and_read_only_hints(settings):
+    app = create_mcp(settings)
+    async with Client(app) as client:
+        tools = list(await client.list_tools())
+
+    assert len(tools) == 50
+    descriptions = {tool.name: tool.description for tool in tools}
+    assert all(description and len(description) >= 40 for description in descriptions.values())
+    assert len(set(descriptions.values())) == 50
+
+    read_only_tools = {
+        "help",
+        "system_status",
+        "system_capabilities",
+        "document_info",
+        "object_list",
+        "object_get",
+        "object_count",
+        "layer_list",
+        "block_list",
+        "layout_list",
+        "viewport_list",
+        "view_screenshot",
+    }
+    for tool in tools:
+        assert tool.annotations is not None
+        assert tool.annotations.readOnlyHint is (tool.name in read_only_tools)
+
+    assert "verified" in descriptions["document_save"].lower()
+    assert "wcs" in descriptions["entity_create_line"].lower()
+    assert "degrees" in descriptions["object_rotate"].lower()
+    assert "force" in descriptions["viewport_delete"].lower()
+    assert "side effect" in descriptions["system_capabilities"].lower()
+
+
 def test_backend_factory_selects_com(settings):
     app = create_mcp(replace(settings, backend="com"))
     assert isinstance(app._cdt_backend, ComBackend)
@@ -102,6 +139,25 @@ async def test_com_system_status_exposes_primary_live_certification_target(setti
     assert payload["live_certification"]["primary_release"] == "2027"
     assert payload["live_certification"]["primary_progid"] == "AutoCAD.Application.26"
     assert payload["application"] is None
+    assert payload["implementation"] == {
+        "state": "release_candidate",
+        "public_enabled": True,
+    }
+    assert payload["runtime"] == {
+        "platform_supported": sys.platform == "win32",
+        "connected": False,
+        "ready": False,
+    }
+    assert payload["certification"]["evidence_state"] == "historical_primary_target_pass"
+    assert payload["certification"]["current_process_certified"] is False
+    assert payload["certification"]["current_release_match"] is None
+    assert payload["certification"]["evidence_reference"] == "docs/LIVE_ACCEPTANCE.md"
+    assert payload["build_identity"] == {
+        "provider_version": __version__,
+        "contract_version": "autocad-a2-v1-rc1",
+        "runtime_manifest_attached": False,
+        "source_or_dll_claim_requires_manifest": True,
+    }
 
 
 def test_capability_keyset_is_stable_across_backends(settings):

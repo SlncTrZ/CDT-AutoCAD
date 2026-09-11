@@ -1,9 +1,9 @@
 # Current Checkpoint — CDT-AutoCAD
 
 > Updated: 2026-09-11 +07:00
-> Status: **MP0-T00 CLOSED / PASS · A-01 CLOSED / PASS · A-02 CLOSED / LIVE PASS · A-03 NEXT · N0–N6 CLOSED · O1 CLOSED / LIVE PASS · N7 PRESERVED / NOT CLOSED**
+> Status: **MP0-T00 CLOSED / PASS · A-01 CLOSED / PASS · A-02 CLOSED / LIVE PASS · A-03+A-06 CLOSED / PASS · N0–N6 CLOSED · O1 CLOSED / LIVE PASS · N7 RESUME NEXT / NOT CLOSED**
 > Accepted implementation baseline: `04ff820` (`Feat: expand native typed shape mutations`)
-> Working implementation checkpoint: N7 two-phase native commit integrity + R0/R1/R2 recovery remains uncommitted and preserved; Master Plan ordering is MP0-T00 → A-01 → A-02 → A-03 → resume N7, with MP0-T00, A-01 and A-02 now closed
+> Working implementation checkpoint: N7 two-phase native commit integrity + R0/R1/R2 recovery remains uncommitted and preserved; Master Plan ordering MP0-T00 → A-01 → A-02 → A-03/A-06 is now closed, so the next active task is resume N7 final R2 lifecycle recovery
 > Primary native target: AutoCAD 2027 full · Windows x64 · COM `26.0` · Managed .NET `net10.0-windows`
 
 ## 1. Public runtime
@@ -27,6 +27,7 @@ The N-series Managed .NET bridge is **not yet the public provider backend**.
 | MP0-T00 | **CLOSED / PASS** | platform-specific PEP 751 dependency locks from one canonical resolver workflow; source/build/DLL/runtime provenance; baseline threat model; structured request diagnostics/correlation with telemetry separated from recovery journal truth |
 | A-01 | **CLOSED / PASS** | COM timeout/cancel after dispatch is non-retryable unknown completion; one STA executor + mutation gate fence queued writers; late completion remains quarantined; read-only reconciliation stays available; document_new/open cannot clear quarantine |
 | A-02 | **CLOSED / LIVE PASS** | `document_save` binds one concrete COM Document through path validation → Save → post-save path verification; active-tab switches cannot retarget Save; outside-root target is refused before side effect; disposable AutoCAD 2027 Session 1 fixture passed |
+| A-03 / A-06 | **CLOSED / PASS** | all 50 public MCP tools have unique semantic descriptions + annotations; 12 true read-only tools expose `readOnlyHint`; status separates implementation, current runtime readiness, historical certification and build identity without self-certifying the current process |
 | N0 | **CLOSED** | architecture/documentation freeze and migration boundary |
 | N1 | **CLOSED / PASS** | Python semantic models, canonicalization/fingerprint primitives, rollback receipts and state-chain primitives |
 | N2 | **CLOSED / LIVE PASS** | persistent document/entity PID carrier and clone/reconciliation policy on real AutoCAD 2027, P0–P10 |
@@ -204,6 +205,18 @@ A-02 closure evidence on isolated clean gates derived from `565712b` and contain
 - Windows locked Ruff: PASS; Linux/Windows compileall and `git diff --check`: PASS; current gateway Linux `.deps` Ruff wrapper lacked its binary, so no false Linux lint-PASS claim is made;
 - canonical evidence: `docs/evidence/a02-document-binding-2026-09-11.json`.
 
+A-03/A-06 closure evidence on isolated clean gates derived from `39a093c` and containing no N7 dirty files:
+
+- runtime MCP catalog on Linux and Windows: **50 tools / 0 missing descriptions / 0 missing annotations / 50 unique descriptions / 12 read-only hints**;
+- catalog TDD gate failed before metadata was added; public status TDD gate failed before implementation/runtime/certification separation was added;
+- focused server-contract + COM metadata suite: **45 passed / 1 skipped** on the current tree before clean isolation;
+- clean Linux full suite: **217 passed / 5 skipped**;
+- clean Windows `.171` full suite: **216 passed / 6 skipped**;
+- current-process self-certification is explicitly forbidden: detected release match may be true while `current_process_certified` remains false without bound provenance;
+- Windows locked Ruff, Linux/Windows compileall and `git diff --check`: PASS; Linux gateway has no runnable Ruff binary so no Linux Ruff PASS is claimed;
+- public tool count remains exactly 50 and no capability is promoted by metadata changes;
+- canonical evidence: `docs/evidence/a03-tool-catalog-status-2026-09-11.json`.
+
 Accepted regression/evidence on the O1 closure tree:
 
 - focused O1/N5/N6 native-protocol + semantic regression: **76 passed**;
@@ -237,7 +250,7 @@ SHA-256 4ad2d4138d6e71a8fa91281ea5482c592e2a0c04cb5d41ec5f2452b7cff31484
 
 ## 7. Current boundary / next activity
 
-Master Plan execution order is now authoritative: **MP0-T00, A-01 and A-02 are CLOSED/PASS; next is A-03, and only then resume N7.** The existing N7 working tree is intentionally preserved unchanged while the public-safety fixes execute in front of it.
+Master Plan public-safety prework is now CLOSED: **MP0-T00, A-01, A-02 and A-03/A-06 are CLOSED/PASS. N7 is the next active task.** The existing N7 working tree remained intentionally preserved through those commits and can now resume from its documented R2 lifecycle blocker.
 
 **N7 remains open / NOT CLOSED.** Its immediate recovery blocker is R2 document replacement safety: the bridge must not close/replace an active AutoCAD document from an unsafe application-context callback. When N7 resumes after A-03, the next recovery slice must switch activation safely, close only inactive documents, reopen the restored original, rebind runtime identity, and independently prove `document_pid + document_fp` before returning `ROLLED_BACK_VERIFIED`.
 

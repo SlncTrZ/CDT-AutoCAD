@@ -34,7 +34,7 @@ Forbidden unless explicitly assigned:
 - A3.2 advanced dimensions: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
 - A3.3 analysis: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
 - Historical pre-split extraction baseline: 54 tests PASS, 2 live-Windows/AutoCAD tests SKIP; this is not the current regression count.
-- Native semantic checkpoints N0–N6 are closed for their documented scopes; O1 additionally live-verifies internal CIRCLE/ARC/simple-LWPOLYLINE typed mutation over the N5/N6 integrity model; N7 remains NOT STARTED.
+- Native semantic checkpoints N0–N6 are closed for their documented scopes; O1 additionally live-verifies internal CIRCLE/ARC/simple-LWPOLYLINE typed mutation over the N5/N6 integrity model; N7 is IN PROGRESS / NOT CLOSED with an uncommitted recovery candidate preserved behind the current public-safety work.
 - Current O1 regression checkpoint: Linux full suite 195 PASS / 4 SKIP; Windows `.171` full suite 194 PASS / 5 SKIP; focused O1/N5/N6 76 PASS; O1 native acceptance PASS on real AutoCAD 2027 Session 1; C# bridge build 0 errors with three documented unsuppressed `MSB3277` warning families.
 
 ## Current delivery gates
@@ -43,7 +43,7 @@ Forbidden unless explicitly assigned:
 2. `N0` documentation freeze is complete; preserve its architecture boundary.
 3. `N1` semantic contract models/canonical fingerprint engine are implemented and regression-verified; preserve golden fingerprints/state-chain invariants.
 4. `N2` persistent PID storage/clone policy is live-verified on AutoCAD 2027 and closed; preserve NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID and mandatory clone reconciliation. Raw DWG copies may share lineage PID.
-5. `N3` Managed .NET bridge skeleton + local typed IPC, `N4` native bounded SemanticSnapshot extraction, `N5` parent-guarded LINE transaction/R0 rollback and `N6` semantic delta/state-chain enforcement are CLOSED/LIVE PASS. O1 extends the internal typed allowlist to CIRCLE, ARC and simple LWPOLYLINE create/update/delete while preserving the same `expected_parent_fp` + persistent-PID invariants. N7 post-commit recovery remains NOT STARTED.
+5. `N3` Managed .NET bridge skeleton + local typed IPC, `N4` native bounded SemanticSnapshot extraction, `N5` parent-guarded LINE transaction/R0 rollback and `N6` semantic delta/state-chain enforcement are CLOSED/LIVE PASS. O1 extends the internal typed allowlist to CIRCLE, ARC and simple LWPOLYLINE create/update/delete while preserving the same `expected_parent_fp` + persistent-PID invariants. N7 post-commit recovery is IN PROGRESS / NOT CLOSED; provisional R0/R1/R2 recovery code/evidence exists on the preserved working tree, but final R2 active-document lifecycle safety is still a blocker.
 6. Every mutation architecture must preserve the two pillars: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting; no O1 result may be described as N7 recovery or public promotion.
 7. Continue A3/public capability promotion only through explicit contract/version changes; native implementation or verification alone does not publish tools.
 8. Any reference-driven/user-reviewed drawing must satisfy both Semantic State integrity and `docs/DRAWING_QUALITY_ACCEPTANCE.md`.
