@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "task": "A-02",
+  "date": "2026-09-11",
+  "status": "PASS",
+  "baseline_head": "565712b",
+  "scope": "Public COM document_save target binding and post-save path verification",
+  "root_cause": {
+    "old_behavior": "document_save read ActiveDocument.FullName in one _run call, validated that path outside the COM STA operation, then called _doc() again in a second _run before Save(). A user/client active-document switch between the two calls could validate document A but save document B while returning A's path.",
+    "impact": "Wrong-document mutation plus allowed-path policy mismatch and false success response.",
+    "audit_finding": "A-02"
+  },
+  "controls": {
+    "single_bound_com_document_per_save": true,
+    "pre_save_fullname_validation_on_bound_doc": true,
+    "save_on_same_bound_doc": true,
+    "post_save_fullname_verification_on_same_bound_doc": true,
+    "response_uses_verified_post_save_path": true,
+    "document_scope_key_updates_only_after_verified_success": true,
+    "outside_allowed_root_rejected_before_save": true,
+    "saveas_open_export_audited_without_unrelated_changes": true
+  },
+  "verification": {
+    "tdd_red": "2 failed / 1 passed on vulnerable implementation",
+    "focused_linux": "3 passed / 1 live skipped",
+    "focused_windows": "3 passed / 1 live skipped",
+    "sibling_audit": "7 passed for document_open, document_save_as and document_export_pdf regression cases",
+    "linux_clean_full": "215 passed / 5 skipped",
+    "windows_clean_full": "214 passed / 6 skipped",
+    "live_autocad_2027_session1": {
+      "status": "PASS",
+      "test": "test_live_document_save_keeps_verified_fixture_path",
+      "passed": 1,
+      "duration_seconds": 2.57,
+      "runner": "interactive ScheduledTask + pythonw.exe",
+      "fixture_policy": "new disposable document -> SaveAs temp DWG -> document_save -> verify path -> close",
+      "task_scheduler_last_result": 0,
+      "log_sha256": "0503f4d47e5512758e16e57111568accad1349a27e79967770c014b8dea6439f",
+      "junit_sha256": "fa3c66770fdd8090adffe6962729f87bfed30248d6ab7462cac6de0cba936e2c"
+    },
+    "windows_ruff_candidate_files": "PASS",
+    "linux_compileall": "PASS",
+    "windows_compileall": "PASS",
+    "git_diff_check_linux": "PASS",
+    "git_diff_check_windows": "PASS",
+    "linux_ruff_note": "The current gateway .deps ruff wrapper had no binary; lint authority for the final candidate was the locked Windows venv. The same two files had passed Linux Ruff before the live-test-only addition."
+  },
+  "isolation": {
+    "linux_gate": "/mnt/pc-dev/CDT-AutoCAD-A02-GATE",
+    "windows_gate": "H:\\Develop\\CDT-AutoCAD-A02-WIN-GATE",
+    "n7_dirty_files_in_gate": false,
+    "candidate_files": [
+      "src/cdt_autocad/backends/com_backend.py",
+      "tests/test_document_binding_a02.py"
+    ]
+  },
+  "candidate_identity": {
+    "candidate_files_sha256": "229d6a09dabfdf71476a7eecfae959427885b6cef980cec89fa800a0a4e8bec3",
+    "tracked_code_diff_sha256": "b1bc762e3a374cd2b396c11f9a01e167e093313fcdcbfc60df8b902a72e66379",
+    "files": {
+      "src/cdt_autocad/backends/com_backend.py": "aa8ccc829e67e734d3948cfe2aaade4534c2a6c60c004395cd96c737c8beeb5a",
+      "tests/test_document_binding_a02.py": "428b7cd3ce9e1fa000e502c6c7080031ab9d83104e85d506aee37d3e6362cc19"
+    }
+  },
+  "review": {
+    "status": "PASS",
+    "findings": [],
+    "notes": [
+      "Document.Save remains non-retried.",
+      "Bound-document reads use existing bounded COM busy-read helpers.",
+      "save_as/open/export_pdf remain unchanged because their side effects already occur in one bound _run operation and focused audit did not reproduce A-02."
+    ]
+  },
+  "closure": {
+    "a02": "PASS",
+    "next_task": "A-03"
+  }
+}

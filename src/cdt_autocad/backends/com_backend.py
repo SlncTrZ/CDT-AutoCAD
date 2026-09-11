@@ -1016,24 +1016,37 @@ class ComBackend(AutoCADBackend):
         if path is not None:
             return await self.document_save_as(path)
 
-        def _current_path() -> str:
-            doc = self._doc()
-            return str(getattr(doc, "FullName", "") or "")
-
-        raw_path = await self._run(_current_path, may_mutate_document=False)
-        if not raw_path or not Path(raw_path).is_absolute():
-            raise StateConflictError("Unsaved live AutoCAD document requires an explicit save path")
-        target = resolve_autocad_document_path(
-            raw_path, self.settings, must_exist=False, for_write=True
-        )
-
         def _sync() -> dict[str, Any]:
             doc = self._doc()
+            raw_path = str(_optional_com_property(doc, "FullName") or "")
+            if not raw_path or not Path(raw_path).is_absolute():
+                raise StateConflictError(
+                    "Unsaved live AutoCAD document requires an explicit save path"
+                )
+            target = resolve_autocad_document_path(
+                raw_path, self.settings, must_exist=False, for_write=True
+            )
+
             doc.Save()
+
+            verified_raw_path = str(_optional_com_property(doc, "FullName") or "")
+            if not verified_raw_path or not Path(verified_raw_path).is_absolute():
+                raise StateConflictError("AutoCAD document path changed during save")
+            verified_target = resolve_autocad_document_path(
+                verified_raw_path,
+                self.settings,
+                must_exist=False,
+                for_write=True,
+            )
+            if verified_target != target:
+                raise StateConflictError("AutoCAD document path changed during save")
+
+            name = str(_com_property_with_busy_retry(doc, "Name"))
+            self._document_scope_key = (name, str(verified_target))
             return {
                 "ok": True,
-                "path": str(target),
-                "format": target.suffix.lower().lstrip("."),
+                "path": str(verified_target),
+                "format": verified_target.suffix.lower().lstrip("."),
             }
 
         return await self._run(_sync)
