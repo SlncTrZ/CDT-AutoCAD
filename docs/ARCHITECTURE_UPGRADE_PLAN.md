@@ -1,9 +1,17 @@
 # Architecture Upgrade Plan — Native Bridge + Semantic State Loop
 
-> Updated: 2026-09-10 +07:00
-> Status: N0–N7 CLOSED · O1 CLOSED / LIVE PASS · N7 LIVE PASS · N8/N9/N10 NOT STARTED
-> Current runtime remains `ezdxf + COM` until migration gates close.
+> Updated: 2026-09-11 20:30 +07:00
+> Current status: **N0–N7/O1 CLOSED · MP-2 CLOSED · G1/G2/G3 CLOSED/LIVE PASS · 10k graduation PASS · Feature-based Chunks Streaming LIVE PASS · public promotion candidate pending final regression/review**
+> Current-state authority: `docs/CURRENT_CHECKPOINT.md`
 > Acceptance companion: `docs/NATIVE_BRIDGE_ACCEPTANCE.md`
+
+## 0. Current frontier
+
+The architecture upgrade has passed the G-series stage that older sections of this plan described as future work. The accepted native candidate is `0.8.1-g3`, uses document fingerprint schema v3, keeps native mutation chunks bounded to 32 entities, supports a graduated semantic capacity of 12,288 entities, and has live acceptance through a 10,000-item logical workload.
+
+G2 schema-agnostic metadata and G3 checkpoint-backed logical execution are implemented and live-verified. The approved Production Domain execution model is now **Feature-based Chunks Streaming**: one caller-defined logical feature at a time, one feature-local predecessor checkpoint, exact rollback of the current failed feature only, and optional 300 ms presentation pacing between completed features. Domain meaning remains outside the provider.
+
+The current working tree also contains an explicit public-promotion candidate `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`. That candidate is **not release-closed** until the final Linux/Windows regression, C# build, review, documentation agreement, selective staging, commit and push complete. Statements later in this document about the historical 50-tool baseline, staged A3 surface, G2/G3 being future work or N8/N10 being unopened describe earlier checkpoints and are retained as implementation history; use `docs/CURRENT_CHECKPOINT.md` for current truth.
 
 ## 1. Objective
 

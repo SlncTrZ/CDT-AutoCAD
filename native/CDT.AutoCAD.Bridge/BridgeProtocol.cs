@@ -4,10 +4,49 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace CDT.AutoCAD.Bridge;
 
 internal sealed record DocumentIdentityParams(Guid RuntimeDocumentId, string? DocumentPid);
+
+internal sealed record LogicalBeginParams(
+    Guid RuntimeDocumentId,
+    string DocumentPid,
+    string ExpectedParentFp
+);
+
+internal sealed record LogicalBatchBinding(
+    string CheckpointId,
+    string CheckpointArtifactFp,
+    string ExpectedRestoreFp
+);
+
+internal sealed record MetadataGetParams(
+    Guid RuntimeDocumentId,
+    string DocumentPid,
+    string SemanticPid,
+    string Namespace
+);
+
+internal sealed record MetadataSetParams(
+    Guid RuntimeDocumentId,
+    string DocumentPid,
+    string ExpectedParentFp,
+    string SemanticPid,
+    string Namespace,
+    JsonElement Value,
+    string? FaultStage
+);
+
+internal sealed record MetadataQueryParams(
+    Guid RuntimeDocumentId,
+    string DocumentPid,
+    string Namespace,
+    string? Path,
+    JsonElement? MatchValue,
+    int Limit
+);
 
 internal sealed record EntityMutationParams(
     Guid RuntimeDocumentId,
@@ -42,7 +81,8 @@ internal sealed record BatchCreateParams(
     string DocumentPid,
     string ExpectedParentFp,
     BatchCreateEntitySpec[] Entities,
-    string? FaultStage
+    string? FaultStage,
+    LogicalBatchBinding? LogicalTransaction
 );
 
 internal sealed record BatchTransformSpec(
@@ -59,7 +99,8 @@ internal sealed record BatchTransformParams(
     string ExpectedParentFp,
     string[] SemanticPids,
     BatchTransformSpec Transform,
-    string? FaultStage
+    string? FaultStage,
+    LogicalBatchBinding? LogicalTransaction
 );
 
 internal sealed record BatchInsertBlockSpec(
@@ -74,7 +115,8 @@ internal sealed record BatchInsertBlocksParams(
     string DocumentPid,
     string ExpectedParentFp,
     BatchInsertBlockSpec[] Inserts,
-    string? FaultStage
+    string? FaultStage,
+    LogicalBatchBinding? LogicalTransaction
 );
 
 internal sealed record RecoveryResolveParams(
@@ -103,7 +145,11 @@ internal sealed record BridgeRequest(
     RecoveryFinalizeParams? RecoveryFinalize = null,
     BatchCreateParams? BatchCreate = null,
     BatchTransformParams? BatchTransform = null,
-    BatchInsertBlocksParams? BatchInsertBlocks = null
+    BatchInsertBlocksParams? BatchInsertBlocks = null,
+    MetadataGetParams? MetadataGet = null,
+    MetadataSetParams? MetadataSet = null,
+    MetadataQueryParams? MetadataQuery = null,
+    LogicalBeginParams? LogicalBegin = null
 );
 
 internal sealed record BridgeResponse(
@@ -167,9 +213,14 @@ internal static class BridgeProtocol
         "bridge.documents.list",
         "bridge.document.identity",
         "bridge.document.snapshot",
+        "bridge.document.state",
         "bridge.recovery.list",
         "bridge.recovery.resolve",
         "bridge.recovery.finalize",
+        "bridge.logical.begin",
+        "metadata.get",
+        "metadata.set",
+        "metadata.query",
         "entity.batch.create",
         "entity.batch.insert_blocks",
         "entity.batch.transform",
@@ -201,6 +252,49 @@ internal static class BridgeProtocol
         "document_pid",
     };
 
+    private static readonly HashSet<string> LogicalBeginFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+    };
+
+    private static readonly HashSet<string> LogicalBindingFields = new(StringComparer.Ordinal)
+    {
+        "checkpoint_id",
+        "checkpoint_artifact_fp",
+        "expected_restore_fp",
+    };
+
+    private static readonly HashSet<string> MetadataGetFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "semantic_pid",
+        "namespace",
+    };
+
+    private static readonly HashSet<string> MetadataSetFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "expected_parent_fp",
+        "semantic_pid",
+        "namespace",
+        "value",
+        "fault_stage",
+    };
+
+    private static readonly HashSet<string> MetadataQueryFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "namespace",
+        "path",
+        "equals",
+        "limit",
+    };
+
     private static readonly HashSet<string> BatchCreateFields = new(StringComparer.Ordinal)
     {
         "runtime_document_id",
@@ -208,6 +302,7 @@ internal static class BridgeProtocol
         "expected_parent_fp",
         "entities",
         "fault_stage",
+        "logical_transaction",
     };
 
     private static readonly HashSet<string> BatchInsertBlocksFields = new(StringComparer.Ordinal)
@@ -217,6 +312,7 @@ internal static class BridgeProtocol
         "expected_parent_fp",
         "inserts",
         "fault_stage",
+        "logical_transaction",
     };
 
     private static readonly HashSet<string> BatchInsertBlockFields = new(StringComparer.Ordinal)
@@ -235,6 +331,7 @@ internal static class BridgeProtocol
         "semantic_pids",
         "transform",
         "fault_stage",
+        "logical_transaction",
     };
 
     private static readonly HashSet<string> TranslateTransformFields = new(StringComparer.Ordinal)
@@ -403,6 +500,21 @@ internal static class BridgeProtocol
         "accepted_post_fp",
     };
 
+    private static readonly Regex MetadataNamespaceRegex = new(
+        "^[a-z][a-z0-9_-]{0,31}(?:\\.[a-z0-9][a-z0-9_-]{0,31}){1,7}$",
+        RegexOptions.CultureInvariant | RegexOptions.NonBacktracking
+    );
+    private static readonly Regex MetadataPathRegex = new(
+        "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+){0,7}$",
+        RegexOptions.CultureInvariant | RegexOptions.NonBacktracking
+    );
+    private static readonly string[] ReservedMetadataPrefixes =
+    [
+        "slnctrz.",
+        "cdt.",
+        "provider.",
+    ];
+
     private static readonly JsonSerializerOptions ResponseOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -480,6 +592,22 @@ internal static class BridgeProtocol
             }
 
             JsonElement parameters = RequireObject(root, "params", "INVALID_PARAMS", requestId);
+            if (string.Equals(operation, "bridge.logical.begin", StringComparison.Ordinal))
+            {
+                return ParseLogicalBegin(requestId, operation, parameters);
+            }
+            if (string.Equals(operation, "metadata.get", StringComparison.Ordinal))
+            {
+                return ParseMetadataGet(requestId, operation, parameters);
+            }
+            if (string.Equals(operation, "metadata.set", StringComparison.Ordinal))
+            {
+                return ParseMetadataSet(requestId, operation, parameters);
+            }
+            if (string.Equals(operation, "metadata.query", StringComparison.Ordinal))
+            {
+                return ParseMetadataQuery(requestId, operation, parameters);
+            }
             if (string.Equals(operation, "entity.batch.create", StringComparison.Ordinal))
             {
                 return ParseBatchCreate(requestId, operation, parameters);
@@ -505,7 +633,8 @@ internal static class BridgeProtocol
                 return ParseRecoveryFinalize(requestId, operation, parameters);
             }
             if (!string.Equals(operation, "bridge.document.identity", StringComparison.Ordinal)
-                && !string.Equals(operation, "bridge.document.snapshot", StringComparison.Ordinal))
+                && !string.Equals(operation, "bridge.document.snapshot", StringComparison.Ordinal)
+                && !string.Equals(operation, "bridge.document.state", StringComparison.Ordinal))
             {
                 if (parameters.EnumerateObject().Any())
                 {
@@ -567,6 +696,273 @@ internal static class BridgeProtocol
                 null
             );
         }
+    }
+
+    private static BridgeRequest ParseLogicalBegin(
+        Guid requestId,
+        string operation,
+        JsonElement parameters
+    )
+    {
+        ValidateExactFieldsWithMessage(
+            parameters,
+            LogicalBeginFields,
+            "INVALID_PARAMS",
+            requestId,
+            "logical begin params must use the exact typed schema"
+        );
+        Guid runtimeDocumentId = RequireCanonicalGuid(
+            parameters,
+            "runtime_document_id",
+            "INVALID_RUNTIME_DOCUMENT_ID",
+            requestId
+        );
+        string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
+        string expectedParentFp = RequireFingerprint(parameters, "expected_parent_fp", requestId);
+        return new BridgeRequest(
+            requestId,
+            operation,
+            null,
+            null,
+            LogicalBegin: new LogicalBeginParams(
+                runtimeDocumentId,
+                documentPid,
+                expectedParentFp
+            )
+        );
+    }
+
+    private static LogicalBatchBinding? ParseLogicalBinding(
+        JsonElement parameters,
+        Guid requestId
+    )
+    {
+        if (!parameters.TryGetProperty("logical_transaction", out JsonElement logical))
+        {
+            return null;
+        }
+        if (logical.ValueKind != JsonValueKind.Object)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "logical_transaction must be a checkpoint binding object",
+                requestId
+            );
+        }
+        ValidateExactFieldsWithMessage(
+            logical,
+            LogicalBindingFields,
+            "INVALID_PARAMS",
+            requestId,
+            "logical_transaction must use the exact checkpoint binding schema"
+        );
+        return new LogicalBatchBinding(
+            RequireCheckpointId(logical, "checkpoint_id", requestId),
+            RequireFingerprint(logical, "checkpoint_artifact_fp", requestId),
+            RequireFingerprint(logical, "expected_restore_fp", requestId)
+        );
+    }
+
+    private static BridgeRequest ParseMetadataGet(
+        Guid requestId,
+        string operation,
+        JsonElement parameters
+    )
+    {
+        ValidateExactFieldsWithMessage(
+            parameters,
+            MetadataGetFields,
+            "INVALID_PARAMS",
+            requestId,
+            "metadata get params must use the exact typed schema"
+        );
+        Guid runtimeDocumentId = RequireCanonicalGuid(
+            parameters,
+            "runtime_document_id",
+            "INVALID_RUNTIME_DOCUMENT_ID",
+            requestId
+        );
+        string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
+        if (!parameters.TryGetProperty("semantic_pid", out JsonElement semanticPidElement))
+        {
+            throw new BridgeProtocolException("INVALID_PARAMS", "semantic_pid is required", requestId);
+        }
+        string semanticPid = RequireCanonicalEntityPid(semanticPidElement, requestId);
+        string metadataNamespace = RequireMetadataNamespace(parameters, "namespace", requestId);
+        return new BridgeRequest(
+            requestId,
+            operation,
+            null,
+            null,
+            MetadataGet: new MetadataGetParams(
+                runtimeDocumentId,
+                documentPid,
+                semanticPid,
+                metadataNamespace
+            )
+        );
+    }
+
+    private static BridgeRequest ParseMetadataSet(
+        Guid requestId,
+        string operation,
+        JsonElement parameters
+    )
+    {
+        ValidateExactOrSubsetFields(parameters, MetadataSetFields, "INVALID_PARAMS", requestId);
+        string[] required =
+        [
+            "runtime_document_id",
+            "document_pid",
+            "expected_parent_fp",
+            "semantic_pid",
+            "namespace",
+            "value",
+        ];
+        foreach (string field in required)
+        {
+            if (!parameters.TryGetProperty(field, out _))
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "metadata set params are incomplete",
+                    requestId
+                );
+            }
+        }
+        Guid runtimeDocumentId = RequireCanonicalGuid(
+            parameters,
+            "runtime_document_id",
+            "INVALID_RUNTIME_DOCUMENT_ID",
+            requestId
+        );
+        string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
+        string expectedParentFp = RequireFingerprint(parameters, "expected_parent_fp", requestId);
+        if (!parameters.TryGetProperty("semantic_pid", out JsonElement semanticPidElement))
+        {
+            throw new BridgeProtocolException("INVALID_PARAMS", "semantic_pid is required", requestId);
+        }
+        string semanticPid = RequireCanonicalEntityPid(semanticPidElement, requestId);
+        string metadataNamespace = RequireMetadataNamespace(parameters, "namespace", requestId);
+        JsonElement value = RequireMetadataValue(parameters, "value", requestId);
+        string? faultStage = null;
+        if (parameters.TryGetProperty("fault_stage", out JsonElement faultElement))
+        {
+            faultStage = faultElement.ValueKind == JsonValueKind.String ? faultElement.GetString() : null;
+            if (string.IsNullOrEmpty(faultStage))
+            {
+                throw new BridgeProtocolException("INVALID_PARAMS", "fault_stage must be a string", requestId);
+            }
+        }
+        if (faultStage is not null
+            && !string.Equals(faultStage, "after_apply_before_commit", StringComparison.Ordinal))
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "metadata set only enables the pre-commit fault stage",
+                requestId
+            );
+        }
+        return new BridgeRequest(
+            requestId,
+            operation,
+            null,
+            null,
+            MetadataSet: new MetadataSetParams(
+                runtimeDocumentId,
+                documentPid,
+                expectedParentFp,
+                semanticPid,
+                metadataNamespace,
+                value,
+                faultStage
+            )
+        );
+    }
+
+    private static BridgeRequest ParseMetadataQuery(
+        Guid requestId,
+        string operation,
+        JsonElement parameters
+    )
+    {
+        ValidateExactOrSubsetFields(parameters, MetadataQueryFields, "INVALID_PARAMS", requestId);
+        foreach (string field in new[] { "runtime_document_id", "document_pid", "namespace" })
+        {
+            if (!parameters.TryGetProperty(field, out _))
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "metadata query params are incomplete",
+                    requestId
+                );
+            }
+        }
+        bool hasPath = parameters.TryGetProperty("path", out JsonElement pathElement);
+        bool hasEquals = parameters.TryGetProperty("equals", out JsonElement equalsElement);
+        if (hasPath != hasEquals)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "metadata query path and equals must be supplied together",
+                requestId
+            );
+        }
+        Guid runtimeDocumentId = RequireCanonicalGuid(
+            parameters,
+            "runtime_document_id",
+            "INVALID_RUNTIME_DOCUMENT_ID",
+            requestId
+        );
+        string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
+        string metadataNamespace = RequireMetadataNamespace(parameters, "namespace", requestId);
+        string? path = null;
+        JsonElement? equals = null;
+        if (hasPath)
+        {
+            if (pathElement.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(pathElement.GetString())
+                || !MetadataPathRegex.IsMatch(pathElement.GetString()!))
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "metadata query path must be a dotted JSON object path",
+                    requestId
+                );
+            }
+            path = pathElement.GetString();
+            ValidateMetadataValue(equalsElement, requestId);
+            equals = equalsElement.Clone();
+        }
+        int limit = 200;
+        if (parameters.TryGetProperty("limit", out JsonElement limitElement))
+        {
+            if (limitElement.ValueKind != JsonValueKind.Number
+                || !limitElement.TryGetInt32(out limit)
+                || limit < 1
+                || limit > BridgeConstants.MaxMetadataQueryResults)
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    $"metadata query limit must be 1..{BridgeConstants.MaxMetadataQueryResults}",
+                    requestId
+                );
+            }
+        }
+        return new BridgeRequest(
+            requestId,
+            operation,
+            null,
+            null,
+            MetadataQuery: new MetadataQueryParams(
+                runtimeDocumentId,
+                documentPid,
+                metadataNamespace,
+                path,
+                equals,
+                limit
+            )
+        );
     }
 
     private static BridgeRequest ParseRecoveryResolve(
@@ -705,7 +1101,8 @@ internal static class BridgeProtocol
                 documentPid,
                 expectedParentFp,
                 entities,
-                faultStage
+                faultStage,
+                ParseLogicalBinding(parameters, requestId)
             )
         );
     }
@@ -865,7 +1262,8 @@ internal static class BridgeProtocol
                 documentPid,
                 expectedParentFp,
                 inserts,
-                faultStage
+                faultStage,
+                ParseLogicalBinding(parameters, requestId)
             )
         );
     }
@@ -996,7 +1394,8 @@ internal static class BridgeProtocol
                 expectedParentFp,
                 semanticPids,
                 transform,
-                faultStage
+                faultStage,
+                ParseLogicalBinding(parameters, requestId)
             )
         );
     }
@@ -1485,6 +1884,155 @@ internal static class BridgeProtocol
             && right.Length == 2
             && left[0] == right[0]
             && left[1] == right[1];
+    }
+
+    private static string RequireMetadataNamespace(
+        JsonElement element,
+        string name,
+        Guid requestId
+    )
+    {
+        string value = RequireString(element, name, "INVALID_PARAMS", requestId);
+        if (value.Length > 128 || !MetadataNamespaceRegex.IsMatch(value))
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "metadata namespace must be a lowercase dotted identifier such as customer.mechanical.v1",
+                requestId
+            );
+        }
+        if (ReservedMetadataPrefixes.Any(prefix => value.StartsWith(prefix, StringComparison.Ordinal)))
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "metadata namespace is reserved by the provider",
+                requestId
+            );
+        }
+        return value;
+    }
+
+    private static JsonElement RequireMetadataValue(
+        JsonElement element,
+        string name,
+        Guid requestId
+    )
+    {
+        if (!element.TryGetProperty(name, out JsonElement value))
+        {
+            throw new BridgeProtocolException("INVALID_PARAMS", $"{name} is required", requestId);
+        }
+        ValidateMetadataValue(value, requestId);
+        return value.Clone();
+    }
+
+    private static void ValidateMetadataValue(JsonElement value, Guid requestId)
+    {
+        int keyCount = 0;
+        ValidateMetadataNode(value, 1, ref keyCount, requestId);
+        int encodedBytes = Encoding.UTF8.GetByteCount(value.GetRawText());
+        if (encodedBytes > BridgeConstants.MaxMetadataJsonBytes)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "metadata JSON exceeds encoded-size limit",
+                requestId
+            );
+        }
+    }
+
+    private static void ValidateMetadataNode(
+        JsonElement value,
+        int depth,
+        ref int keyCount,
+        Guid requestId
+    )
+    {
+        if (depth > BridgeConstants.MaxMetadataDepth)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "metadata JSON exceeds maximum nesting depth",
+                requestId
+            );
+        }
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (JsonProperty property in value.EnumerateObject())
+                {
+                    if (string.IsNullOrEmpty(property.Name) || property.Name.Length > 128)
+                    {
+                        throw new BridgeProtocolException(
+                            "INVALID_PARAMS",
+                            "metadata JSON object keys must be non-empty strings <=128 chars",
+                            requestId
+                        );
+                    }
+                    keyCount++;
+                    if (keyCount > BridgeConstants.MaxMetadataKeys)
+                    {
+                        throw new BridgeProtocolException(
+                            "INVALID_PARAMS",
+                            "metadata JSON exceeds maximum key count",
+                            requestId
+                        );
+                    }
+                    ValidateMetadataNode(property.Value, depth + 1, ref keyCount, requestId);
+                }
+                return;
+            case JsonValueKind.Array:
+                foreach (JsonElement item in value.EnumerateArray())
+                {
+                    ValidateMetadataNode(item, depth + 1, ref keyCount, requestId);
+                }
+                return;
+            case JsonValueKind.String:
+                if ((value.GetString() ?? string.Empty).Length > BridgeConstants.MaxMetadataStringChars)
+                {
+                    throw new BridgeProtocolException(
+                        "INVALID_PARAMS",
+                        "metadata JSON string exceeds maximum length",
+                        requestId
+                    );
+                }
+                return;
+            case JsonValueKind.Number:
+                if (!value.TryGetDecimal(out _))
+                {
+                    throw new BridgeProtocolException(
+                        "INVALID_PARAMS",
+                        "metadata JSON numbers must be finite and within native decimal range",
+                        requestId
+                    );
+                }
+                return;
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+            case JsonValueKind.Null:
+                return;
+            default:
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "metadata value must be JSON-compatible",
+                    requestId
+                );
+        }
+    }
+
+    private static void ValidateExactFieldsWithMessage(
+        JsonElement element,
+        HashSet<string> expected,
+        string code,
+        Guid? requestId,
+        string message
+    )
+    {
+        HashSet<string> actual = EnumerateUniqueFieldNames(element, code, requestId);
+        if (!actual.SetEquals(expected))
+        {
+            throw new BridgeProtocolException(code, message, requestId);
+        }
     }
 
     internal static byte[] SerializeResponse(BridgeResponse response)

@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import ctypes
+import hashlib
 import io
+import json
 import math
 import os
 import re
+import shutil
 import sys
 import threading
 import time
@@ -21,6 +24,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, TypeVar
 
+from ..command_presets import VIEW_PRESETS as _VIEW_PRESETS, visual_style_command
 from ..config import Settings
 from ..errors import (
     BackendQuarantinedError,
@@ -29,7 +33,12 @@ from ..errors import (
     UnsupportedCapabilityError,
 )
 from ..models import BlockInfo, Capability, EntityInfo, LayerInfo
-from ..security import resolve_autocad_document_path, resolve_pdf_path
+from ..security import (
+    resolve_allowed_directory,
+    resolve_autocad_document_path,
+    resolve_autocad_export_path,
+    resolve_pdf_path,
+)
 from .base import AutoCADBackend
 
 _T = TypeVar("_T")
@@ -87,6 +96,35 @@ _RPC_E_CALL_REJECTED = -2147418111
 _RPC_E_SERVERCALL_RETRYLATER = -2147417846
 _COM_BUSY_HRESULTS = {_RPC_E_CALL_REJECTED, _RPC_E_SERVERCALL_RETRYLATER}
 
+
+_INSERTION_UNIT_CODES = {
+    "unitless": 0,
+    "inches": 1,
+    "feet": 2,
+    "miles": 3,
+    "millimeters": 4,
+    "millimetres": 4,
+    "mm": 4,
+    "centimeters": 5,
+    "centimetres": 5,
+    "cm": 5,
+    "meters": 6,
+    "metres": 6,
+    "m": 6,
+    "kilometers": 7,
+    "kilometres": 7,
+    "km": 7,
+}
+_INSERTION_UNIT_NAMES = {
+    0: "unitless", 1: "inches", 2: "feet", 3: "miles", 4: "millimeters",
+    5: "centimeters", 6: "meters", 7: "kilometers",
+}
+_MEASUREMENT_CODES = {"english": 0, "metric": 1}
+_MEASUREMENT_NAMES = {0: "english", 1: "metric"}
+_LINEAR_FORMAT_CODES = {
+    "scientific": 1, "decimal": 2, "engineering": 3, "architectural": 4, "fractional": 5,
+}
+_LINEAR_FORMAT_NAMES = {value: key for key, value in _LINEAR_FORMAT_CODES.items()}
 _UNIT_NAMES = {
     0: "unitless",
     1: "inches",
@@ -571,9 +609,11 @@ class ComBackend(AutoCADBackend):
             "common.document.new": supported(),
             "common.document.open": supported(),
             "common.document.save": supported(),
+            "common.document.units": supported("typed_sysvars"),
             "common.object.query": supported(),
             "common.object.modify": supported(),
             "common.organization.layers": supported(),
+            "common.organization.layer_state": supported(),
             "common.transaction.rollback": supported("autocad_undo_mark"),
             "common.transaction.undo": supported("autocad_native"),
             "autocad.dxf.read": supported(),
@@ -581,18 +621,14 @@ class ComBackend(AutoCADBackend):
             "autocad.dwg.read": supported(),
             "autocad.dwg.write": supported(),
             "autocad.blocks": supported(),
+            "autocad.references.xref": supported("activex_typed"),
+            "autocad.artifact.seal": supported("saved_copy_sha256"),
             "autocad.layouts": supported(),
             "autocad.dimensions.linear": supported(),
             "autocad.dimensions.aligned": supported(),
-            "autocad.dimensions.advanced": Capability(
-                False, reason="A3_2_staged_pending_live_verification"
-            ),
-            "autocad.analysis.measurement": Capability(
-                False, reason="A3_3_staged_pending_live_verification"
-            ),
-            "autocad.analysis.intersections": Capability(
-                False, reason="A3_3_staged_pending_live_verification"
-            ),
+            "autocad.dimensions.advanced": supported("activex_typed"),
+            "autocad.analysis.measurement": supported("activex_typed"),
+            "autocad.analysis.intersections": supported("activex_typed"),
             "autocad.hatch": supported(),
             "autocad.audit": supported("sendcommand"),
             "autocad.audit.detail": Capability(
@@ -616,11 +652,15 @@ class ComBackend(AutoCADBackend):
                     else self._runtime_reason() or "optional_dependency_missing:pillow"
                 ),
             ),
-            "autocad.view.3d": Capability(False, reason="A3_staged_pending_live_verification"),
-            "autocad.geometry.3d_polyline": Capability(
-                False, reason="A3_staged_pending_live_verification"
-            ),
-            "autocad.solid.acis": Capability(False, reason="A3_staged_pending_live_verification"),
+            "autocad.view.3d": supported("activex_live_view"),
+            "autocad.view.visual_style": supported("bounded_vscurrent_preset"),
+            "autocad.geometry.3d_polyline": supported("activex_typed"),
+            "autocad.geometry.lwpolyline.curves": supported("bulge_width_elevation"),
+            "autocad.solid.acis": supported("activex_acis"),
+            "autocad.solid.export.sat": supported("activex_export"),
+            "autocad.solid.edge_fillet": Capability(False, reason="no_deterministic_activex_subentity_api"),
+            "autocad.solid.edge_chamfer": Capability(False, reason="no_deterministic_activex_subentity_api"),
+            "autocad.solid.shell": Capability(False, reason="no_deterministic_activex_shell_api"),
             "autocad.solid.loft": Capability(False, reason="activex_no_typed_loft_api"),
         }
         return {key: value.to_dict() for key, value in capabilities.items()}
@@ -1150,6 +1190,119 @@ class ComBackend(AutoCADBackend):
 
         return await self._run(_sync)
 
+    async def document_configure_units(
+        self,
+        insertion_units: str | None = None,
+        measurement: str | None = None,
+        linear_format: str | None = None,
+        linear_precision: int | None = None,
+    ) -> dict[str, Any]:
+        unit_code = None
+        if insertion_units is not None:
+            normalized = str(insertion_units).strip().lower()
+            if normalized not in _INSERTION_UNIT_CODES:
+                raise ValueError(f"unsupported insertion_units: {insertion_units}")
+            unit_code = _INSERTION_UNIT_CODES[normalized]
+        measurement_code = None
+        if measurement is not None:
+            normalized = str(measurement).strip().lower()
+            if normalized not in _MEASUREMENT_CODES:
+                raise ValueError("measurement must be 'metric' or 'english'")
+            measurement_code = _MEASUREMENT_CODES[normalized]
+        format_code = None
+        if linear_format is not None:
+            normalized = str(linear_format).strip().lower()
+            if normalized not in _LINEAR_FORMAT_CODES:
+                raise ValueError(f"unsupported linear_format: {linear_format}")
+            format_code = _LINEAR_FORMAT_CODES[normalized]
+        if linear_precision is not None and not 0 <= int(linear_precision) <= 8:
+            raise ValueError("linear_precision must be between 0 and 8")
+
+        def _sync() -> dict[str, Any]:
+            doc = self._doc()
+            if unit_code is not None:
+                doc.SetVariable("INSUNITS", unit_code)
+            if measurement_code is not None:
+                doc.SetVariable("MEASUREMENT", measurement_code)
+            if format_code is not None:
+                doc.SetVariable("LUNITS", format_code)
+            if linear_precision is not None:
+                doc.SetVariable("LUPREC", int(linear_precision))
+            raw = {
+                "INSUNITS": int(doc.GetVariable("INSUNITS")),
+                "MEASUREMENT": int(doc.GetVariable("MEASUREMENT")),
+                "LUNITS": int(doc.GetVariable("LUNITS")),
+                "LUPREC": int(doc.GetVariable("LUPREC")),
+            }
+            return {
+                "insertion_units": _INSERTION_UNIT_NAMES.get(raw["INSUNITS"], f"code_{raw['INSUNITS']}"),
+                "measurement": _MEASUREMENT_NAMES.get(raw["MEASUREMENT"], f"code_{raw['MEASUREMENT']}"),
+                "linear_format": _LINEAR_FORMAT_NAMES.get(raw["LUNITS"], f"code_{raw['LUNITS']}"),
+                "linear_precision": raw["LUPREC"],
+                "raw": raw,
+            }
+
+        return await self._run(_sync)
+
+    async def document_dependencies(self) -> dict[str, Any]:
+        rows = await self.xref_list()
+        return {
+            "ok": True,
+            "xrefs": rows,
+            "resolved": sum(1 for row in rows if row.get("resolved")),
+            "unresolved": sum(1 for row in rows if not row.get("resolved")),
+            "complete": all(bool(row.get("resolved")) for row in rows),
+        }
+
+    async def artifact_seal(self, destination_dir: str | None = None) -> dict[str, Any]:
+        def _save_and_resolve() -> tuple[Path, bool]:
+            doc = self._doc()
+            raw_path = str(_optional_com_property(doc, "FullName") or "")
+            if not raw_path or not Path(raw_path).is_absolute():
+                raise StateConflictError("artifact sealing requires a saved AutoCAD document")
+            source = resolve_autocad_document_path(raw_path, self.settings, must_exist=True)
+            doc.Save()
+            saved = bool(_optional_com_property(doc, "Saved"))
+            if not saved:
+                raise StateConflictError("AutoCAD still reports the document as dirty after Save")
+            return source, saved
+
+        source, _ = await self._run(_save_and_resolve)
+        destination = (
+            resolve_allowed_directory(destination_dir, self.settings)
+            if destination_dir is not None
+            else source.parent / ".cdt-accepted"
+        )
+        if destination_dir is None:
+            destination.mkdir(parents=True, exist_ok=True)
+            destination = resolve_allowed_directory(str(destination), self.settings)
+        source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        sealed_name = f"{source.stem}.{source_hash[:16]}{source.suffix.lower()}"
+        sealed = destination / sealed_name
+        if sealed.exists():
+            existing_hash = hashlib.sha256(sealed.read_bytes()).hexdigest()
+            if existing_hash != source_hash:
+                raise StateConflictError("existing sealed artifact has the same name but different bytes")
+        else:
+            shutil.copy2(source, sealed)
+        sealed_hash = hashlib.sha256(sealed.read_bytes()).hexdigest()
+        if sealed_hash != source_hash:
+            raise StateConflictError("sealed artifact hash does not match saved source")
+        manifest = {
+            "schema_version": 1,
+            "status": "SEALED",
+            "source_path": str(source),
+            "sealed_path": str(sealed),
+            "sha256": sealed_hash,
+            "size": sealed.stat().st_size,
+            "source_mtime_ns": source.stat().st_mtime_ns,
+        }
+        manifest_path = sealed.with_suffix(sealed.suffix + ".manifest.json")
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return {**manifest, "manifest_path": str(manifest_path)}
+
     async def object_list(
         self,
         type_filter: str | None = None,
@@ -1472,16 +1625,38 @@ class ComBackend(AutoCADBackend):
         closed: bool = False,
         layer: str | None = None,
         color: int | None = None,
+        bulges: list[float] | None = None,
+        widths: list[list[float]] | None = None,
+        elevation: float = 0.0,
     ) -> EntityInfo:
         if len(points) < 2 or any(len(point) < 2 for point in points):
             raise ValueError("polyline requires at least two [x, y] points")
+        if not math.isfinite(float(elevation)):
+            raise ValueError("elevation must be finite")
+        vertex_count = len(points)
+        normalized_bulges = [0.0] * vertex_count if bulges is None else [float(v) for v in bulges]
+        if len(normalized_bulges) != vertex_count or not all(math.isfinite(v) for v in normalized_bulges):
+            raise ValueError("bulges must contain one finite value per polyline vertex")
+        normalized_widths = ([[0.0, 0.0] for _ in range(vertex_count)] if widths is None else widths)
+        if len(normalized_widths) != vertex_count or any(len(pair) != 2 for pair in normalized_widths):
+            raise ValueError("widths must contain [start_width, end_width] for every vertex")
+        width_pairs = [(float(pair[0]), float(pair[1])) for pair in normalized_widths]
+        if any((not math.isfinite(a) or not math.isfinite(b) or a < 0 or b < 0) for a, b in width_pairs):
+            raise ValueError("polyline widths must be finite values >= 0")
         normalized_color = self._validate_color(color)
         flat = [float(value) for point in points for value in point[:2]]
+        if not all(math.isfinite(value) for value in flat):
+            raise ValueError("polyline coordinates must be finite")
 
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
             entity = self._space().AddLightWeightPolyline(_double_array(flat))
             entity.Closed = bool(closed)
+            entity.Elevation = float(elevation)
+            for index, bulge in enumerate(normalized_bulges):
+                entity.SetBulge(index, bulge)
+            for index, (start_width, end_width) in enumerate(width_pairs):
+                entity.SetWidth(index, start_width, end_width)
             if canonical_layer is not None:
                 entity.Layer = canonical_layer
             if normalized_color is not None:
@@ -1763,30 +1938,102 @@ class ComBackend(AutoCADBackend):
 
         return await self._run(_sync)
 
-    async def block_list(self) -> list[BlockInfo]:
+    async def layer_update_state(
+        self,
+        name: str,
+        *,
+        is_on: bool | None = None,
+        is_frozen: bool | None = None,
+        is_locked: bool | None = None,
+        color: int | None = None,
+        linetype: str | None = None,
+        lineweight: int | None = None,
+    ) -> LayerInfo:
+        wanted = str(name).strip()
+        if not wanted:
+            raise ValueError("layer name must not be empty")
+        normalized_color = self._validate_color(color) if color is not None else None
+        if lineweight is not None and not -3 <= int(lineweight) <= 211:
+            raise ValueError("lineweight must be between -3 and 211")
+
+        def _sync() -> LayerInfo:
+            doc = self._doc()
+            canonical = self._find_name(doc.Layers, wanted)
+            if canonical is None:
+                raise ValueError(f"layer does not exist: {wanted}")
+            current = str(doc.ActiveLayer.Name)
+            if canonical.lower() == current.lower():
+                if is_frozen is True:
+                    raise ValueError("current layer cannot be frozen")
+                if is_on is False:
+                    raise ValueError("current layer cannot be turned off")
+            layer = doc.Layers.Item(canonical)
+            if is_on is not None:
+                _com_set_attr(layer, "LayerOn", bool(is_on))
+            if is_frozen is not None:
+                _com_set_attr(layer, "Freeze", bool(is_frozen))
+            if is_locked is not None:
+                _com_set_attr(layer, "Lock", bool(is_locked))
+            if normalized_color is not None:
+                _com_set_attr(layer, "Color", normalized_color)
+            if linetype is not None:
+                requested = str(linetype).strip()
+                if not requested:
+                    raise ValueError("linetype must not be empty")
+                if self._find_name(doc.Linetypes, requested) is None:
+                    raise ValueError(f"linetype does not exist: {requested}")
+                _com_set_attr(layer, "Linetype", requested)
+            if lineweight is not None:
+                _com_set_attr(layer, "LineWeight", int(lineweight))
+            return _layer_info(layer, current)
+
+        return await self._run(_sync)
+
+    async def block_list(
+        self,
+        include_xref_dependent: bool = False,
+        include_xrefs: bool = True,
+        name_filter: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[BlockInfo]:
+        if not 1 <= int(limit) <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        if int(offset) < 0:
+            raise ValueError("offset must be >= 0")
+        wanted_filter = str(name_filter).strip().lower() if name_filter else None
+
         def _sync() -> list[BlockInfo]:
             doc = self._doc()
-            rows: list[BlockInfo] = []
+            filtered: list[BlockInfo] = []
             for index in range(int(doc.Blocks.Count)):
                 block = doc.Blocks.Item(index)
                 name = str(block.Name)
                 if name.startswith("*"):
+                    continue
+                dependent = "|" in name
+                is_xref = bool(block.IsXRef)
+                if dependent and not include_xref_dependent:
+                    continue
+                if is_xref and not include_xrefs:
+                    continue
+                if wanted_filter and wanted_filter not in name.lower():
                     continue
                 origin = _xyz(block.Origin)
                 attribute_count = 0
                 for item_index in range(int(block.Count)):
                     if str(block.Item(item_index).ObjectName) == "AcDbAttributeDefinition":
                         attribute_count += 1
-                rows.append(
+                filtered.append(
                     BlockInfo(
                         name=name,
                         base_point=(origin[0], origin[1], origin[2]),
                         entity_count=int(block.Count),
                         attribute_count=attribute_count,
-                        is_xref=bool(block.IsXRef),
+                        is_xref=is_xref,
                     )
                 )
-            return rows
+            return filtered[int(offset): int(offset) + int(limit)]
 
         return await self._run(_sync, may_mutate_document=False)
 
@@ -1857,6 +2104,132 @@ class ComBackend(AutoCADBackend):
             if canonical_layer is not None:
                 entity.Layer = canonical_layer
             return _entity_info(entity)
+
+        return await self._run(_sync)
+
+    async def xref_list(self) -> list[dict[str, Any]]:
+        def _sync() -> list[dict[str, Any]]:
+            doc = self._doc()
+            rows: list[dict[str, Any]] = []
+            for index in range(int(doc.Blocks.Count)):
+                block = doc.Blocks.Item(index)
+                if not bool(_optional_com_property(block, "IsXRef")):
+                    continue
+                name = str(_com_get_attr(block, "Name"))
+                raw_path = str(_optional_com_property(block, "Path") or "")
+                contained = False
+                resolved = False
+                safe_path: str | None = None
+                if raw_path:
+                    try:
+                        candidate = resolve_autocad_document_path(
+                            raw_path, self.settings, must_exist=False
+                        )
+                        contained = True
+                        resolved = candidate.is_file()
+                        safe_path = str(candidate)
+                    except (ValueError, FileNotFoundError):
+                        contained = False
+                        resolved = False
+                rows.append(
+                    {
+                        "name": name,
+                        "path": safe_path,
+                        "contained": contained,
+                        "resolved": resolved,
+                        "loaded": not bool(_optional_com_property(block, "IsUnloaded") or False),
+                    }
+                )
+            return rows
+
+        return await self._run(_sync, may_mutate_document=False)
+
+    async def xref_attach(
+        self,
+        path: str,
+        *,
+        name: str | None = None,
+        overlay: bool = True,
+        x: float = 0.0,
+        y: float = 0.0,
+        z: float = 0.0,
+        scale_x: float = 1.0,
+        scale_y: float = 1.0,
+        scale_z: float = 1.0,
+        rotation: float = 0.0,
+        layer: str | None = None,
+    ) -> dict[str, Any]:
+        source = resolve_autocad_document_path(path, self.settings, must_exist=True)
+        wanted = str(name).strip() if name is not None else source.stem
+        if not wanted or any(char in wanted for char in ("|", "*", "<", ">", "/", "\\", "\"")):
+            raise ValueError("xref name contains unsupported characters")
+        if any(not math.isfinite(float(value)) for value in (x, y, z, scale_x, scale_y, scale_z, rotation)):
+            raise ValueError("xref transform values must be finite")
+        if float(scale_x) == 0 or float(scale_y) == 0 or float(scale_z) == 0:
+            raise ValueError("xref scales must be non-zero")
+
+        def _sync() -> dict[str, Any]:
+            doc = self._doc()
+            if self._find_name(doc.Blocks, wanted) is not None:
+                raise ValueError(f"block/xref name already exists: {wanted}")
+            canonical_layer = self._validate_layer(layer)
+            reference = self._space().AttachExternalReference(
+                str(source),
+                wanted,
+                _point(x, y, z),
+                float(scale_x),
+                float(scale_y),
+                float(scale_z),
+                math.radians(rotation),
+                bool(overlay),
+            )
+            if canonical_layer is not None:
+                reference.Layer = canonical_layer
+            return {
+                "ok": True,
+                "name": wanted,
+                "path": str(source),
+                "overlay": bool(overlay),
+                "handle": str(reference.Handle),
+                "layer": str(reference.Layer),
+            }
+
+        return await self._run(_sync)
+
+    def _xref_block_by_name(self, name: str) -> Any:
+        doc = self._doc()
+        canonical = self._find_name(doc.Blocks, name)
+        if canonical is None:
+            raise ValueError(f"xref not found: {name}")
+        block = doc.Blocks.Item(canonical)
+        if not bool(_optional_com_property(block, "IsXRef")):
+            raise ValueError(f"block is not an xref: {name}")
+        return block
+
+    async def xref_reload(self, name: str) -> dict[str, Any]:
+        def _sync() -> dict[str, Any]:
+            block = self._xref_block_by_name(name)
+            raw_path = str(_optional_com_property(block, "Path") or "")
+            resolve_autocad_document_path(raw_path, self.settings, must_exist=True)
+            block.Reload()
+            return {"ok": True, "name": str(block.Name), "state": "loaded"}
+
+        return await self._run(_sync)
+
+    async def xref_unload(self, name: str) -> dict[str, Any]:
+        def _sync() -> dict[str, Any]:
+            block = self._xref_block_by_name(name)
+            block.Unload()
+            return {"ok": True, "name": str(block.Name), "state": "unloaded"}
+
+        return await self._run(_sync)
+
+    async def xref_detach(self, name: str) -> dict[str, Any]:
+        def _sync() -> dict[str, Any]:
+            block = self._xref_block_by_name(name)
+            canonical = str(block.Name)
+            block.Detach()
+            return {"ok": True, "name": canonical, "state": "detached"}
 
         return await self._run(_sync)
 
@@ -2166,6 +2539,61 @@ class ComBackend(AutoCADBackend):
             doc.ActiveViewport = viewport
             self._app().ZoomExtents()
             return {"ok": True, "direction": direction, "normalized": True}
+
+        return await self._run(_sync)
+
+    async def view_set_preset(self, preset: str) -> dict[str, Any]:
+        normalized = str(preset).strip().lower()
+        direction = _VIEW_PRESETS.get(normalized)
+        if direction is None:
+            raise ValueError(
+                "unsupported view preset; allowed: " + ", ".join(sorted(_VIEW_PRESETS))
+            )
+        result = await self.view_set_direction(*direction)
+        return {**result, "preset": normalized}
+
+    async def view_set_visual_style(self, style: str) -> dict[str, Any]:
+        normalized = str(style).strip().lower()
+        command = visual_style_command(normalized)
+
+        def _sync() -> dict[str, Any]:
+            doc = self._doc()
+            before_saved = bool(_optional_com_property(doc, "Saved"))
+            try:
+                before_dbmod = int(doc.GetVariable("DBMOD"))
+            except Exception:
+                before_dbmod = None
+            doc.SendCommand(command)
+            deadline = time.monotonic() + min(10.0, float(self.settings.com_call_timeout_seconds))
+            while time.monotonic() < deadline:
+                try:
+                    if not str(doc.GetVariable("CMDNAMES") or "").strip():
+                        doc.Regen(1)
+                        try:
+                            after_dbmod = int(doc.GetVariable("DBMOD"))
+                        except Exception:
+                            after_dbmod = None
+                        after_saved = bool(_optional_com_property(doc, "Saved"))
+                        return {
+                            "ok": True,
+                            "visual_style": normalized,
+                            "command_idle_verified": True,
+                            "artifact_state": {
+                                "saved_before": before_saved,
+                                "saved_after": after_saved,
+                                "dbmod_before": before_dbmod,
+                                "dbmod_after": after_dbmod,
+                                "dirty_changed": (before_dbmod != after_dbmod or before_saved != after_saved),
+                            },
+                        }
+                except Exception:
+                    pass
+                time.sleep(0.05)
+            raise BackendTimeoutError(
+                "AutoCAD did not return to idle after bounded visual-style command",
+                retryable=False,
+                completion_unknown=True,
+            )
 
         return await self._run(_sync)
 
@@ -2590,10 +3018,74 @@ class ComBackend(AutoCADBackend):
         return await self._run(_sync)
 
     async def solid_inspect(self, handle: str) -> dict[str, Any]:
-        return await self._run(
+        result = await self._run(
             lambda: self._solid_info(self._solid_by_id(handle)),
             may_mutate_document=False,
         )
+        return {
+            **result,
+            "verification_capabilities": {
+                "volume": True,
+                "centroid": True,
+                "bounding_box": True,
+                "face_topology": False,
+                "edge_topology": False,
+                "reason": "ActiveX exposes no deterministic face/edge topology API",
+            },
+        }
+
+    async def solid_export(
+        self, handles: list[str], path: str, format: str = "sat"
+    ) -> dict[str, Any]:
+        normalized_format = str(format).strip().lower()
+        if normalized_format != "sat":
+            raise UnsupportedCapabilityError(
+                "autocad.solid.export.sat",
+                "The verified ActiveX export path supports SAT only; STEP/STL are not claimed.",
+            )
+        if not 1 <= len(handles) <= 256:
+            raise ValueError("solid_export handles must contain 1..256 solids")
+        keys = [str(handle or "").strip().upper() for handle in handles]
+        if any(not key for key in keys) or len(set(keys)) != len(keys):
+            raise ValueError("solid_export handles must be non-empty and unique")
+        target = resolve_autocad_export_path(
+            path, self.settings, allowed_suffixes=frozenset({".sat"})
+        )
+
+        def _sync() -> None:
+            doc = self._doc()
+            solids = [self._solid_by_id(key) for key in keys]
+            selection_name = f"CDT_EXPORT_{threading.get_ident()}_{time.time_ns()}"
+            selection = None
+            try:
+                selection = doc.SelectionSets.Add(selection_name)
+                selection.AddItems(_dispatch_array(solids))
+                base_name = str(target.with_suffix(""))
+                doc.Export(base_name, "SAT", selection)
+            finally:
+                if selection is not None:
+                    try:
+                        selection.Delete()
+                    except Exception:
+                        pass
+
+        await self._run(_sync, may_mutate_document=False)
+        candidates = [target, target.with_suffix(".SAT")]
+        actual = next((candidate for candidate in candidates if candidate.is_file()), None)
+        if actual is None:
+            raise RuntimeError("AutoCAD SAT export completed without producing the requested artifact")
+        if actual != target:
+            actual.replace(target)
+            actual = target
+        digest = hashlib.sha256(actual.read_bytes()).hexdigest()
+        return {
+            "ok": True,
+            "format": "sat",
+            "path": str(actual),
+            "sha256": digest,
+            "size": actual.stat().st_size,
+            "solid_handles": keys,
+        }
 
     async def transaction_begin(self) -> dict[str, Any]:
         if self._transaction_depth >= self.settings.transaction_depth:

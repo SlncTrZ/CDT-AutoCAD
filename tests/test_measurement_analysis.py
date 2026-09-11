@@ -179,12 +179,20 @@ async def test_com_intersections_map_extend_modes_and_parse_xyz_triples(settings
         await backend.object_intersections("20", "21")
 
 
-async def test_analysis_capabilities_remain_non_public(settings):
+async def test_analysis_capabilities_are_promoted_without_overclaiming_solver_parity(settings):
     ezdxf = EzdxfBackend(settings).capabilities()
     com = ComBackend(settings).capabilities()
-    for caps in (ezdxf, com):
-        assert caps["autocad.analysis.measurement"]["supported"] is False
-        assert caps["autocad.analysis.intersections"]["supported"] is False
+    assert ezdxf["autocad.analysis.measurement"] == {
+        "supported": True, "mode": "ezdxf_exact_core", "reason": None
+    }
+    assert ezdxf["autocad.analysis.intersections"]["supported"] is False
+    assert ezdxf["autocad.analysis.intersections"]["reason"] == "generic_intersection_solver_not_implemented"
+    if sys.platform == "win32":
+        assert com["autocad.analysis.measurement"]["supported"] is True
+        assert com["autocad.analysis.intersections"]["supported"] is True
+    else:
+        assert com["autocad.analysis.measurement"]["reason"] == "windows_required"
+        assert com["autocad.analysis.intersections"]["reason"] == "windows_required"
 
 
 _LIVE_COM_ENABLED = sys.platform == "win32" and os.environ.get("CDT_AUTOCAD_LIVE_TEST") == "1"

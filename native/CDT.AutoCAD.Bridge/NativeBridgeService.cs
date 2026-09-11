@@ -30,9 +30,14 @@ internal sealed class NativeBridgeService
             "bridge.documents.list" => new { documents = _documents.List() },
             "bridge.document.identity" => DocumentIdentity(request),
             "bridge.document.snapshot" => DocumentSnapshot(request),
+            "bridge.document.state" => DocumentState(request),
             "bridge.recovery.list" => _mutations.ListRecoveries(),
             "bridge.recovery.resolve" => RecoveryResolve(request),
             "bridge.recovery.finalize" => RecoveryFinalize(request),
+            "bridge.logical.begin" => LogicalBegin(request),
+            "metadata.get" => MetadataGet(request),
+            "metadata.set" => MetadataSet(request),
+            "metadata.query" => MetadataQuery(request),
             "entity.batch.create" => BatchCreate(request),
             "entity.batch.insert_blocks" => BatchInsertBlocks(request),
             "entity.batch.transform" => BatchTransform(request),
@@ -72,10 +77,15 @@ internal sealed class NativeBridgeService
             local_computer_only = true,
             same_windows_session_only = true,
             mutation_enabled = true,
-            document_fp_schema_version = 2,
+            document_fp_schema_version = 3,
+            metadata_schema_version = BridgeConstants.MetadataSchemaVersion,
+            metadata_in_document_fp = true,
             two_phase_commit_integrity = true,
             batch_chunk_atomic = true,
+            batch_yield_per_idle = true,
             cross_chunk_atomic = false,
+            logical_batch_atomic = true,
+            logical_batch_recovery = "single-r2-checkpoint",
             max_batch_chunk_entities = BridgeConstants.MaxBatchChunkEntities,
             max_batch_semantic_entities = BridgeConstants.MaxBatchSemanticEntities,
             recovery_operations = new[]
@@ -83,9 +93,21 @@ internal sealed class NativeBridgeService
                 "bridge.recovery.list",
                 "bridge.recovery.resolve",
                 "bridge.recovery.finalize",
+                "bridge.logical.begin",
+            },
+            read_operations = new[]
+            {
+                "bridge.documents.list",
+                "bridge.document.identity",
+                "bridge.document.snapshot",
+                "bridge.document.state",
+                "bridge.recovery.list",
+                "metadata.get",
+                "metadata.query",
             },
             mutation_operations = new[]
             {
+                "metadata.set",
                 "entity.batch.create",
                 "entity.batch.insert_blocks",
                 "entity.batch.transform",
@@ -112,6 +134,50 @@ internal sealed class NativeBridgeService
         DocumentIdentityParams parameters = request.DocumentIdentity
             ?? throw new BridgeServiceException("INVALID_PARAMS", "document identity params are required");
         return _documents.Resolve(parameters.RuntimeDocumentId, parameters.DocumentPid);
+    }
+
+    private object LogicalBegin(BridgeRequest request)
+    {
+        LogicalBeginParams parameters = request.LogicalBegin
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "logical begin params are required");
+        Document document = _documents.ResolveDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        return _mutations.BeginLogicalBatch(document, request.RequestId, parameters);
+    }
+
+    private object MetadataGet(BridgeRequest request)
+    {
+        MetadataGetParams parameters = request.MetadataGet
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "metadata get params are required");
+        Document document = _documents.ResolveDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        return _mutations.MetadataGet(document, parameters);
+    }
+
+    private object MetadataSet(BridgeRequest request)
+    {
+        MetadataSetParams parameters = request.MetadataSet
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "metadata set params are required");
+        Document document = _documents.ResolveDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        return _mutations.MetadataSet(document, request.RequestId, parameters);
+    }
+
+    private object MetadataQuery(BridgeRequest request)
+    {
+        MetadataQueryParams parameters = request.MetadataQuery
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "metadata query params are required");
+        Document document = _documents.ResolveDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        return _mutations.MetadataQuery(document, parameters);
     }
 
     private object BatchCreate(BridgeRequest request)
@@ -182,6 +248,42 @@ internal sealed class NativeBridgeService
             parameters.DocumentPid
         );
         return _mutations.FinalizeRecovery(document, parameters);
+    }
+
+    private object DocumentState(BridgeRequest request)
+    {
+        DocumentIdentityParams parameters = request.DocumentIdentity
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "document state params are required");
+        Document document = _documents.ResolveDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        string documentPid = DocumentPidReader.Read(document.Database)
+            ?? throw new BridgeServiceException(
+                "DOCUMENT_PID_MISSING",
+                "native compact document state requires persistent document lineage PID metadata"
+            );
+        Dictionary<string, object?> snapshot = _semantic.Extract(
+            document,
+            parameters.RuntimeDocumentId,
+            documentPid,
+            BridgeConstants.MaxBatchSemanticEntities
+        );
+        List<Dictionary<string, object?>> entities = snapshot["entities"]
+            as List<Dictionary<string, object?>>
+            ?? throw new BridgeServiceException(
+                "INVALID_SNAPSHOT",
+                "semantic snapshot has invalid entity collection"
+            );
+        return new Dictionary<string, object?>
+        {
+            ["schema_version"] = 1,
+            ["runtime_document_id"] = parameters.RuntimeDocumentId.ToString("D"),
+            ["document_pid"] = documentPid,
+            ["document_fp_schema_version"] = 3,
+            ["document_fp"] = snapshot["document_fp"],
+            ["entity_count"] = entities.Count,
+        };
     }
 
     private object DocumentSnapshot(BridgeRequest request)

@@ -202,6 +202,7 @@ internal static class NativeEntityExtractor
             {
                 ["owner_space"] = ownerSpace,
             },
+            ["metadata"] = NativeMetadataStore.Read(entity, transaction),
         };
     }
 

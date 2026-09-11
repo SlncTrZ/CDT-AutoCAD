@@ -1,285 +1,152 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-11 13:40 +07:00
-> Status: **MP0-T00 CLOSED / PASS · A-01 CLOSED / PASS · A-02 CLOSED / LIVE PASS · A-03+A-06 CLOSED / PASS · N0–N7 CLOSED · O1 CLOSED / LIVE PASS · MP-2 HOT RELOAD CLOSED / LIVE PASS · G1 CLOSED / LIVE PASS**
-> Accepted implementation baseline: `9224fb0` (`Feat: close MP-2 hot reload runtime`)
-> Working architecture checkpoint: **ADR-002 ACCEPTED — CDT-AutoCAD remains a Generic CAD Execution Engine; domain standards/business logic/audit reporting stay in external Domain Agents.** G1 Generic Batch Geometry is closed/live-pass internally; next program is G2 Schema-Agnostic Metadata → G3 Chunked Logical Atomicity. Public promotion remains separately gated.
-> Primary native target: AutoCAD 2027 full · Windows x64 · COM `26.0` · Managed .NET `net10.0-windows`
+> Updated: 2026-09-11 21:35 +07:00
+> Status: **N0–N7 CLOSED · O1 CLOSED/LIVE PASS · MP-2 CLOSED/LIVE PASS · G1/G2/G3 CLOSED/LIVE PASS · 10,000-entity graduation PASS · Feature-based Chunks Streaming LIVE PASS · public promotion FINAL CLOSE GATES PASS**
+> Primary certification target: **AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`**
+> Architecture boundary: **CDT-AutoCAD is a Generic CAD Execution Engine. Domain standards, engineering rules, calculations and reports remain outside the provider.**
 
-## 1. Public runtime
+## 1. What is authoritative now
 
-The published/runtime baseline remains unchanged during the architecture migration:
+The architecture and native execution program has moved beyond the historical 50-tool A2 baseline. The current working tree contains the explicit public-promotion candidate:
 
-- provider version: `0.3.0rc1`;
-- contract: `autocad-a2-v1-rc1`;
-- public MCP surface: **50 tools**;
-- default backend: `ezdxf`;
-- live Windows backend: ActiveX/COM;
-- A2: live-verified PASS on AutoCAD 2027, still release-candidate pending explicit promotion;
-- A3.1 / A3.2 / A3.3: native live-verified PASS but staged, capability-false/non-public until explicit contract promotion.
+```text
+provider_version: 0.4.0rc1
+contract_version: autocad-generic-v1-rc1
+public MCP tools: 86
+execution_model: feature-based-chunks-streaming-v1
+native bridge candidate: 0.8.1-g3
+```
 
-The N-series Managed .NET bridge is **not yet the public provider backend**.
+These identities have now passed the final public-promotion close gates on the reviewed promotion tree. Historical evidence files that mention `0.3.0rc1`, `autocad-a2-v1-rc1` or 50 tools remain valid for the older checkpoint they recorded and must not be rewritten as if those older runs used the new contract.
 
-## 2. Architecture checkpoint
+The promotion commit must remain surgically staged: `.gitignore`, `_private/`, `_test_workspace/` and `specs/**` are excluded. Publication is complete only after this reviewed tree is committed and pushed to `main`.
 
-| Phase | State | What is proven |
+## 2. Closed native architecture program
+
+| Program | State | Accepted result |
 | --- | --- | --- |
-| MP0-T00 | **CLOSED / PASS** | platform-specific PEP 751 dependency locks from one canonical resolver workflow; source/build/DLL/runtime provenance; baseline threat model; structured request diagnostics/correlation with telemetry separated from recovery journal truth |
-| A-01 | **CLOSED / PASS** | COM timeout/cancel after dispatch is non-retryable unknown completion; one STA executor + mutation gate fence queued writers; late completion remains quarantined; read-only reconciliation stays available; document_new/open cannot clear quarantine |
-| A-02 | **CLOSED / LIVE PASS** | `document_save` binds one concrete COM Document through path validation → Save → post-save path verification; active-tab switches cannot retarget Save; outside-root target is refused before side effect; disposable AutoCAD 2027 Session 1 fixture passed |
-| A-03 / A-06 | **CLOSED / PASS** | all 50 public MCP tools have unique semantic descriptions + annotations; 12 true read-only tools expose `readOnlyHint`; status separates implementation, current runtime readiness, historical certification and build identity without self-certifying the current process |
-| N0 | **CLOSED** | architecture/documentation freeze and migration boundary |
-| N1 | **CLOSED / PASS** | Python semantic models, canonicalization/fingerprint primitives, rollback receipts and state-chain primitives |
-| N2 | **CLOSED / LIVE PASS** | persistent document/entity PID carrier and clone/reconciliation policy on real AutoCAD 2027, P0–P10 |
-| N3 | **CLOSED / LIVE PASS** | staged in-process C# Managed .NET bridge, bounded local typed Named Pipe IPC, runtime-document binding and read-only document identity |
-| N4 | **CLOSED / LIVE PASS** | authoritative native read-only `SemanticSnapshot` extraction, persistent entity PID binding and native↔N1 document fingerprint parity |
-| N5 | **CLOSED / LIVE PASS** | fixed-schema native LINE create/update/delete, composite parent binding, semantic document-FP v2, R0 abort verification and pre-write capacity guard |
-| N6 | **CLOSED / LIVE PASS** | deterministic semantic delta, ActionSpec geometry/effect validation, duplicate detection, state-chain continuity, manual-drift blocking and post-dispatch uncertainty latch |
-| O1 | **CLOSED / LIVE PASS** | internal typed CIRCLE/ARC/simple-LWPOLYLINE create/update/delete added to the N5/N6 parent-PID-transaction-semantic-chain foundation |
-| N7 | **CLOSED / LIVE PASS** | two-phase native commit integrity, immutable checkpoint manifests/artifact hashes, R0/R1/R2 recovery, executor R1→R2 cascade, restart-persisted recovery and activation-safe R2 document replacement/rebinding all passed on real AutoCAD 2027 Session 1 |
-| MP-2 | **CLOSED / LIVE PASS** | stable authenticated ASGI supervisor, replaceable stateless FastMCP workers, generation fencing/drain/fallback, protocol/contract-hash + runtime generation/build/policy identity, bounded native-bridge readiness probe and source watcher; focused `41 passed`, Linux `254/5`, Windows `.171` `253/6`, process `20` success + `10` injected failure PASS, AutoCAD 2027 Session 1 COM + required bridge `2` success + `1` failure PASS, TaskScheduler result `0`, zero worker orphans |
-| G1 | **CLOSED / LIVE PASS** | internal `0.6.0-g1` typed batch create for LINE/CIRCLE/ARC/simple-LWPOLYLINE, planar similarity transform (`translate`, `rotate_z`, `scale_uniform`) and PID-bound referenced block insertion; bounded 32-entity native chunks, semantic verification up to 2,048 entities, 100/1,000 scale acceptance, R0/R1/R2 recovery live-pass; public 50-tool contract unchanged |
-| G2 | **PLANNED / NOT STARTED** | schema-agnostic namespaced JSON metadata get/set/query over Extension Dictionary/XRecord with reserved provider-state isolation and bounded query/storage work |
-| G3 | **PLANNED / NOT STARTED** | logical all-or-nothing batch outcome across bounded native chunks using checkpoint/journal/compensation plus exact predecessor fingerprint proof |
-| N8 | **NOT STARTED** | formal incremental COM-to-.NET/public operation migration |
-| N9 | **NOT STARTED** | semantic drawing-workflow migration |
-| N10 | **NOT STARTED** | explicit public contract/promotion decision |
+| N0–N7 | **CLOSED / LIVE PASS** | Managed .NET bridge, PID/fingerprint state model, bounded semantic extraction, typed native mutation, deterministic validation/state-chain, immutable checkpoints and exact R0/R1/R2 recovery including activation-safe R2 across real AutoCAD restart |
+| O1 | **CLOSED / LIVE PASS** | LINE/CIRCLE/ARC/simple-LWPOLYLINE typed native mutation over the N5–N7 integrity model |
+| MP-2 | **CLOSED / LIVE PASS** | stable authenticated supervisor, replaceable stateless FastMCP workers, generation fencing/drain/fallback, protocol/contract identity and bounded native-bridge readiness |
+| G1 | **CLOSED / LIVE PASS** | generic batch create, PID-targeted planar translate/rotate-Z/uniform-scale, persistent block-definition-PID insertion; native chunks bounded to 32 |
+| G2 | **CLOSED / LIVE PASS** | schema-agnostic namespaced JSON metadata get/set/query in ExtensionDictionary/XRecord; provider namespaces reserved; metadata participates in document fingerprint v3; storage/query/numeric work bounded |
+| G3 | **CLOSED / LIVE PASS** | one immutable predecessor checkpoint across yielded native chunks, exact predecessor R2 recovery on logical failure/unknown completion, independent final compact-state read-back and finalize reconciliation |
+| Scale graduation | **CLOSED / LIVE PASS** | 100 / 1,000 / 5,000 / 10,000 entity tiers passed on real AutoCAD 2027 with beginning/middle/end failure injection, exact predecessor recovery, zero pending recovery and stable AutoCAD/bridge process identity |
+| Feature-based Chunks Streaming | **CLOSED / LIVE PASS** | feature-local checkpoint/rollback: a failed current feature is restored without undoing earlier committed features; following features can continue from the preserved predecessor |
 
-## 3. Accepted native runtime truth — G1 closed; public backend unchanged
+The native bridge currently advertises:
 
-N6 provides the Python semantic orchestration layer; O1 extends the staged C# typed mutation allowlist and N7 closes checkpoint-backed two-phase recovery. G1 advances the staged bridge to `0.6.0-g1` with bounded generic batch geometry while preserving the same domain-agnostic and public-contract boundary. It is **still not the public provider backend** and does not publish new MCP tools or capabilities.
+- protocol `cdt-autocad-native-v1`;
+- bridge `0.8.1-g3`;
+- document fingerprint schema **v3**;
+- maximum native batch chunk **32 entities**;
+- graduated semantic capacity **12,288 entities**;
+- public logical feature/batch item cap **10,000**;
+- `batch_yield_per_idle=true`;
+- `cross_chunk_atomic=false` at the individual micro-chunk primitive;
+- `logical_batch_atomic=true` through the G3 predecessor checkpoint/recovery model.
 
-Enabled internal operations:
+`cross_chunk_atomic=false` and `logical_batch_atomic=true` are not contradictory: each native transaction is a bounded micro-chunk; G3 provides higher-level semantic atomicity by restoring the logical predecessor when the grouped operation fails.
 
-```text
-bridge.health
-bridge.documents.list
-bridge.document.identity
-bridge.document.snapshot
-entity.batch.create
-entity.batch.transform
-entity.batch.insert_blocks
-entity.create.line
-entity.update.line
-entity.delete.line
-entity.create.circle
-entity.update.circle
-entity.delete.circle
-entity.create.arc
-entity.update.arc
-entity.delete.arc
-entity.create.lwpolyline
-entity.update.lwpolyline
-entity.delete.lwpolyline
-```
+## 3. Production execution model
 
-Measured invariants:
+**Feature-based Chunks Streaming is the approved Production Domain execution model.**
 
-- protocol: `cdt-autocad-native-v1`;
-- maximum frame payload: 65,536 bytes;
-- transport: Windows Named Pipe;
-- pipe boundary: current user + local computer + same Windows session;
-- same-user SSH Session 0 is rejected with `CLIENT_SESSION_MISMATCH`;
-- pipe I/O thread does not call AutoCAD API; native reads are dispatched on `Application.Idle`;
-- `document_pid` is semantic-lineage identity, not unique physical-file identity;
-- two open raw-copy DWGs sharing one `document_pid` receive distinct `runtime_document_id` values;
-- PID-only target selection is rejected;
-- read-only N3 acceptance leaves tested drawings at `DBMOD=0`;
-- `bridge.document.snapshot` reads the active bound AutoCAD Database through native `ForRead` transactions;
-- N4 scope is intentionally bounded to the active document's current space plus referenced block definitions/content, with `MaxSnapshotEntities=32`; it is not yet a whole-DWG/all-layout semantic extractor;
-- extracted entities require persistent N2 semantic PIDs and duplicate/missing PIDs fail closed;
-- supported N4 semantic families live-proven: LINE, CIRCLE, ARC, LWPOLYLINE, TEXT, MTEXT, INSERT, BLOCK_DEFINITION, DIMENSION and HATCH;
-- referenced block definitions and their PID-bearing contents are included recursively in the semantic fingerprint; a saved block-definition geometry mutation changes `document_fp` even with `DBMOD=0` on both compared states;
-- layer, linetype, text-style and dimension-style resources are extracted deterministically;
-- native document fingerprint matches the N1 canonical fingerprint byte-for-byte for the accepted fixture;
-- repeated reads keep `DBMOD=0`, and save/reopen preserves the semantic document fingerprint;
-- a snapshot whose serialized result exceeds the 65,536-byte frame fails as correlated `RESPONSE_TOO_LARGE`; the bridge remains alive and the read attempt does not change `DBMOD`;
-- accepted staged bridge version is `0.6.0-g1`; `mutation_enabled=true` now also advertises the three internal G1 batch operations while the public MCP surface remains 50 tools;
-- every mutation requires `runtime_document_id + document_pid + expected_parent_fp`; update/delete additionally target a persistent `semantic_pid` rather than Handle/ObjectId;
-- `expected_parent_fp` is re-read through the native semantic extractor before the write transaction; mismatch fails with `STATE_DRIFT` before mutation;
-- create assigns a fresh persistent PID for LINE/CIRCLE/ARC/LWPOLYLINE; update preserves PID/Handle; delete removes the PID-bearing entity from the semantic snapshot;
-- CIRCLE and ARC create/update are independently checked against native center/radius/angle semantics and COM measurements; create uses +Z planar normals while updates preserve the target normal represented in the authoritative snapshot;
-- O1 LWPOLYLINE create/update is intentionally simple 2D: finite `[x,y]` vertices, max 128 vertices, zero elevation, +Z normal, zero bulge and zero per-vertex widths; complex existing polylines are refused for update as `UNSUPPORTED_TARGET_GEOMETRY` before write;
-- LWPOLYLINE update rebuilds geometry in place to preserve persistent identity and AutoCAD validity; live acceptance proves closed 4-vertex -> open 2-vertex shrink -> closed 5-vertex grow while PID/Handle and COM parity remain stable;
-- deterministic fault injection `after_apply_before_commit` is a closed enum used only to prove R0 `Transaction.Abort()`; create/update aborts return `ROLLED_BACK_VERIFIED` only when independent read-back equals the predecessor semantic fingerprint;
-- AutoCAD `DBMOD` behavior after abort is lifecycle metadata rather than semantic identity: measured create-abort left `DBMOD=1`, while update-abort returned `DBMOD=0`; document fingerprint schema v2 therefore retains `saved` in the snapshot but excludes it from `document_fp`;
-- document fingerprint schema v2 is advertised by bridge health/snapshot and domain-separated as `document/v2`; N1 geometry/action fingerprint domains remain v1;
-- at the N4 semantic capacity boundary, create is rejected before opening the write transaction with `SNAPSHOT_CAPACITY_EXCEEDED`, preventing a committed object from becoming unreadable by the bounded extractor;
-- N6 computes deterministic created/modified/deleted PID sets from authoritative before/after snapshots and ignores transient Handle/fingerprint-cache changes;
-- create/update geometry for LINE/CIRCLE/ARC/simple-LWPOLYLINE is independently matched against the `ActionSpec`; update additionally requires target type/layer/style/hierarchy to remain unchanged, and the typed mutation surface may not alter document units/current space/style resources;
-- newly introduced exact duplicate geometry is detected even when PID/Handle differ; pre-existing duplicate groups are not retroactively rejected by unrelated mutations;
-- every accepted `COMMITTED_VERIFIED` semantic step appends exactly one tamper-evident `StateChainEntry`; verified R0 rollback does not advance the chain;
-- before every later step, current native `document_fp` must equal both the action parent and chain tip; measured manual COM geometry drift is refused as `STATE_DRIFT` before a new native mutation is dispatched;
-- on the accepted O1/N6 baseline, any unverified condition after mutation dispatch begins—including malformed receipt, unknown transport completion, post-commit bridge error, independent read-back failure, validator failure or chain-construction failure—latches `STATE_UNCERTAIN` and blocks later mutation;
-- N7 now replaces deterministic post-commit semantic-integrity failures with checkpoint-backed R1/R2 recovery: the state chain advances only for accepted commits, verified recovery restores the exact predecessor, and unresolved/ambiguous recovery remains fail-closed;
-- G1 batch create is chunk-atomic with `MaxBatchChunkEntities=32`, explicitly `cross_chunk_atomic=false`, and semantic read-back bounded by `MaxBatchSemanticEntities=2048`;
-- G1-A live scale acceptance passed 100 entities in 1.529 s (max chunk 154.179 ms) and 1,000 entities in 7.845 s (max chunk 249.987 ms), with exact injected R0 rollback and zero pending recoveries; the 1,000-entity run measured +159,830,016 B working set and +194,674,688 B private bytes on the live AutoCAD process;
-- G1-B live-proves PID-targeted planar `translate`, `rotate_z` and uniform-scale transforms for LINE/CIRCLE/ARC/simple-LWPOLYLINE; general affine/shear/non-uniform scale is not enabled;
-- G1-C live-proves insertion by persistent `BLOCK_DEFINITION` PID only when that definition is already included in the authoritative predecessor semantic fingerprint; caller-supplied block-name authority and unreferenced-definition insertion remain disabled;
-- G1 batch recovery is live-proven for exact R0 abort, R1 compensation and activation-safe R2 checkpoint restore; R2 rebinds a new `runtime_document_id` and succeeds only after exact predecessor fingerprint proof;
-- N6 records append-only JSONL evidence with `fsync`; journal write failure blocks execution, and non-empty journals are not silently resumed across a new executor process;
-- native relation extraction remains empty in the current bridge, so N6 does not claim topology validation beyond the semantic fields actually present.
-
-Acceptance deployment on Windows `.171` uses the per-user bundle:
+A Domain Agent defines one meaningful feature at a time and submits generic CAD actions. The provider does not interpret the domain meaning of names such as road, manhole, kiosk, beam or pipe.
 
 ```text
-%APPDATA%\Autodesk\ApplicationPlugins\CDT.AutoCAD.Bridge.bundle
+Domain Agent
+  -> Feature 01
+       -> native chunk <= 32
+       -> native chunk <= 32
+       -> verify + commit feature
+  -> presentation pacing ~300 ms
+  -> Feature 02
+       -> ...
+       -> failure
+       -> restore Feature 02 predecessor only
+  -> recompute/retry Feature 02
+  -> Feature 03
 ```
 
-with only its `Contents\Windows` directory explicitly added to `TRUSTEDPATHS`; `SECURELOAD=1` remains enabled.
+Public orchestration candidate: `feature_execute(feature_id, feature_sequence, correlation_id, actions)`.
 
-Canonical N3 evidence: `docs/evidence/n3-native-bridge-readonly-2026-09-10.json`.
+A feature can mix the generic native action families already proven by G1/G3:
 
-Canonical N4 evidence: `docs/evidence/n4-native-semantic-2026-09-10.json`.
+- typed entity creation;
+- persistent-PID block insertion;
+- persistent-PID transform.
 
-Canonical N5 evidence: `docs/evidence/n5-native-mutation-2026-09-10.json`.
+Successful receipts carry feature/correlation identity, pre/post document fingerprints, affected semantic PIDs, native chunk count, journal path and `recommended_next_delay_ms=300`. Failure receipts identify the failed action/native-chunk position and are accepted only after exact predecessor recovery.
 
-Canonical N6 evidence: `docs/evidence/n6-semantic-state-chain-2026-09-10.json`.
+The 300 ms delay is **between completed features for presentation**, not between native micro-chunks. Native chunks run as quickly as the bounded AutoCAD Idle-yield model allows.
 
-Canonical O1 evidence: `docs/evidence/o1-native-shape-mutation-2026-09-10.json`.
+For 3D showcase work the current presentation convention remains **SE Isometric + Shades of Gray**.
 
-Canonical G1 evidence: `docs/evidence/g1-generic-cad-execution-2026-09-11.json`.
+## 4. Live evidence
 
-## 4. Identity / rollback invariants
+Canonical new evidence:
 
-Two pillars remain non-negotiable:
+- `docs/evidence/g23-live-2026-09-11.json` — G2 metadata + G3 recovery acceptance;
+- `docs/evidence/g3-scale-100-2026-09-11.json`;
+- `docs/evidence/g3-scale-1000-2026-09-11.json`;
+- `docs/evidence/g3-scale-5000-2026-09-11.json`;
+- `docs/evidence/g3-scale-10000-2026-09-11.json`;
+- `docs/evidence/feature-stream-production-2026-09-11.json`.
 
-1. **Data Integrity / Rollback** — future native mutation may advance only from a known parent state and must end as `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`; uncertain state blocks later mutation.
-2. **Precise Identity / PID + Fingerprinting** — native `ObjectId`/Handle is insufficient semantic identity; persistent PID, runtime-document binding and deterministic fingerprints are required.
+Feature-stream live acceptance proves:
 
-N2 has proven PID carrier/storage and clone semantics. N3 has proven runtime-document disambiguation over IPC. N4 provides authoritative native parent-state snapshots. N5 enforces composite runtime-document + lineage PID + semantic `expected_parent_fp` binding and proves R0 rollback. N6 independently validates semantic delta/effects and advances a tamper-evident state chain only for accepted steps. O1 live-proves that the same integrity model extends to CIRCLE, ARC and simple LWPOLYLINE. **N7 closes bounded post-commit integrity/recovery, and G1 proves the same R0/R1/R2 exact-restoration model for bounded generic batch geometry. R1 compensation and activation-safe R2 checkpoint restore both require exact predecessor read-back before `ROLLED_BACK_VERIFIED`.**
+- baseline semantic entity count: 12;
+- Feature 1 commits 40 entities and advances the state to 52;
+- configured 300 ms presentation pause measured **300.295 ms**;
+- Feature 2 commits its first native micro-chunk, fails at native chunk index 1, then returns `ROLLED_BACK_VERIFIED` to the exact Feature-1 fingerprint/count 52;
+- Feature 1 remains committed and unchanged;
+- Feature 3 then commits 8 entities and advances the state to 60;
+- final pending native recovery count: **0**.
 
-## 5. Semantic State Loop implementation status
+10,000-entity graduation proves 313 bounded native chunks, 10,000 unique persistent entity PIDs, beginning/middle/end fault injection with exact predecessor recovery, zero pending recovery and stable AutoCAD/bridge process identity.
 
-The target loop remains mandatory:
+The latest native C# candidate has built Release/x64 with **0 errors**. The three inherited Autodesk-reference `MSB3277` warning families remain documented rather than hidden.
+
+## 5. Public contract promotion state
+
+The promotion candidate adds the generic strong-integrity native surface to the already expanded product surface. The current FastMCP catalog was measured at **86 tools** after `feature_execute` was added.
+
+Strong-integrity tools include:
 
 ```text
-ActionSpec
- -> native execution
- -> SemanticSnapshot extraction
- -> canonicalize / fingerprint / semantic diff
- -> deterministic validation
- -> commit or verified rollback
- -> independent read-back
- -> state-chain log
+native_integrity_status
+feature_execute
+batch_create_entities
+batch_insert_blocks
+batch_transform_entities
+metadata_get
+metadata_set
+metadata_query
 ```
 
-Current implementation coverage is partial:
+The candidate also promotes the previously implemented A3 public drafting/analysis/3D surface represented in the current `server.py` and backend capability maps. This promotion is intentional and therefore changes provider identity, contract identity and public tool count together.
 
-- N1: semantic/fingerprint/state-chain primitives exist in Python;
-- N2: persistent PID policy exists and is live-verified;
-- N3: native read-only transport/document binding exists and is live-verified;
-- N4: native read-only semantic extraction + parent document fingerprinting is implemented and live-verified;
-- N5: bounded typed LINE mutation + `expected_parent_fp` + native transaction/R0 rollback is implemented and live-verified;
-- N6: deterministic semantic delta, requested-geometry/allowed-effects validation, duplicate detection, state-chain continuity, manual-drift blocking and uncertainty latching are implemented and live-verified;
-- O1: the same internal mutation/semantic loop is live-verified for CIRCLE, ARC and simple LWPOLYLINE create/update/delete;
-- N7 accepted scope: provisional extraction inside the write transaction, deterministic native validation, post-commit provisional-vs-persisted comparison, provider-owned immutable checkpoint manifests/artifact hashes, typed recovery list/resolve/finalize, R1 compensation, R2 checkpoint restore and Python executor R1→R2 orchestration;
-- N7 R2 lifecycle is activation-safe: the bridge defers one recovery request across AutoCAD Idle ticks, activates a temporary checkpoint document first, closes only inactive documents, reopens/reactivates the restored original, then proves runtime rebound + document PID + exact predecessor fingerprint before success;
-- G1: bounded internal batch create/transform/block-insert is implemented and live-verified at 100 and 1,000 entity tiers, including R0/R1/R2 recovery; chunk atomicity does not imply cross-chunk logical atomicity;
-- G2/G3 and N8/N9/N10: metadata, cross-chunk logical atomicity, formal broader migration, drawing-workflow migration and public promotion remain **NOT STARTED**.
+**Final public-promotion close gates PASS on the reviewed tree.** Contract identity measured exactly **86 tools** at `0.4.0rc1 / autocad-generic-v1-rc1`; full Linux regression is **316 passed / 5 skipped**; Windows `.171` regression is **315 passed / 6 skipped**; C# `Release/x64` built with SDK `10.0.401` at **0 errors / 3 known MSB3277 warning families**. Linux and Windows `compileall` pass and `git diff --check` passes. Focused code/security review found no blocking regression or new arbitrary-command surface. Ruff could not be rerun because the Linux `.deps` wrapper has no Ruff executable payload and the Windows test venv has no Ruff module; this is recorded as a tooling availability gap, not converted into a false PASS.
 
-Therefore the accepted staged native executor now includes bounded generic batch geometry over the four proven 2D families under the N7 integrity/recovery loop. This is internal staged capability only; it does not imply whole-DWG coverage, 5,000/10,000 scale graduation, cross-chunk atomicity or public routing.
+## 6. Final public-promotion close gates
 
-## 6. Verification checkpoint
+| Gate | Result |
+| --- | --- |
+| Contract identity | **PASS** — 86 public tools; provider `0.4.0rc1`; contract `autocad-generic-v1-rc1`; execution model `feature-based-chunks-streaming-v1` |
+| Linux full regression | **PASS** — 316 passed / 5 skipped |
+| Windows `.171` full regression | **PASS** — 315 passed / 6 skipped |
+| C# Release/x64 | **PASS** — SDK 10.0.401; 0 errors; 3 inherited MSB3277 warning families |
+| Compile/hygiene | **PASS with tooling note** — Linux/Windows compileall PASS; `git diff --check` PASS; Ruff unavailable in both prepared environments |
+| Focused security/code review | **PASS** — no blocking finding; fixed-command presets only, bounded protocol/storage/query surfaces, fail-closed fingerprint/recovery binding preserved |
+| Selective staging | **MANDATORY** — exclude `.gitignore`, `_private/`, `_test_workspace/`, `specs/**` |
 
-MP0-T00 closure evidence on isolated clean gates derived from `1957ad8` and containing no N7 dirty files:
+The two MP-2 assertions still hard-coded to the historical 50-tool count were the only full-Linux regression failures encountered during this close session. They were migrated to the canonical `PUBLIC_TOOL_COUNT`; the complete Linux suite then passed. No G1/G2/G3, scale or Feature Streaming implementation was reopened.
 
-- canonical resolver: pip `26.1.2` `pip lock`, PEP 751 platform locks;
-- `pylock.linux.toml`: 88 locked packages, SHA-256 `e7fe668b159c56233be4d008600fe80dd0778689a58b48ab55cecc670c45bf06`;
-- `pylock.windows.toml`: 89 locked packages, SHA-256 `acbbc28bc07d26c2e07c76ab5d24f2e474945ba10cc14a0c9e94cca29867869e`;
-- canonical lock generator normalizes platform output to LF and has an explicit newline-regression test;
-- clean Linux locked environment + full suite: **204 passed / 4 skipped**;
-- clean Windows `.171` locked environment + full suite: **203 passed / 5 skipped** with AutoCAD 2027 running in Session 1;
-- changed-file Ruff on Linux and Windows: PASS; compileall on Linux and Windows: PASS; `git diff --check` on both clean gates: PASS;
-- clean-baseline full-tree Ruff with locked `ruff 0.16.7` reports **12 pre-existing findings outside MP0-T00 scope**; they remain separate lint debt and were not opportunistically refactored;
-- structured MCP diagnostics: correlated start/completion events PASS; injected telemetry-sink failure does not fail the tool call; existing N6 journal-failure test remains fail-closed as `JOURNAL_FAILED`;
-- canonical MP0 evidence: `docs/evidence/mp0-t00-baseline-2026-09-11.json`, with Linux/Windows runtime manifests beside it;
-- observed installed `.171` bridge DLL SHA-256 remains `8f3c28b7f765c1420afaeafc9f54f726e5c24306de6a852ea3f38758158b3767`; MP0 records it as **OBSERVED_ONLY**, not as a newly certified native artifact.
+## 7. Repository-state warning
 
-A-01 closure evidence on isolated clean gates derived from `4e0a714` and containing no N7 dirty files:
+The promotion tree is green and ready for the selective public-promotion commit. `.gitignore` is modified separately to keep `_test_workspace/` untracked; preserve it but keep it out of the promotion commit unless the owner explicitly decides otherwise.
 
-- focused timeout-safety suite: **8/8 PASS** on Linux and Windows `.171`;
-- clean Linux locked environment + full suite: **212 passed / 4 skipped**;
-- clean Windows `.171` locked environment + full suite: **211 passed / 5 skipped** with AutoCAD 2027 running in Session 1;
-- unknown mutation completion uses one COM STA executor plus an async mutation gate before dispatch; a request queued before the first timeout is fenced before its callable reaches AutoCAD;
-- mutation timeout/cancel reports `retryable=false` + `completion_unknown=true`; read-only timeout remains retryable and does not quarantine;
-- late completion does not clear quarantine; read-only calls remain available for reconciliation; `document_new`/`document_open` do not clear quarantine; mutation resumes only after verified operator recovery and provider-process restart;
-- changed-file Ruff, compileall and `git diff --check`: PASS on Linux and Windows; `ezdxf_backend.py:157 B905` remains a documented pre-existing lint finding outside the A-01 hunk;
-- real live timeout injection was intentionally not performed because forcing unknown mutation completion would itself create uncontrolled CAD state; deterministic Windows fault-injection covers the state machine while the full suite runs on the target platform;
-- canonical evidence: `docs/evidence/a01-com-timeout-safety-2026-09-11.json`.
+`_private/` contains benchmark findings and planning notes and must not be swept into a public/product commit. `specs/**` remains a pinned snapshot and is not to be edited.
 
-A-02 closure evidence on isolated clean gates derived from `565712b` and containing no N7 dirty files:
-
-- focused document-binding suite: **3 PASS / 1 live SKIP** on Linux and Windows `.171`;
-- vulnerable implementation reproduced **2 FAIL / 1 PASS** before the fix: active-document switch saved B after validating A, and post-Save path drift returned false success;
-- clean Linux full suite: **215 passed / 5 skipped**;
-- clean Windows `.171` full suite: **214 passed / 6 skipped**;
-- sibling `document_open` / `document_save_as` / `document_export_pdf` audit: **7/7 PASS** with no A-02 split-binding reproduction, therefore no unrelated sibling rewrite;
-- real AutoCAD 2027 Session 1 disposable fixture: **1/1 PASS in 2.57s** using interactive `pythonw.exe`; flow was new document → SaveAs temp DWG → `document_save` → verified same path → close;
-- live evidence hashes: log `0503f4d47e5512758e16e57111568accad1349a27e79967770c014b8dea6439f`, JUnit `fa3c66770fdd8090adffe6962729f87bfed30248d6ab7462cac6de0cba936e2c`;
-- Windows locked Ruff: PASS; Linux/Windows compileall and `git diff --check`: PASS; current gateway Linux `.deps` Ruff wrapper lacked its binary, so no false Linux lint-PASS claim is made;
-- canonical evidence: `docs/evidence/a02-document-binding-2026-09-11.json`.
-
-A-03/A-06 closure evidence on isolated clean gates derived from `39a093c` and containing no N7 dirty files:
-
-- runtime MCP catalog on Linux and Windows: **50 tools / 0 missing descriptions / 0 missing annotations / 50 unique descriptions / 12 read-only hints**;
-- catalog TDD gate failed before metadata was added; public status TDD gate failed before implementation/runtime/certification separation was added;
-- focused server-contract + COM metadata suite: **45 passed / 1 skipped** on the current tree before clean isolation;
-- clean Linux full suite: **217 passed / 5 skipped**;
-- clean Windows `.171` full suite: **216 passed / 6 skipped**;
-- current-process self-certification is explicitly forbidden: detected release match may be true while `current_process_certified` remains false without bound provenance;
-- Windows locked Ruff, Linux/Windows compileall and `git diff --check`: PASS; Linux gateway has no runnable Ruff binary so no Linux Ruff PASS is claimed;
-- public tool count remains exactly 50 and no capability is promoted by metadata changes;
-- canonical evidence: `docs/evidence/a03-tool-catalog-status-2026-09-11.json`.
-
-Accepted regression/evidence on the O1 closure tree:
-
-- focused O1/N5/N6 native-protocol + semantic regression: **76 passed**;
-- Linux full Python suite: **195 passed / 4 skipped**;
-- Windows `.171` full Python suite: **194 passed / 5 skipped**;
-- C# bridge build: **0 errors**;
-- documented unsuppressed build-warning families: `Microsoft.VisualBasic`, `System.Drawing`, `WindowsBase` (`MSB3277`);
-- native N2 P0–P10: PASS;
-- native N3 read-only acceptance: PASS;
-- native N4 semantic acceptance: PASS;
-- native N5 typed mutation/R0 rollback acceptance: PASS;
-- native N6 semantic delta/state-chain acceptance: PASS;
-- native O1 CIRCLE/ARC/simple-LWPOLYLINE mutation + nine-step state-chain acceptance: **PASS on real AutoCAD 2027 Session 1**;
-- O1 changed-file `ruff check`, `compileall` and `git diff --check`: PASS;
-- full-repository Ruff currently reports **14 pre-existing findings outside the N6 change set**; they remain separate lint debt and are not treated as N6 pass evidence.
-
-N7 closure evidence:
-
-- final focused recovery/semantic/bridge regression: **40/40 PASS**;
-- final Linux full Python suite: **227 passed / 5 skipped**;
-- final Windows `.171` full Python suite: **226 passed / 6 skipped**;
-- C# Release x64 build with user-local .NET SDK `10.0.401`: **0 errors**, retaining only the documented `MSB3277` warning families (`Microsoft.VisualBasic`, `System.Drawing`, `WindowsBase`);
-- real AutoCAD 2027 Session 1 full recovery runner: **PASS / exit 0 / TaskScheduler result 0**; AutoCAD restarted during the test and remained alive in Session 1 afterward;
-- live checks all PASS: exact 12 typed mutations, typed recovery surface, R0 exact predecessor, provisional abort, checkpoint finalize, post-commit mismatch detection, R1 exact restore, corrupt-manifest fail-closed, R1 failure retains checkpoint, R2 exact restore/runtime rebound, executor auto R1→R2 + continued execution, restart-persisted manifest, restart R1 unavailable fail-closed, restart R2 exact predecessor, no pending recovery and no arbitrary execution surface;
-- final restored fingerprint `sha256:2ab0d6ce7dab33530d600fce060ffbd125d561b442d0175c40b3c70644cc6984` exactly matches the accepted pre-corruption chain tip after real process restart;
-- deployed/live bridge DLL SHA-256 `4b76e362f20122b9a8b8b18471a3a1a3d9a77718dc749bf8b8a25cfb65bb578d`; live summary SHA-256 `a38e17556b04c1c5201e8d5049e3880e16a05a75fac539da1fec3dafadfbd44f`;
-- canonical evidence: `docs/evidence/n7-native-recovery-2026-09-11.json`.
-
-Native bridge DLL accepted for O1:
-
-```text
-SHA-256 4ad2d4138d6e71a8fa91281ea5482c592e2a0c04cb5d41ec5f2452b7cff31484
-```
-
-## 7. Current boundary / next activity
-
-Master Plan public-safety prework and N7 are now CLOSED: **MP0-T00, A-01, A-02, A-03/A-06 and N7 are CLOSED/PASS.** N7 eliminated the active-document crash path by splitting R2 across verified AutoCAD Idle activation phases and closing only inactive documents.
-
-**MP-2 Python MCP/provider hot reload is CLOSED / LIVE PASS.** The runtime now uses a stable authenticated ASGI supervisor over replaceable stateless FastMCP worker generations, with request fencing/drain, last-healthy fallback, frozen policy identity, protocol/contract-hash promotion validation, runtime generation/build provenance and bounded native-bridge readiness probing. Public COM/ezdxf behavior and the 50-tool contract remain unchanged.
-
-Final MP-2 evidence: focused `41 passed`; Linux full `254 passed / 5 skipped`; Windows `.171` full `253 passed / 6 skipped`; process-level `20` successful source reloads + `10` injected startup failures PASS; AutoCAD 2027 Interactive Session 1 COM + required native bridge `2` success + `1` injected failure PASS with TaskScheduler result `0`, bridge `0.5.0-n7`, pending recovery `0`, and zero post-run worker orphans. Canonical evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`. Control-plane edits to `hot_reload.py` or `supervisor.py` require supervisor restart by design.
-
-`.171` currently has `cloudflared` running but no CDT-AutoCAD ingress route; its config remains unmodified. Tunnel/process presence is not provider readiness and must never replace authenticated MCP + required bridge health checks.
-
-Historical MP-2 implementation handoff: `docs/SESSION_HANDOFF_2026-09-11_MP2_HOT_RELOAD.md`; canonical MP-2 closure evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`. Historical N7 handoff/incident record: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`; canonical N7 closure evidence: `docs/evidence/n7-native-recovery-2026-09-11.json`.
-
-The next approved engineering program is defined by `docs/ADR-002-GENERIC-CAD-EXECUTION-ENGINE.md`: **G1 Generic Batch Geometry → G2 Schema-Agnostic Metadata → G3 Chunked Logical Atomicity**, followed by measured graduation at `100 → 1,000 → 5,000 → 10,000` entities. CDT-AutoCAD must stay domain-agnostic: TCVN/ISO/ASME/customer rules, engineering calculations and audit/report logic belong to external Domain Agents. G-series work must preserve bounded typed contracts, TDD, native build, AutoCAD Session 1 acceptance, semantic-chain/recovery evidence, review and separate commits. Public contract changes remain separately gated.
-
-## 8. Status authority
-
-Use this file for the current implementation checkpoint. Historical documents and evidence may contain older test counts or statements that were true at their original checkpoint; those records should be read as historical evidence, not as the current frontier.
+For the exact handoff, continue with `docs/SESSION_HANDOFF_2026-09-11_FEATURE_STREAMING_PRODUCTION.md`.

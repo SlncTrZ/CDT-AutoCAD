@@ -60,6 +60,57 @@ internal static class NativeMutationValidator
         }
     }
 
+    internal static void ValidateMetadataSet(
+        MetadataSetParams parameters,
+        Dictionary<string, object?> before,
+        Dictionary<string, object?> provisional
+    )
+    {
+        Dictionary<string, Dictionary<string, object?>> beforeEntities = EntitiesByPid(before);
+        Dictionary<string, Dictionary<string, object?>> afterEntities = EntitiesByPid(provisional);
+        string[] created = afterEntities.Keys.Except(beforeEntities.Keys).Order().ToArray();
+        string[] deleted = beforeEntities.Keys.Except(afterEntities.Keys).Order().ToArray();
+        string[] modified = beforeEntities.Keys.Intersect(afterEntities.Keys)
+            .Where(pid => EntityKey(beforeEntities[pid]) != EntityKey(afterEntities[pid]))
+            .Order()
+            .ToArray();
+
+        Require(created.Length == 0 && deleted.Length == 0, "metadata set changed entity identity membership");
+        Require(
+            modified.SequenceEqual(new[] { parameters.SemanticPid }),
+            "metadata set modified an unexpected semantic PID"
+        );
+        Require(
+            DocumentInvariantsEqual(before, provisional),
+            "metadata set changed invariant document/resource state"
+        );
+        Require(
+            beforeEntities.TryGetValue(parameters.SemanticPid, out Dictionary<string, object?>? predecessor),
+            "metadata predecessor entity is missing"
+        );
+        Require(
+            afterEntities.TryGetValue(parameters.SemanticPid, out Dictionary<string, object?>? target),
+            "metadata target entity is missing"
+        );
+        Require(
+            EntityWithoutMetadataKey(predecessor!) == EntityWithoutMetadataKey(target!),
+            "metadata set changed non-metadata entity state"
+        );
+        if (target!["metadata"] is not Dictionary<string, object?> metadata
+            || !metadata.TryGetValue(parameters.Namespace, out object? actualValue))
+        {
+            throw new BridgeServiceException(
+                "PROVISIONAL_VALIDATION_FAILED",
+                "metadata namespace is missing from provisional semantic state"
+            );
+        }
+        Require(
+            SemanticFingerprint.CanonicalMetadataSortKey(actualValue!)
+                == SemanticFingerprint.CanonicalMetadataSortKey(parameters.Value),
+            "provisional metadata differs from requested value"
+        );
+    }
+
     internal static void ValidateBatchCreate(
         IReadOnlyList<string> affectedPids,
         BatchCreateParams parameters,
@@ -241,6 +292,14 @@ internal static class NativeMutationValidator
             throw new BridgeServiceException("PROVISIONAL_VALIDATION_FAILED", "semantic snapshot entity collection is invalid");
         }
         return entities.ToDictionary(item => Convert.ToString(item["semantic_pid"])!, StringComparer.Ordinal);
+    }
+
+    private static string EntityWithoutMetadataKey(Dictionary<string, object?> entity)
+    {
+        Dictionary<string, object?> semantic = new(entity, StringComparer.Ordinal);
+        semantic.Remove("native_handle");
+        semantic.Remove("metadata");
+        return SemanticFingerprint.CanonicalLinearSortKey(semantic);
     }
 
     private static string EntityKey(Dictionary<string, object?> entity)

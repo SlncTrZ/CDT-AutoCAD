@@ -49,6 +49,25 @@ class DocumentContract(ABC):
     @abstractmethod
     async def drawing_purge(self) -> dict[str, Any]: ...
 
+    @abstractmethod
+    async def document_configure_units(
+        self,
+        insertion_units: str | None = None,
+        measurement: str | None = None,
+        linear_format: str | None = None,
+        linear_precision: int | None = None,
+    ) -> dict[str, Any]: ...
+
+    async def document_dependencies(self) -> dict[str, Any]:
+        raise UnsupportedCapabilityError(
+            "autocad.references.xref", "External-reference inventory requires the live COM backend."
+        )
+
+    async def artifact_seal(self, destination_dir: str | None = None) -> dict[str, Any]:
+        raise UnsupportedCapabilityError(
+            "autocad.artifact.seal", "Artifact sealing is not supported by this backend."
+        )
+
 
 class ObjectQueryContract(ABC):
     @abstractmethod
@@ -143,10 +162,30 @@ class LayerContract(ABC):
     @abstractmethod
     async def layer_set_current(self, name: str) -> dict[str, Any]: ...
 
+    @abstractmethod
+    async def layer_update_state(
+        self,
+        name: str,
+        *,
+        is_on: bool | None = None,
+        is_frozen: bool | None = None,
+        is_locked: bool | None = None,
+        color: int | None = None,
+        linetype: str | None = None,
+        lineweight: int | None = None,
+    ) -> LayerInfo: ...
+
 
 class BlockContract(ABC):
     @abstractmethod
-    async def block_list(self) -> list[BlockInfo]: ...
+    async def block_list(
+        self,
+        include_xref_dependent: bool = False,
+        include_xrefs: bool = True,
+        name_filter: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[BlockInfo]: ...
 
     @abstractmethod
     async def block_create(
@@ -155,6 +194,33 @@ class BlockContract(ABC):
 
     @abstractmethod
     async def block_insert(self, name: str, x: float, y: float, **kwargs: Any) -> EntityInfo: ...
+
+
+class ReferenceContract(ABC):
+    async def xref_list(self) -> list[dict[str, Any]]:
+        raise UnsupportedCapabilityError(
+            "autocad.references.xref", "External-reference management requires the live COM backend."
+        )
+
+    async def xref_attach(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise UnsupportedCapabilityError(
+            "autocad.references.xref", "External-reference management requires the live COM backend."
+        )
+
+    async def xref_reload(self, name: str) -> dict[str, Any]:
+        raise UnsupportedCapabilityError(
+            "autocad.references.xref", "External-reference management requires the live COM backend."
+        )
+
+    async def xref_unload(self, name: str) -> dict[str, Any]:
+        raise UnsupportedCapabilityError(
+            "autocad.references.xref", "External-reference management requires the live COM backend."
+        )
+
+    async def xref_detach(self, name: str) -> dict[str, Any]:
+        raise UnsupportedCapabilityError(
+            "autocad.references.xref", "External-reference management requires the live COM backend."
+        )
 
 
 class LayoutContract(ABC):
@@ -228,6 +294,16 @@ class ViewContract(ABC):
             "autocad.view.3d", "3D live view control requires the COM backend."
         )
 
+    async def view_set_preset(self, preset: str) -> dict[str, Any]:
+        raise UnsupportedCapabilityError(
+            "autocad.view.3d", "3D view presets require the live COM backend."
+        )
+
+    async def view_set_visual_style(self, style: str) -> dict[str, Any]:
+        raise UnsupportedCapabilityError(
+            "autocad.view.visual_style", "Visual-style control requires the live COM backend."
+        )
+
 
 class SpatialCurveContract(ABC):
     """A3 supporting 3D-curve geometry for native modeling workflows."""
@@ -295,6 +371,9 @@ class SolidContract(ABC):
     async def solid_inspect(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         raise self._solid_refusal()
 
+    async def solid_export(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise self._solid_refusal()
+
 
 class AnalysisContract(ABC):
     """A3.3 geometry-analysis surface staged below the public MCP contract."""
@@ -336,6 +415,7 @@ class AutoCADBackend(
     EntityCreationContract,
     LayerContract,
     BlockContract,
+    ReferenceContract,
     LayoutContract,
     ViewContract,
     SpatialCurveContract,

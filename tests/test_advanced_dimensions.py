@@ -79,14 +79,16 @@ async def test_ezdxf_advanced_dimensions_create_real_dimension_entities(settings
     assert await backend.object_count(type_filter="DIMENSION") == 5
 
 
-async def test_advanced_dimensions_remain_staged_in_capability_map(settings):
+async def test_advanced_dimensions_are_promoted_with_runtime_truthfulness(settings):
     ezdxf = EzdxfBackend(settings).capabilities()["autocad.dimensions.advanced"]
     com = ComBackend(settings).capabilities()["autocad.dimensions.advanced"]
 
-    assert ezdxf["supported"] is False
-    assert ezdxf["reason"] == "A3_2_staged_not_public"
-    assert com["supported"] is False
-    assert com["reason"] == "A3_2_staged_pending_live_verification"
+    assert ezdxf == {"supported": True, "mode": "ezdxf_native", "reason": None}
+    if sys.platform == "win32":
+        assert com["supported"] is True
+    else:
+        assert com["supported"] is False
+        assert com["reason"] == "windows_required"
 
 
 async def test_com_advanced_dimensions_use_typed_activex_methods(settings, monkeypatch):

@@ -14,7 +14,7 @@ from .models import EntitySemanticState, SemanticDelta, SemanticSnapshot
 
 _FINGERPRINT_NAMESPACE = "cdt-autocad-semantic"
 _FINGERPRINT_SCHEMA_VERSION = 1
-DOCUMENT_FINGERPRINT_SCHEMA_VERSION = 2
+DOCUMENT_FINGERPRINT_SCHEMA_VERSION = 3
 
 
 def semantic_fingerprint(

@@ -59,6 +59,7 @@ internal sealed class BridgeDispatcher
                 continue;
             }
 
+            bool yieldAfterRequest = RequiresIdleYield(pending.Request);
             BridgeResponse response;
             try
             {
@@ -66,6 +67,10 @@ internal sealed class BridgeDispatcher
                 if (ReferenceEquals(result, DeferredBridgeResult.Instance))
                 {
                     _deferred.Enqueue(pending);
+                    if (yieldAfterRequest)
+                    {
+                        return;
+                    }
                     continue;
                 }
                 response = BridgeResponse.Success(pending.Request.RequestId, result);
@@ -87,8 +92,16 @@ internal sealed class BridgeDispatcher
                 );
             }
             pending.Completion.TrySetResult(response);
+            if (yieldAfterRequest)
+            {
+                return;
+            }
         }
     }
+
+    private static bool RequiresIdleYield(BridgeRequest request) =>
+        request.Operation.StartsWith("entity.batch.", StringComparison.Ordinal)
+        || string.Equals(request.Operation, "bridge.logical.begin", StringComparison.Ordinal);
 
     internal void Complete()
     {

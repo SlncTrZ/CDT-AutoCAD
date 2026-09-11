@@ -389,8 +389,8 @@ def test_geometry_fingerprint_has_stable_golden_value():
     )
 
 
-def test_document_fingerprint_v2_ignores_volatile_saved_flag():
-    assert DOCUMENT_FINGERPRINT_SCHEMA_VERSION == 2
+def test_document_fingerprint_v3_ignores_volatile_saved_flag():
+    assert DOCUMENT_FINGERPRINT_SCHEMA_VERSION == 3
     entity = EntitySemanticState(
         semantic_pid="pid:1",
         native_handle="10",

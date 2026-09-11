@@ -1,6 +1,7 @@
 // NativeMutationService — N7 two-phase typed mutation, checkpointed recovery and verified rollback.
 // Wing: code | Topic: native-bridge-n7 | Updated: 2026-09-10 20:45
 
+using System.Text.Json;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
@@ -72,6 +73,328 @@ internal sealed class NativeMutationService
         _semantic = semantic;
         _documents = documents;
         _checkpoints = new NativeCheckpointStore();
+    }
+
+    internal object BeginLogicalBatch(
+        Document document,
+        Guid requestId,
+        LogicalBeginParams parameters
+    )
+    {
+        using DocumentLock documentLock = document.LockDocument();
+        Dictionary<string, object?> before = _semantic.Extract(
+            document,
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid,
+            BridgeConstants.MaxBatchSemanticEntities
+        );
+        string parentFp = Fingerprint(before);
+        if (!string.Equals(parentFp, parameters.ExpectedParentFp, StringComparison.Ordinal))
+        {
+            throw new BridgeServiceException(
+                "STATE_DRIFT",
+                "current semantic fingerprint does not match expected_parent_fp"
+            );
+        }
+        NativeCheckpoint checkpoint = _checkpoints.Create(
+            document,
+            parameters.DocumentPid,
+            parentFp,
+            "logical.batch",
+            requestId
+        );
+        return new Dictionary<string, object?>
+        {
+            ["schema_version"] = 1,
+            ["status"] = "OPEN",
+            ["document_pid"] = parameters.DocumentPid,
+            ["pre_document_fp"] = parentFp,
+            ["logical_transaction"] = CheckpointPayload(checkpoint),
+        };
+    }
+
+    internal object MetadataGet(Document document, MetadataGetParams parameters)
+    {
+        using DocumentLock documentLock = document.LockDocument();
+        using Transaction transaction = document.Database.TransactionManager.StartOpenCloseTransaction();
+        ObjectId objectId = EntityPidStore.ResolveCurrentSpaceEntity(
+            document.Database,
+            parameters.SemanticPid,
+            transaction
+        );
+        DBObject target = transaction.GetObject(objectId, OpenMode.ForRead, false);
+        bool found = NativeMetadataStore.TryGet(
+            target,
+            transaction,
+            parameters.Namespace,
+            out JsonElement value
+        );
+        return new Dictionary<string, object?>
+        {
+            ["schema_version"] = 1,
+            ["document_pid"] = parameters.DocumentPid,
+            ["semantic_pid"] = parameters.SemanticPid,
+            ["namespace"] = parameters.Namespace,
+            ["found"] = found,
+            ["value"] = found ? value : null,
+        };
+    }
+
+    internal object MetadataQuery(Document document, MetadataQueryParams parameters)
+    {
+        using DocumentLock documentLock = document.LockDocument();
+        using Transaction transaction = document.Database.TransactionManager.StartOpenCloseTransaction();
+        BlockTableRecord space = (BlockTableRecord)transaction.GetObject(
+            document.Database.CurrentSpaceId,
+            OpenMode.ForRead
+        );
+        List<Dictionary<string, object?>> matches = [];
+        bool truncated = false;
+        int scannedEntities = 0;
+        foreach (ObjectId objectId in space)
+        {
+            scannedEntities++;
+            if (scannedEntities > BridgeConstants.MaxBatchSemanticEntities)
+            {
+                throw new BridgeServiceException(
+                    "SNAPSHOT_CAPACITY_EXCEEDED",
+                    "metadata query exceeds the bounded semantic scan capacity"
+                );
+            }
+            if (objectId.IsErased
+                || transaction.GetObject(objectId, OpenMode.ForRead, false) is not Entity entity)
+            {
+                continue;
+            }
+            string semanticPid = EntityPidReader.ReadRequired(entity, transaction);
+            if (!NativeMetadataStore.TryGet(
+                entity,
+                transaction,
+                parameters.Namespace,
+                out JsonElement rootValue
+            ))
+            {
+                continue;
+            }
+            JsonElement selected = rootValue;
+            if (parameters.Path is not null)
+            {
+                if (!NativeMetadataStore.TryResolvePath(rootValue, parameters.Path, out selected)
+                    || parameters.MatchValue is null
+                    || !NativeMetadataStore.JsonEquals(selected, parameters.MatchValue.Value))
+                {
+                    continue;
+                }
+            }
+            if (matches.Count >= parameters.Limit)
+            {
+                truncated = true;
+                break;
+            }
+            matches.Add(new Dictionary<string, object?>
+            {
+                ["semantic_pid"] = semanticPid,
+                ["value"] = rootValue.Clone(),
+            });
+        }
+        return new Dictionary<string, object?>
+        {
+            ["schema_version"] = 1,
+            ["document_pid"] = parameters.DocumentPid,
+            ["namespace"] = parameters.Namespace,
+            ["path"] = parameters.Path,
+            ["count"] = matches.Count,
+            ["scanned_entities"] = scannedEntities,
+            ["limit"] = parameters.Limit,
+            ["truncated"] = truncated,
+            ["items"] = matches.ToArray(),
+        };
+    }
+
+    internal object MetadataSet(
+        Document document,
+        Guid requestId,
+        MetadataSetParams parameters
+    )
+    {
+        const string operation = "metadata.set";
+        using DocumentLock documentLock = document.LockDocument();
+        Dictionary<string, object?> before = _semantic.Extract(
+            document,
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid,
+            BridgeConstants.MaxBatchSemanticEntities
+        );
+        string parentFp = Fingerprint(before);
+        if (!string.Equals(parentFp, parameters.ExpectedParentFp, StringComparison.Ordinal))
+        {
+            throw new BridgeServiceException(
+                "STATE_DRIFT",
+                "current semantic fingerprint does not match expected_parent_fp"
+            );
+        }
+        Dictionary<string, object?> predecessorEntity = FindEntity(before, parameters.SemanticPid);
+        if (predecessorEntity["metadata"] is Dictionary<string, object?> predecessorMetadata
+            && predecessorMetadata.TryGetValue(parameters.Namespace, out object? previousValue)
+            && previousValue is not null
+            && SemanticFingerprint.CanonicalMetadataSortKey(previousValue)
+                == SemanticFingerprint.CanonicalMetadataSortKey(parameters.Value))
+        {
+            throw new BridgeServiceException(
+                "NO_EFFECT",
+                "metadata set value already matches the protected predecessor state"
+            );
+        }
+
+        NativeCheckpoint checkpoint = _checkpoints.Create(
+            document,
+            parameters.DocumentPid,
+            parentFp,
+            operation,
+            requestId
+        );
+        ObjectId affectedObjectId = ObjectId.Null;
+        Dictionary<string, object?>? provisional = null;
+        bool committed = false;
+        string? r0Reason = null;
+        try
+        {
+            using (Transaction transaction = document.Database.TransactionManager.StartTransaction())
+            {
+                affectedObjectId = EntityPidStore.ResolveCurrentSpaceEntity(
+                    document.Database,
+                    parameters.SemanticPid,
+                    transaction
+                );
+                DBObject target = transaction.GetObject(
+                    affectedObjectId,
+                    OpenMode.ForWrite,
+                    false
+                );
+                NativeMetadataStore.SetNamespace(
+                    target,
+                    transaction,
+                    parameters.Namespace,
+                    parameters.Value
+                );
+
+                if (string.Equals(
+                    parameters.FaultStage,
+                    "after_apply_before_commit",
+                    StringComparison.Ordinal
+                ))
+                {
+                    r0Reason = "FAULT_INJECTED";
+                    transaction.Abort();
+                }
+                else
+                {
+                    try
+                    {
+                        provisional = _semantic.BuildProvisionalFromAffected(
+                            document,
+                            parameters.RuntimeDocumentId,
+                            parameters.DocumentPid,
+                            before,
+                            transaction,
+                            new[] { affectedObjectId },
+                            BridgeConstants.MaxBatchSemanticEntities
+                        );
+                        NativeMutationValidator.ValidateMetadataSet(parameters, before, provisional);
+                    }
+                    catch (BridgeServiceException exc) when (
+                        exc.Code is "PROVISIONAL_VALIDATION_FAILED" or "SNAPSHOT_TOO_LARGE"
+                    )
+                    {
+                        r0Reason = "PROVISIONAL_VALIDATION_FAILED";
+                    }
+
+                    if (r0Reason is not null)
+                    {
+                        transaction.Abort();
+                    }
+                    else
+                    {
+                        transaction.Commit();
+                        committed = true;
+                    }
+                }
+            }
+
+            if (!committed)
+            {
+                Dictionary<string, object?> afterAbort = _semantic.Extract(
+                    document,
+                    parameters.RuntimeDocumentId,
+                    parameters.DocumentPid,
+                    BridgeConstants.MaxBatchSemanticEntities
+                );
+                string restoreFp = Fingerprint(afterAbort);
+                bool restored = string.Equals(restoreFp, parentFp, StringComparison.Ordinal);
+                if (restored)
+                {
+                    _checkpoints.Finalize(checkpoint);
+                }
+                return RollbackResult(
+                    operation,
+                    parameters.DocumentPid,
+                    parameters.SemanticPid,
+                    checkpoint,
+                    "R0_ABORT",
+                    r0Reason ?? "EXECUTION_FAILED",
+                    parentFp,
+                    restoreFp,
+                    restored,
+                    parameters.RuntimeDocumentId
+                );
+            }
+
+            if (provisional is null)
+            {
+                throw new BridgeServiceException(
+                    "COMMIT_INTEGRITY_FAIL",
+                    "provisional semantic state is unavailable after metadata commit"
+                );
+            }
+            string provisionalFp = Fingerprint(provisional);
+            _recoveryContexts[checkpoint.CheckpointId] = new NativeRecoveryContext(
+                checkpoint,
+                operation,
+                parameters.SemanticPid,
+                affectedObjectId,
+                predecessorEntity
+            );
+            Dictionary<string, object?> persisted = _semantic.Extract(
+                document,
+                parameters.RuntimeDocumentId,
+                parameters.DocumentPid,
+                BridgeConstants.MaxBatchSemanticEntities
+            );
+            string persistedFp = Fingerprint(persisted);
+            bool integrityOk = string.Equals(provisionalFp, persistedFp, StringComparison.Ordinal);
+            return new Dictionary<string, object?>
+            {
+                ["schema_version"] = 1,
+                ["operation"] = operation,
+                ["outcome"] = integrityOk ? "COMMITTED_VERIFIED" : "COMMIT_INTEGRITY_FAIL",
+                ["document_pid"] = parameters.DocumentPid,
+                ["pre_document_fp"] = parentFp,
+                ["provisional_document_fp"] = provisionalFp,
+                ["post_document_fp"] = persistedFp,
+                ["affected_semantic_pid"] = parameters.SemanticPid,
+                ["namespace"] = parameters.Namespace,
+                ["recovery_checkpoint"] = CheckpointPayload(checkpoint),
+            };
+        }
+        catch
+        {
+            if (!committed)
+            {
+                try { _checkpoints.Finalize(checkpoint); }
+                catch { }
+            }
+            throw;
+        }
     }
 
     internal object Execute(
@@ -307,12 +630,13 @@ internal sealed class NativeMutationService
             );
         }
 
-        NativeCheckpoint checkpoint = _checkpoints.Create(
+        (NativeCheckpoint checkpoint, bool ownsCheckpoint) = AcquireBatchCheckpoint(
             document,
             parameters.DocumentPid,
             parentFp,
             operation,
-            requestId
+            requestId,
+            parameters.LogicalTransaction
         );
         List<string> affectedPids = [];
         List<ObjectId> affectedObjectIds = [];
@@ -343,11 +667,13 @@ internal sealed class NativeMutationService
                 {
                     try
                     {
-                        provisional = _semantic.ExtractWithinTransaction(
+                        provisional = _semantic.BuildProvisionalFromAffected(
                             document,
                             parameters.RuntimeDocumentId,
                             parameters.DocumentPid,
+                            before,
                             transaction,
+                            affectedObjectIds,
                             BridgeConstants.MaxBatchSemanticEntities
                         );
                         NativeMutationValidator.ValidateBatchCreate(
@@ -385,7 +711,7 @@ internal sealed class NativeMutationService
                 );
                 string restoreFp = Fingerprint(afterAbort);
                 bool restored = string.Equals(restoreFp, parentFp, StringComparison.Ordinal);
-                if (restored)
+                if (restored && ownsCheckpoint)
                 {
                     _checkpoints.Finalize(checkpoint);
                 }
@@ -411,12 +737,15 @@ internal sealed class NativeMutationService
                 );
             }
             string provisionalFp = Fingerprint(provisional);
-            _batchRecoveryContexts[checkpoint.CheckpointId] = new NativeBatchRecoveryContext(
-                checkpoint,
-                affectedPids.ToArray(),
-                affectedObjectIds.ToArray(),
-                null
-            );
+            if (ownsCheckpoint)
+            {
+                _batchRecoveryContexts[checkpoint.CheckpointId] = new NativeBatchRecoveryContext(
+                    checkpoint,
+                    affectedPids.ToArray(),
+                    affectedObjectIds.ToArray(),
+                    null
+                );
+            }
 
             Dictionary<string, object?> persisted = _semantic.Extract(
                 document,
@@ -441,7 +770,7 @@ internal sealed class NativeMutationService
         }
         catch
         {
-            if (!committed)
+            if (!committed && ownsCheckpoint)
             {
                 try { _checkpoints.Finalize(checkpoint); }
                 catch { }
@@ -484,12 +813,13 @@ internal sealed class NativeMutationService
             _ = FindVisibleBlockDefinition(before, definitionPid);
         }
 
-        NativeCheckpoint checkpoint = _checkpoints.Create(
+        (NativeCheckpoint checkpoint, bool ownsCheckpoint) = AcquireBatchCheckpoint(
             document,
             parameters.DocumentPid,
             parentFp,
             operation,
-            requestId
+            requestId,
+            parameters.LogicalTransaction
         );
         List<string> affectedPids = [];
         List<ObjectId> affectedObjectIds = [];
@@ -539,11 +869,13 @@ internal sealed class NativeMutationService
                 {
                     try
                     {
-                        provisional = _semantic.ExtractWithinTransaction(
+                        provisional = _semantic.BuildProvisionalFromAffected(
                             document,
                             parameters.RuntimeDocumentId,
                             parameters.DocumentPid,
+                            before,
                             transaction,
+                            affectedObjectIds,
                             BridgeConstants.MaxBatchSemanticEntities
                         );
                         NativeMutationValidator.ValidateBatchInsertBlocks(
@@ -581,7 +913,7 @@ internal sealed class NativeMutationService
                 );
                 string restoreFp = Fingerprint(afterAbort);
                 bool restored = string.Equals(restoreFp, parentFp, StringComparison.Ordinal);
-                if (restored)
+                if (restored && ownsCheckpoint)
                 {
                     _checkpoints.Finalize(checkpoint);
                 }
@@ -607,12 +939,15 @@ internal sealed class NativeMutationService
                 );
             }
             string provisionalFp = Fingerprint(provisional);
-            _batchRecoveryContexts[checkpoint.CheckpointId] = new NativeBatchRecoveryContext(
-                checkpoint,
-                affectedPids.ToArray(),
-                affectedObjectIds.ToArray(),
-                null
-            );
+            if (ownsCheckpoint)
+            {
+                _batchRecoveryContexts[checkpoint.CheckpointId] = new NativeBatchRecoveryContext(
+                    checkpoint,
+                    affectedPids.ToArray(),
+                    affectedObjectIds.ToArray(),
+                    null
+                );
+            }
 
             Dictionary<string, object?> persisted = _semantic.Extract(
                 document,
@@ -637,7 +972,7 @@ internal sealed class NativeMutationService
         }
         catch
         {
-            if (!committed)
+            if (!committed && ownsCheckpoint)
             {
                 try { _checkpoints.Finalize(checkpoint); }
                 catch { }
@@ -669,12 +1004,13 @@ internal sealed class NativeMutationService
             );
         }
 
-        NativeCheckpoint checkpoint = _checkpoints.Create(
+        (NativeCheckpoint checkpoint, bool ownsCheckpoint) = AcquireBatchCheckpoint(
             document,
             parameters.DocumentPid,
             parentFp,
             operation,
-            requestId
+            requestId,
+            parameters.LogicalTransaction
         );
         List<ObjectId> affectedObjectIds = [];
         List<Dictionary<string, object?>> predecessorEntities = [];
@@ -711,11 +1047,13 @@ internal sealed class NativeMutationService
                 {
                     try
                     {
-                        provisional = _semantic.ExtractWithinTransaction(
+                        provisional = _semantic.BuildProvisionalFromAffected(
                             document,
                             parameters.RuntimeDocumentId,
                             parameters.DocumentPid,
+                            before,
                             transaction,
+                            affectedObjectIds,
                             BridgeConstants.MaxBatchSemanticEntities
                         );
                         NativeMutationValidator.ValidateBatchTransform(
@@ -753,7 +1091,7 @@ internal sealed class NativeMutationService
                 );
                 string restoreFp = Fingerprint(afterAbort);
                 bool restored = string.Equals(restoreFp, parentFp, StringComparison.Ordinal);
-                if (restored)
+                if (restored && ownsCheckpoint)
                 {
                     _checkpoints.Finalize(checkpoint);
                 }
@@ -779,12 +1117,15 @@ internal sealed class NativeMutationService
                 );
             }
             string provisionalFp = Fingerprint(provisional);
-            _batchRecoveryContexts[checkpoint.CheckpointId] = new NativeBatchRecoveryContext(
-                checkpoint,
-                parameters.SemanticPids,
-                affectedObjectIds.ToArray(),
-                predecessorEntities.ToArray()
-            );
+            if (ownsCheckpoint)
+            {
+                _batchRecoveryContexts[checkpoint.CheckpointId] = new NativeBatchRecoveryContext(
+                    checkpoint,
+                    parameters.SemanticPids,
+                    affectedObjectIds.ToArray(),
+                    predecessorEntities.ToArray()
+                );
+            }
 
             Dictionary<string, object?> persisted = _semantic.Extract(
                 document,
@@ -809,7 +1150,7 @@ internal sealed class NativeMutationService
         }
         catch
         {
-            if (!committed)
+            if (!committed && ownsCheckpoint)
             {
                 try { _checkpoints.Finalize(checkpoint); }
                 catch { }
@@ -970,8 +1311,27 @@ internal sealed class NativeMutationService
         try
         {
             using Transaction transaction = document.Database.TransactionManager.StartTransaction();
-            string verb = context.Operation.Split('.')[1];
-            if (verb == "create")
+            if (string.Equals(context.Operation, "metadata.set", StringComparison.Ordinal))
+            {
+                if (context.PredecessorEntity is null
+                    || context.PredecessorEntity["metadata"] is not Dictionary<string, object?> metadata)
+                {
+                    throw new BridgeServiceException(
+                        "R1_UNAVAILABLE",
+                        "metadata predecessor state is unavailable"
+                    );
+                }
+                DBObject target = transaction.GetObject(
+                    context.AffectedObjectId,
+                    OpenMode.ForWrite,
+                    false
+                );
+                NativeMetadataStore.ReplaceAll(target, transaction, metadata);
+            }
+            else
+            {
+                string verb = context.Operation.Split('.')[1];
+                if (verb == "create")
             {
                 DBObject created = transaction.GetObject(
                     context.AffectedObjectId,
@@ -1002,9 +1362,10 @@ internal sealed class NativeMutationService
                 );
                 deleted.Erase(false);
             }
-            else
-            {
-                throw new BridgeServiceException("R1_UNAVAILABLE", "mutation family has no deterministic inverse");
+                else
+                {
+                    throw new BridgeServiceException("R1_UNAVAILABLE", "mutation family has no deterministic inverse");
+                }
             }
             transaction.Commit();
         }
@@ -1411,8 +1772,43 @@ internal sealed class NativeMutationService
         }
     }
 
+    private (NativeCheckpoint Checkpoint, bool OwnsCheckpoint) AcquireBatchCheckpoint(
+        Document document,
+        string documentPid,
+        string parentFp,
+        string operation,
+        Guid requestId,
+        LogicalBatchBinding? logicalTransaction
+    )
+    {
+        if (logicalTransaction is null)
+        {
+            return (
+                _checkpoints.Create(document, documentPid, parentFp, operation, requestId),
+                true
+            );
+        }
+        NativeCheckpoint checkpoint = _checkpoints.Require(
+            logicalTransaction.CheckpointId,
+            documentPid,
+            logicalTransaction.CheckpointArtifactFp,
+            logicalTransaction.ExpectedRestoreFp
+        );
+        if (!string.Equals(checkpoint.Operation, "logical.batch", StringComparison.Ordinal))
+        {
+            throw new BridgeServiceException(
+                "RECOVERY_BINDING_MISMATCH",
+                "logical_transaction must reference a logical.batch predecessor checkpoint"
+            );
+        }
+        EnsureNoR2InProgress(checkpoint.CheckpointId);
+        return (checkpoint, false);
+    }
+
     private static int RecoverySemanticLimit(NativeCheckpoint checkpoint) =>
         checkpoint.Operation.StartsWith("entity.batch.", StringComparison.Ordinal)
+            || string.Equals(checkpoint.Operation, "logical.batch", StringComparison.Ordinal)
+            || string.Equals(checkpoint.Operation, "metadata.set", StringComparison.Ordinal)
             ? BridgeConstants.MaxBatchSemanticEntities
             : BridgeConstants.MaxSnapshotEntities;
 

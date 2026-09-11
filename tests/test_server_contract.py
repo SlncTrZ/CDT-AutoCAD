@@ -16,7 +16,12 @@ from cdt_autocad import __version__
 from cdt_autocad.backends.com_backend import ComBackend
 from cdt_autocad.backends.ezdxf_backend import EzdxfBackend
 from cdt_autocad.config import Settings
-from cdt_autocad.server import _validate_http_launch, create_mcp
+from cdt_autocad.contract_identity import (
+    CONTRACT_VERSION,
+    EXECUTION_MODEL,
+    PUBLIC_TOOL_COUNT,
+)
+from cdt_autocad.server import _TOOL_DESCRIPTIONS, _validate_http_launch, create_mcp
 
 
 def test_package_metadata_version_matches_runtime():
@@ -27,64 +32,27 @@ def test_package_metadata_version_matches_runtime():
 
 
 @pytest.mark.asyncio
-async def test_a2_rc_tool_surface_is_bounded_and_explicit(settings):
+async def test_generic_rc_tool_surface_is_bounded_and_explicit(settings):
     app = create_mcp(settings)
     async with Client(app) as client:
         names = {tool.name for tool in await client.list_tools()}
 
-    assert names == {
-        "help",
-        "system_status",
-        "system_capabilities",
-        "document_new",
-        "document_open",
-        "document_info",
-        "document_save",
-        "document_save_as",
-        "document_export_pdf",
-        "drawing_audit",
-        "drawing_purge",
-        "object_list",
-        "object_get",
-        "object_count",
-        "object_set_properties",
-        "object_delete",
-        "object_move",
-        "object_copy",
-        "object_rotate",
-        "object_scale",
-        "entity_create_line",
-        "entity_create_circle",
-        "entity_create_arc",
-        "entity_create_polyline",
-        "entity_create_text",
-        "hatch_create",
-        "dimension_linear",
-        "dimension_aligned",
-        "layer_list",
-        "layer_create",
-        "layer_set_current",
-        "block_list",
-        "block_create",
-        "block_insert",
-        "layout_list",
-        "layout_create",
-        "layout_set_current",
-        "viewport_create",
-        "viewport_list",
-        "viewport_set_scale",
-        "viewport_lock",
-        "viewport_delete",
-        "view_zoom_extents",
-        "view_zoom_window",
-        "view_screenshot",
-        "transaction_begin",
-        "transaction_commit",
-        "transaction_rollback",
-        "undo",
-        "redo",
-    }
-    assert len(names) == 50
+    assert names == set(_TOOL_DESCRIPTIONS)
+    assert len(names) == PUBLIC_TOOL_COUNT == 86
+    assert {
+        "feature_execute",
+        "native_integrity_status",
+        "batch_create_entities",
+        "batch_insert_blocks",
+        "batch_transform_entities",
+        "metadata_get",
+        "metadata_set",
+        "metadata_query",
+        "document_dependencies",
+        "artifact_seal",
+        "xref_attach",
+        "solid_export",
+    } <= names
 
 
 @pytest.mark.asyncio
@@ -93,24 +61,18 @@ async def test_public_tool_catalog_has_unique_semantic_descriptions_and_read_onl
     async with Client(app) as client:
         tools = list(await client.list_tools())
 
-    assert len(tools) == 50
+    assert len(tools) == PUBLIC_TOOL_COUNT
     descriptions = {tool.name: tool.description for tool in tools}
     assert all(description and len(description) >= 40 for description in descriptions.values())
-    assert len(set(descriptions.values())) == 50
+    assert len(set(descriptions.values())) == PUBLIC_TOOL_COUNT
 
     read_only_tools = {
-        "help",
-        "system_status",
-        "system_capabilities",
-        "document_info",
-        "object_list",
-        "object_get",
-        "object_count",
-        "layer_list",
-        "block_list",
-        "layout_list",
-        "viewport_list",
-        "view_screenshot",
+        "help", "system_status", "system_capabilities", "document_info",
+        "document_dependencies", "object_list", "object_get", "object_count",
+        "object_query", "object_measure", "object_intersections", "drawing_extents",
+        "layer_list", "block_list", "xref_list", "layout_list", "viewport_list",
+        "view_screenshot", "solid_inspect", "native_integrity_status", "metadata_get",
+        "metadata_query",
     }
     for tool in tools:
         assert tool.annotations is not None
@@ -154,7 +116,9 @@ async def test_com_system_status_exposes_primary_live_certification_target(setti
     assert payload["certification"]["evidence_reference"] == "docs/LIVE_ACCEPTANCE.md"
     assert payload["build_identity"] == {
         "provider_version": __version__,
-        "contract_version": "autocad-a2-v1-rc1",
+        "contract_version": CONTRACT_VERSION,
+        "public_tool_count": PUBLIC_TOOL_COUNT,
+        "execution_model": EXECUTION_MODEL,
         "runtime_manifest_attached": False,
         "source_or_dll_claim_requires_manifest": True,
     }
@@ -167,11 +131,11 @@ def test_capability_keyset_is_stable_across_backends(settings):
 
 
 @pytest.mark.asyncio
-async def test_com_selection_keeps_the_same_bounded_50_tool_surface(settings):
+async def test_com_selection_keeps_the_same_bounded_generic_tool_surface(settings):
     app = create_mcp(replace(settings, backend="com"))
     async with Client(app) as client:
         names = {tool.name for tool in await client.list_tools()}
-    assert len(names) == 50
+    assert len(names) == PUBLIC_TOOL_COUNT
     assert "document_open" in names
     assert "undo" in names
 
@@ -183,10 +147,12 @@ async def test_help_and_basic_workflow_over_real_mcp_client(settings, tmp_path: 
         help_result = await client.call_tool("help", {})
         help_payload = help_result.structured_content or {}
         assert help_payload["provider_name"] == "autocad"
-        assert help_payload["provider_version"] == "0.3.0rc1"
-        assert help_payload["contract_version"] == "autocad-a2-v1-rc1"
+        assert help_payload["provider_version"] == "0.4.0rc1"
+        assert help_payload["contract_version"] == CONTRACT_VERSION
+        assert help_payload["public_tool_count"] == PUBLIC_TOOL_COUNT
+        assert help_payload["execution_model"] == EXECUTION_MODEL
         assert len(help_payload["contract_hash"]) == 64
-        assert "A2 release-candidate" in help_payload["content"]
+        assert "Feature-based Chunks Streaming" in help_payload["content"]
 
         await client.call_tool("document_new", {})
         created = await client.call_tool(

@@ -163,3 +163,25 @@ def test_client_validates_request_locally_before_transport():
     with pytest.raises(Exception, match="INVALID_RUNTIME_DOCUMENT_ID"):
         client.document_identity("not-a-runtime-id")
     assert transport.requests == []
+
+
+def test_document_state_uses_compact_bound_selector_without_snapshot_payload():
+    result = {
+        "schema_version": 1,
+        "runtime_document_id": RUNTIME_DOCUMENT_ID,
+        "document_pid": "doc:lineage",
+        "document_fp_schema_version": 3,
+        "document_fp": "sha256:" + "a" * 64,
+        "entity_count": 1000,
+    }
+    transport = FakeTransport(lambda req: success(req, result))
+    client = NativeBridgeClient(transport, request_id_factory=lambda: REQUEST_ID)
+
+    observed = client.document_state(RUNTIME_DOCUMENT_ID, document_pid="doc:lineage")
+
+    assert observed == result
+    assert transport.requests[0]["operation"] == "bridge.document.state"
+    assert transport.requests[0]["params"] == {
+        "runtime_document_id": RUNTIME_DOCUMENT_ID,
+        "document_pid": "doc:lineage",
+    }

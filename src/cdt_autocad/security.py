@@ -100,3 +100,34 @@ def resolve_pdf_path(raw_path: str, settings: Settings) -> Path:
         must_exist=False,
         for_write=True,
     )
+
+
+def resolve_allowed_directory(raw_path: str, settings: Settings) -> Path:
+    """Resolve an existing destination directory inside the configured CAD roots."""
+    if not raw_path or not str(raw_path).strip():
+        raise ValueError("directory path must not be empty")
+    candidate = Path(raw_path).expanduser()
+    if not candidate.is_absolute():
+        candidate = settings.allowed_paths[0] / candidate
+    resolved = candidate.resolve(strict=False)
+    if not any(_inside(resolved, root) for root in settings.allowed_paths):
+        raise ValueError("path is outside CDT_AUTOCAD_ALLOWED_PATHS")
+    if not resolved.exists() or not resolved.is_dir():
+        raise ValueError("destination directory does not exist")
+    return resolved
+
+
+def resolve_autocad_export_path(
+    raw_path: str,
+    settings: Settings,
+    *,
+    allowed_suffixes: frozenset[str],
+) -> Path:
+    """Resolve a bounded export artifact path under the configured roots."""
+    return _resolve_path(
+        raw_path,
+        settings,
+        allowed_suffixes=allowed_suffixes,
+        must_exist=False,
+        for_write=True,
+    )

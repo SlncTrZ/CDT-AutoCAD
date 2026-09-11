@@ -101,7 +101,7 @@ Storage and contract rules:
 
 ### G3 — Chunked Logical Atomicity
 
-Large operations must preserve all-or-nothing **semantic outcome** without keeping one native AutoCAD transaction open for the full batch.
+A caller-defined **logical feature** must preserve an all-or-nothing semantic outcome without keeping one native AutoCAD transaction open for the full feature. The atomicity boundary is the feature currently being executed, not the entire drawing workflow.
 
 Required lifecycle:
 
@@ -139,7 +139,21 @@ ROLLED_BACK_VERIFIED
 
 If rollback cannot be proven exactly, the provider enters a blocking uncertainty state such as `STATE_UNCERTAIN` / `ROLLBACK_FAILED`; no later mutation may proceed until recovery establishes an authoritative state.
 
-This is **logical/semantic atomicity across chunks**, not one database transaction spanning thousands of entities. Intermediate chunk results may exist temporarily in the DWG while the logical operation is in progress, but they are not an accepted provider state until final verification succeeds.
+This is **logical/semantic atomicity across chunks**, not one database transaction spanning thousands of entities. Intermediate chunk results may exist temporarily in the DWG while the current feature is in progress, but they are not an accepted provider state until final verification succeeds.
+
+The production orchestration pattern is **Feature-based Chunks Streaming**:
+
+```text
+Feature 1 -> commit
+Feature 2 -> commit
+Feature 3 -> native chunks -> failure -> restore Feature 3 predecessor only
+Feature 1 + Feature 2 remain committed
+Domain Agent recomputes/retries Feature 3
+```
+
+The Domain Agent decides what constitutes a feature. `feature_id`, `feature_sequence` and `correlation_id` are orchestration/correlation data; CDT-AutoCAD does not interpret domain meaning such as centerline, curb, manhole, kiosk, beam or pipe. A feature may combine only generic CAD action families accepted by the provider.
+
+For presentation workflows, the provider may recommend a pacing delay after a successfully completed feature. The current production default is **300 ms between features**. Native micro-chunks themselves are not artificially delayed; they continue to yield through the AutoCAD scheduling boundary.
 
 If a future requirement demands that no intermediate state ever become visible in the target DWG, that requires a separate staging/off-document Database design followed by a final bounded transfer/commit. It is not implied by G3.
 
@@ -211,18 +225,19 @@ Trade-offs:
 - generic JSON query requires strict resource bounds to avoid becoming an unbounded query engine;
 - capability certification must be per entity family and scale tier rather than one broad "batch supported" claim.
 
-## 9. Implementation order
+## 9. Implementation status and order
 
-The approved sequence is:
+The approved sequence has now been executed through live acceptance:
 
-1. **G1 — Generic Batch Geometry**;
-2. **G2 — Schema-Agnostic Metadata**;
-3. **G3 — Chunked Logical Atomicity**;
-4. scale graduation `100 -> 1,000 -> 5,000 -> 10,000` with correctness/failure/scalability evidence;
-5. only then use the proven generic capabilities in later migration/promotion work.
+1. **G1 — Generic Batch Geometry — CLOSED / LIVE PASS**;
+2. **G2 — Schema-Agnostic Metadata — CLOSED / LIVE PASS**;
+3. **G3 — Chunked Logical Atomicity — CLOSED / LIVE PASS**;
+4. scale graduation `100 -> 1,000 -> 5,000 -> 10,000` — **CLOSED / LIVE PASS**;
+5. **Feature-based Chunks Streaming — IMPLEMENTED / LIVE PASS** as the Production Domain orchestration model;
+6. public contract promotion remains a separately reviewed version/contract change and is not considered release-closed until final regression/review/commit gates pass.
 
-Each G phase must have its own TDD, native build, real AutoCAD 2027 Interactive Session 1 acceptance, evidence, review and separate commit.
+Canonical current evidence is listed in `docs/CURRENT_CHECKPOINT.md` and `docs/NATIVE_BRIDGE_ACCEPTANCE.md`.
 
 ## 10. Decision summary
 
-**Accepted:** keep domain intelligence outside CDT-AutoCAD. The provider remains a generic, typed, bounded, recoverable CAD execution engine. The next engineering program is G1 -> G2 -> G3, with chunking and verified logical atomicity as first-class cross-domain capabilities.
+**Accepted:** keep domain intelligence outside CDT-AutoCAD. The provider remains a generic, typed, bounded, recoverable CAD execution engine. G1/G2/G3 and the 10,000-entity graduation are live-proven. Production Domains should orchestrate work as Feature-based Chunks Streaming: one meaningful caller-defined feature at a time, one feature-local predecessor checkpoint, exact rollback of only the failed current feature, and optional presentation pacing between completed features.

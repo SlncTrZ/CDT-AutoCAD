@@ -1,505 +1,230 @@
-# PLAN — AutoCAD Provider
+# Roadmap — CDT-AutoCAD
 
-> Lane: A · Target repo: `CDT-AutoCAD` · Updated: 2026-09-10 +07:00
-> Governing docs: `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/CURRENT_CHECKPOINT.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`
+> Updated: 2026-09-11 20:30 +07:00
+> Current authority: `docs/CURRENT_CHECKPOINT.md`
+> Architecture decisions: `docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`, `docs/ADR-002-GENERIC-CAD-EXECUTION-ENGINE.md`
 
-## 1. Objective
+## 1. Product direction
 
-AutoCAD is Lane A and the first implemented provider. Its runtime has been extracted history-preserving into this independent `CDT-AutoCAD` repository; the governing control-plane specs remain pinned to `CDT_Engineer@643019c`. It remains a reference provider used to validate:
+CDT-AutoCAD is the AutoCAD execution provider in the CDT toolchain. Its long-term role is not to become a civil/mechanical/architecture application. It is a reusable **Generic CAD Execution Engine** that gives Domain Agents a safe, typed and recoverable way to operate AutoCAD.
 
-- SlncTrZ provider compliance;
-- CDT common CAD contract;
-- provider extension contract;
-- dual-engine capability honesty;
-- test strategy before shared runtime extraction.
-
-Success means an MCP client can safely create/open a design, inspect geometry, create/modify entities, save/export, and understand exactly which capabilities the active engine supports.
-
-## 2. Architecture
-
-### 2.1 Current runtime baseline
+The product boundary is:
 
 ```text
-MCP tools
-   ↓
-Python AutoCAD provider contract
-   ↓
-backend abstraction
-   ├── ezdxf backend — headless DXF, cross-platform
-   └── COM backend   — live AutoCAD, Windows, native DWG
-```
-
-This remains the shipped/live-verified migration baseline.
-
-### 2.2 Accepted target architecture
-
-```text
-MCP / SlncTrZ Gateway
+Domain Agent
+  engineering rules / standards / calculations / design intent
         ↓
-Python Provider / Semantic Core
-  ActionSpec · SourceSemanticModel
-  PID/Fingerprint · Diff · Validation · Rollback/Audit
-        ↓ local typed IPC
-C# AutoCAD Managed .NET Native Bridge (in acad.exe)
-  Document/Database/ObjectId · Transactions · PID metadata
-  Semantic extraction · Event-assisted delta · Read-back
+CDT-AutoCAD
+  typed CAD execution / PID / fingerprint / validation / recovery
+        ↓
+Managed .NET Bridge
         ↓
 AutoCAD Database / DWG
 ```
 
-The target is governed by `ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md` and `SEMANTIC_STATE_PROTOCOL.md`. Two pillars are mandatory: **Data Integrity / Rollback** and **Precise Identity / PID + Fingerprinting**.
+No TCVN/ISO/ASME/customer business rule belongs in the provider. No arbitrary C#, AutoLISP, shell, macro or free-text command execution surface is introduced.
 
-The provider exposes bare MCP tools. SlncTrZ-MCP canonicalizes them to `autocad.<tool>`. No AutoCAD business logic belongs in SlncTrZ-MCP. The .NET bridge is an in-process native adapter, not the MCP server.
+## 2. Runtime architecture
 
-## 3. Contract Mapping
-
-### 3.1 Common CAD contract mapping
-
-| Common semantic | AutoCAD mapping |
-| --- | --- |
-| document lifecycle | drawing new/open/info/save/close |
-| object query | entity list/get/count |
-| transforms | move/copy/rotate/scale |
-| organization | layers; blocks remain richer extension |
-| units/coordinates | drawing units + WCS/OCS context |
-| transactions | COM native undo or ezdxf snapshots |
-| import/export | DXF/DWG/PDF according to backend capability |
-| validation | audit/geometry/document checks |
-
-### 3.2 AutoCAD extension
-
-AutoCAD-specific families:
-
-- DWG/DXF behavior;
-- layers/linetypes;
-- blocks/references;
-- layouts/paperspace/viewports;
-- dimensions;
-- hatch;
-- trim/offset/fillet;
-- plotting/PDF;
-- GDT/tolerance annotations;
-- AutoCAD live application state;
-- 3D solids where COM supports them.
-
-## 4. Dual-Engine Capability Rules
-
-| Capability | ezdxf | COM |
-| --- | --- | --- |
-| DXF read/write | native | via AutoCAD |
-| DWG read/write | unsupported unless explicit converter layer exists | native |
-| basic 2D entities | yes | yes |
-| layers/blocks/layouts | yes, with library limits | native |
-| live AutoCAD UI | no | yes |
-| native viewport capture | no | yes |
-| 3D ACIS solids | no | yes where API supports |
-| transactions | snapshot mode | native application undo/transaction semantics |
-
-No silent downgrade. Example: `drawing_save_as("x.dwg")` on ezdxf must refuse rather than write DXF bytes with a `.dwg` extension.
-
-## 5. Reuse Strategy
-
-Primary reference: `_private/reference/autocad/Autocad-MCP` (MIT).
-
-Secondary reference: `_private/reference/autocad/autocad-mcp-ks40` (MIT).
-
-### Reuse candidates
-
-- typed backend contract pattern;
-- COM + ezdxf split;
-- capability/refusal pattern;
-- entity conversion helpers;
-- path/command validation ideas;
-- timeout/quarantine behavior;
-- correctness tests/golden DXF fixtures;
-- backend parity tests.
-
-### Must be normalized for CDT
-
-- tool naming/surface;
-- provider help payload;
-- auth and lifecycle;
-- common-vs-extension contract;
-- error vocabulary;
-- config ownership;
-- observability;
-- SlncTrZ namespace behavior.
-
-Do not copy the upstream monolithic server surface wholesale.
-
-## 6. Implementation Phases
-
-### A0 — Headless Reference Baseline ✅ VERIFIED 2026-09-09
-
-Goal: a small but real provider that runs without AutoCAD installed.
-
-Required runtime:
-
-- Python 3.11+;
-- FastMCP;
-- ezdxf;
-- pydantic/schema validation.
-
-Required MCP tools/capabilities:
+The product keeps two useful execution lanes:
 
 ```text
-help
-system_status
-system_capabilities
-
-document_new
-document_open
-document_info
-document_save
-document_save_as
-
-object_list
-object_get
-object_count
-
-entity_create_line
-entity_create_circle
-entity_create_arc
-entity_create_polyline
-entity_create_text
-
-layer_list
-layer_create
-layer_set_current
+Python MCP Provider
+   ├── ezdxf — cross-platform/headless DXF
+   └── Windows live AutoCAD
+         ├── COM/ActiveX — broad existing product surface
+         └── Managed .NET Bridge — strong-integrity native lane
 ```
 
-Required controls:
+The native lane is bound by persistent document/entity PIDs, expected-parent fingerprints, short native transactions, independent semantic read-back and exact recovery. COM remains important for broad AutoCAD coverage, including functions not yet represented by the native typed bridge.
 
-- path allow-root validation;
-- bounded input file size;
-- bounded execution time;
-- fail-closed network auth;
-- structured errors;
-- no secret logging;
-- correct extension/format behavior.
+## 3. Completed foundation
 
-Tests:
+### A0/A1 — Headless provider
 
-- backend unit tests;
-- common contract tests;
-- capability honesty tests;
-- DXF golden roundtrip;
-- path traversal rejection;
-- HTTP auth/discovery/help smoke test.
+**CLOSED.** Document lifecycle, entity creation/editing, layers, blocks, dimensions, layouts, hatch, audit/purge, export, queries, snapshots and security controls are established on the headless lane.
 
-### A1 — Headless Production Baseline ✅ VERIFIED 2026-09-09
+### A2/A3 — Live AutoCAD product capabilities
 
-Add:
+The COM lane is live-verified on full AutoCAD 2027 / Windows x64. Advanced dimensions, measurement/analysis, native ACIS 3D, view control, XREF/dependency handling, artifact sealing and related product capabilities are represented in the current promotion candidate.
 
-- object properties/edit;
-- delete/move/copy/rotate/scale;
-- blocks;
-- dimensions;
-- layouts/paperspace;
-- hatch;
-- audit/purge;
-- PDF export when rendering dependency is present;
-- snapshot undo/rollback;
-- filtering/pagination;
-- result correctness tests.
-
-### A2 — COM Live Backend
-
-Windows + AutoCAD lane:
-
-- attach/start policy as explicitly configured;
-- active document lifecycle;
-- native DWG;
-- entity parity for A0/A1 common operations;
-- viewport/screenshot;
-- native layouts/plotting;
-- native undo/transaction behavior;
-- COM timeout and unavailable-app errors;
-- version/progid handling.
-
-COM tests should use mocks for generic CI and a real AutoCAD integration lane where infrastructure permits.
-
-### A3 — Advanced Drafting/Engineering
-
-- trim/offset/fillet;
-- selection window/crossing/polygon;
-- advanced dimensions (A3.2 backend-staged);
-- measurement/intersection analysis (A3.3 backend-staged);
-- GDT;
-- engineering validation;
-- 3D solids via COM;
-- batch tools only if atomicity/error semantics are clear.
-
-### A4 — Surface/Scalability Hardening
-
-Only after actual tool count and client latency are measured:
-
-- lean/full/search profiles if needed;
-- alias/discovery index;
-- tool metadata optimization;
-- benchmark latency and idle-token cost;
-- contract/version fingerprint automation.
-
-Do not add discovery complexity before measurements justify it.
-
-## 7. Backend Contract Shape
-
-Implementation should prefer focused interfaces, not one giant ABC.
-
-Candidate domains:
+Primary live target:
 
 ```text
-IdentityContract
-DocumentContract
-ObjectQueryContract
-EntityCreationContract
-EntityModificationContract
-LayerContract
-BlockContract
-LayoutContract
-DimensionContract
-TransactionContract
-AnalysisContract
-ViewContract
-SolidContract
+AutoCAD 2027 full
+COM 26.0 / AutoCAD.Application.26
+Windows x64
 ```
 
-Optional engine-specific behavior should use typed capability refusal rather than forcing every backend to fake an implementation.
+### MP0 + A-01/A-02/A-03/A-06
 
-## 8. Capability Honesty Gate
+**CLOSED.** Reproducible baseline, COM timeout/unknown-completion fencing, document binding, tool metadata/status truthfulness and early production-hardening findings have accepted evidence.
 
-For every optional capability:
+### N0–N7 + O1
 
-1. stable capability key exists;
-2. active backend reports supported/unsupported;
-3. supported path has a correctness test;
-4. unsupported path raises typed refusal;
-5. `system_capabilities` and runtime behavior cannot disagree.
+**CLOSED / LIVE PASS.** The native architecture now has:
 
-Examples:
+- persistent document/entity PID carriers;
+- typed same-session local Named Pipe IPC;
+- semantic extraction and deterministic fingerprinting;
+- typed LINE/CIRCLE/ARC/simple-LWPOLYLINE mutation;
+- parent-state drift guard;
+- deterministic semantic validation/state-chain handling;
+- immutable checkpoints;
+- R0 abort, R1 compensation and activation-safe R2 checkpoint restore;
+- exact predecessor proof after real AutoCAD restart.
+
+### MP-2 — Hot reload runtime
+
+**CLOSED / LIVE PASS.** Stable authenticated supervisor, replaceable stateless FastMCP workers, generation fence/drain/fallback, protocol/contract identity and bounded native-bridge readiness are accepted.
+
+## 4. Generic CAD Execution Engine program
+
+### G1 — Generic Batch Geometry
+
+**CLOSED / LIVE PASS.**
+
+- generic batch create for LINE/CIRCLE/ARC/simple LWPOLYLINE;
+- persistent-PID transform: translate, rotate-Z, uniform scale;
+- persistent block-definition-PID insertion;
+- native micro-chunk limit: 32 entities;
+- one batch mutation per AutoCAD Idle tick;
+- exact R0/R1/R2 recovery.
+
+### G2 — Schema-Agnostic Metadata
+
+**CLOSED / LIVE PASS.**
+
+- `metadata.get`, `metadata.set`, `metadata.query`;
+- ExtensionDictionary/XRecord storage;
+- namespaced arbitrary JSON from the provider's point of view;
+- provider-owned PID/recovery namespaces reserved;
+- bounded encoded size, nesting, key/string counts, native decimal range and query scan work;
+- metadata participates in document fingerprint schema v3;
+- committed metadata is independently read back before checkpoint finalization.
+
+### G3 — Chunked Logical Atomicity
+
+**CLOSED / LIVE PASS.**
+
+G3 does not keep one AutoCAD transaction open across thousands of entities. It owns one immutable predecessor checkpoint, executes short native chunks, yields through AutoCAD Idle, verifies the final semantic state and either finalizes the accepted state or restores the exact predecessor.
+
+The bridge currently uses:
 
 ```text
-common.document.open
-autocad.dxf.write
-autocad.dwg.write
-autocad.viewport.capture
-autocad.solid.acis
+native chunk max       32
+semantic capacity      12,288
+logical item max       10,000
+document FP schema     v3
+bridge candidate       0.8.1-g3
 ```
 
-### 8.1 Drawing-quality acceptance gate
+### Scale graduation
 
-Reference-driven and user-reviewed drawings are governed by `docs/DRAWING_QUALITY_ACCEPTANCE.md` in addition to provider/runtime gates.
+**CLOSED / LIVE PASS through 10,000 entities.**
 
-The gate applies across architectural floor plans, site plans, parks, plazas, landscape plans, master/urban plans, parking/circulation plans, roads/access layouts, elevations, sections, details and source reproductions. Before drawing, select one or more drawing profiles and apply the profile-specific domain checks.
+| Tier | Live result | Fault injection |
+| ---: | --- | --- |
+| 100 | PASS | beginning / middle / end exact restore |
+| 1,000 | PASS | beginning / middle / end exact restore |
+| 5,000 | PASS | beginning / middle / end exact restore |
+| 10,000 | PASS | beginning / middle / end exact restore |
 
-Drawing acceptance is fail-closed and advances only through:
+The 10,000-entity accepted run used 313 bounded native chunks, produced 10,000 unique persistent PIDs, left zero pending recoveries and preserved the same AutoCAD/bridge process identity.
+
+## 5. Production Domains — Feature-based Chunks Streaming
+
+**APPROVED / IMPLEMENTED / LIVE PASS.**
+
+This is the preferred production orchestration model.
+
+A Domain Agent sends a complete logical feature, not the entire drawing and not thousands of isolated primitive calls. Each feature owns one predecessor checkpoint and can contain many native micro-chunks.
 
 ```text
-TECHNICAL_PASS -> GEOMETRY_PASS -> DOMAIN_PASS -> VISUAL_PASS -> USER_ACCEPTED
+Feature 1 -> commit
+300 ms presentation pause
+Feature 2 -> commit
+300 ms presentation pause
+Feature 3 -> fail -> rollback Feature 3 only
+Feature 1 + Feature 2 remain committed
+recompute Feature 3 -> retry
+Feature 4 -> continue
 ```
 
-A successful COM/API call, entity count, valid DWG save or agent-readable screenshot is not sufficient for final drawing acceptance.
-
-Linetypes and lineweights are semantic requirements. Continuous thick/medium/thin, dashed/hidden, dashed-overhead, center/chain, cutting-plane, phantom, break, hatch, property/boundary, setback/easement, underground utility, existing/proposed/removal, contour and demolition conventions must be used whenever the drawing condition requires them. A semantically required dashed/hidden/center/other line that is missing or visually collapses to continuous because of linetype scale is a drawing defect.
-
-For live user-observed stress tests, preserve native DWG + screenshot evidence, verify the final displayed/plotted appearance, and keep the checkpoint pending until the reviewer can actually access the evidence and approves it.
-
-Execution is step-gated by `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: one small semantic change at a time; native semantic extraction, PID/fingerprinting, deterministic diff/validation and commit-or-verified-rollback after every step; append-only state-chain logs; Data-vs-Data source comparison at major gates. Screenshot/Vision is supplemental rather than the geometry oracle.
-
-## 9. Security
-
-- Never expose arbitrary AutoLISP, C#, shell, macro or free-text AutoCAD command execution.
-- AutoLISP may remain an explicit compatibility/user-extension mechanism, but not the core execution backend and never a substitute for independent semantic read-back.
-- Native bridge IPC accepts typed operations only and must be local/policy-constrained by default.
-- All file paths resolve against configured roots.
-- Write/destructive tools document side effects.
-- Original files are not overwritten by default unless the operation explicitly targets the current document and policy permits it.
-- Errors redact internal secrets/config.
-
-## 10. Completion Gates
-
-### A0 complete when
-
-- provider starts cleanly;
-- `/mcp` works with auth;
-- `help` and capability map reflect actual runtime;
-- basic DXF workflow passes end-to-end;
-- tests/lint pass;
-- docs match runtime.
-
-### AutoCAD provider baseline complete when
-
-- A0 + A1 pass headless;
-- A2 COM parity passes on Windows with real AutoCAD;
-- integration checklist in `MCP_PROVIDER_STANDARD.md` passes;
-- no known capability declaration mismatch;
-- no unsafe path/format behavior.
-
-## 11. Current Status / Next Step
-
-**A0 + A1 are CLOSED. A2 is release-candidate complete and live-verified on AutoCAD 2027; RC identity is retained pending explicit promotion. A3.1/A3.2/A3.3 are native live-verified but staged/non-public. N0–N7 and O1 are CLOSED for their documented scopes; N7 two-phase recovery is LIVE PASS including activation-safe R2 after real AutoCAD restart. The public runtime remains unchanged.**
-
-Current public runtime identity:
+Public candidate entry point:
 
 ```text
-provider_version: 0.3.0rc1
-contract_version: autocad-a2-v1-rc1
-default_backend: ezdxf
-public MCP tools: 50
+feature_execute(feature_id, feature_sequence, correlation_id, actions)
 ```
 
+`feature_id` is correlation metadata only. The provider never interprets domain concepts such as centerline, curb, manhole, kiosk, beam or pipe.
 
-### N-series — Native Bridge + Semantic State architecture upgrade
+Current generic feature actions:
 
-The detailed plan is `docs/ARCHITECTURE_UPGRADE_PLAN.md`; acceptance is `docs/NATIVE_BRIDGE_ACCEPTANCE.md`; authoritative current-state summary is `docs/CURRENT_CHECKPOINT.md`.
+- create typed entities;
+- insert persistent-PID-bound block references;
+- transform persistent entity PIDs.
 
-- `N0` documentation/architecture freeze — **CLOSED**.
-- `N1` typed semantic models + canonical fingerprint engine — **CLOSED / PASS** (historical N1 closure: `31` focused semantic tests; Windows `113 passed, 5 skipped`).
-- `N2` persistent document/entity PID prototype and clone policy — **CLOSED / LIVE PASS** (AutoCAD 2027 P0–P10; evidence `docs/evidence/n2-pid-native-2026-09-10.json`).
-- `N3` C# Managed .NET bridge + local typed IPC skeleton — **CLOSED / LIVE PASS** (evidence `docs/evidence/n3-native-bridge-readonly-2026-09-10.json`).
-- `N4` native read-only SemanticSnapshot extractor — **CLOSED / LIVE PASS** (evidence `docs/evidence/n4-native-semantic-2026-09-10.json`).
-- `N5` native transactional executor + verified R0 rollback — **CLOSED / LIVE PASS** for fixed-schema LINE create/update/delete (evidence `docs/evidence/n5-native-mutation-2026-09-10.json`).
-- `N6` deterministic validator + semantic delta + state-chain engine — **CLOSED / LIVE PASS** (evidence `docs/evidence/n6-semantic-state-chain-2026-09-10.json`).
-- `O1` internal basic-shape native mutation expansion — **CLOSED / LIVE PASS** for CIRCLE/ARC/simple-LWPOLYLINE create/update/delete over the N5/N6 integrity model (evidence `docs/evidence/o1-native-shape-mutation-2026-09-10.json`).
-- `N7` two-phase commit integrity and independent post-commit recovery — **CLOSED / LIVE PASS**; staged bridge `0.5.0-n7`, including crash-safe activation-gated R2 replacement/rebinding and restart-persisted recovery.
-- `N8` incremental COM-to-.NET operation-family migration with parity evidence — **NOT STARTED**.
-- `N9` reference-driven drawing workflow migration to Data-first Semantic State Loop — **NOT STARTED**.
-- `N10` explicit public promotion/contract decision — **NOT STARTED**.
+Presentation pacing defaults to **300 ms between completed features**. Native micro-chunks are not artificially delayed; they retain Idle-yield responsiveness.
 
-Non-negotiable N-series gates:
+Live evidence proves Feature 1 commit → Feature 2 failure at its second native chunk → exact Feature-2-only restore → Feature 3 successful continuation. The observed 300 ms pause was 300.295 ms.
+
+## 6. Public promotion candidate
+
+The current working tree intentionally advances the public identity to:
 
 ```text
-mutation -> COMMITTED_VERIFIED
-       or -> ROLLED_BACK_VERIFIED
-anything else -> BLOCK
-
-current_parent_fp must equal expected_parent_fp before every mutation
+provider_version     0.4.0rc1
+contract_version     autocad-generic-v1-rc1
+public MCP tools     86
+execution_model      feature-based-chunks-streaming-v1
 ```
 
-`ObjectId` is transient runtime identity and native Handle alone is not sufficient semantic identity. The target design uses provider-owned persistent document/entity PID plus versioned content fingerprints and explicit clone/duplicate policy.
+This is a **candidate, not yet a committed release checkpoint**. The candidate combines the broader product surface with the strong-integrity native tools and `feature_execute`.
 
-### A2 release-candidate status
+The promotion is complete only after one reviewed tree passes:
 
-A2 now publicly exposes the A1 surface plus 8 COM/live extension tools:
+1. FastMCP catalog identity/tool-count check;
+2. full Linux regression;
+3. full Windows `.171` regression;
+4. C# Release/x64 build with 0 errors;
+5. compile/hygiene and `git diff --check`;
+6. code/security review;
+7. docs/help/contract identity agreement;
+8. surgical stage/commit/push.
 
-- viewport create/list/set-scale/lock/delete;
-- zoom extents/window;
-- PNG screenshot.
+The latest full Linux run before all stale contract tests were migrated was `308 passed / 5 skipped / 8 failed`. The eight failures were old 50-tool/staged/fingerprint-v2 expectations, but the full suite still must be rerun after the migration edits before closure is claimed.
 
-The headless backend returns typed capability refusal for those live-only operations. The COM backend
-has explicit ProgID + attach policy, a single STA executor, native DWG/DXF, native plotting, ActiveX
-undo marks, active-document scope protection, timeout uncertainty semantics and conservative
-pre-existing viewport deletion (`force=true`).
+## 7. Next development after promotion
 
-A2 native acceptance is **live-verified PASS** on full AutoCAD 2027 / Windows `.171` using
-`AutoCAD.Application.26`. Runtime status identifies the attached ActiveX COM version/release and
-reports the certification target. The provider remains `0.3.0rc1` until an explicit promotion/release
-decision; live verification alone does not change public capability or tool surface.
+Once the `0.4.0rc1` promotion tree is green and committed, the next product work should be driven by real Production Domain use rather than speculative surface growth.
 
-### A3.1 — Native ACIS 3D solids staged
+Priorities:
 
-The COM backend now has a focused `SolidContract` implementation for:
+1. use `feature_execute` in real Domain Agent workflows and collect feature-size/latency/failure telemetry;
+2. expand native typed entity/action families only where production features require them;
+3. preserve the provider/domain boundary while adding generic primitives;
+4. build parity/migration evidence before moving any remaining COM operation into the native lane;
+5. keep drawing-quality acceptance separate from execution-integrity acceptance;
+6. derive reusable CDT provider infrastructure only after Rule-of-Two evidence across another provider.
 
-- BOX / CYLINDER / SPHERE / CONE / TORUS / WEDGE primitives;
-- closed planar profile → EXTRUDE;
-- closed planar profile → REVOLVE around an arbitrary 3D axis;
-- profile → SWEEP along Autodesk-supported Arc/Circle/Ellipse/Polyline/Spline paths;
-- Boolean UNION / SUBTRACT / INTERSECT with validated distinct solid handles;
-- 3D polyline sweep-path creation;
-- 3D MOVE, `Rotate3D`, `ScaleEntity` and `Mirror3D`;
-- solid inspection: type, layer, visibility, volume, centroid and bounding box;
-- normalized arbitrary 3D view direction + zoom extents.
+## 8. Evidence
 
-Temporary Regions used by extrusion/revolve/sweep are deleted on success and also cleaned after
-operation failure without masking the primary modeling error. Sweep path types are validated before
-COM to avoid opaque HRESULT failures. Loft is explicitly not claimed because ActiveX has no typed
-Loft creation method in the supported API surface.
+Current production evidence:
 
-A3 methods are intentionally backend-staged, not public MCP tools yet. The A3.1 native lane is
-live-verified on AutoCAD 2027, but `autocad.solid.acis` and `autocad.view.3d` remain capability-false
-until an explicit promotion changes the public contract.
+- `docs/evidence/g23-live-2026-09-11.json`;
+- `docs/evidence/g3-scale-100-2026-09-11.json`;
+- `docs/evidence/g3-scale-1000-2026-09-11.json`;
+- `docs/evidence/g3-scale-5000-2026-09-11.json`;
+- `docs/evidence/g3-scale-10000-2026-09-11.json`;
+- `docs/evidence/feature-stream-production-2026-09-11.json`.
 
-### A3.2 — Advanced dimensions staged
+Earlier N-series, MP-2 and G1 evidence remains under `docs/evidence/` and is historical proof for those checkpoints.
 
-The backend contract now contains four additional dimension primitives with shared fail-closed
-validation and no public tool promotion:
+## 9. Session continuity
 
-- angular dimension from vertex + two rays + text point;
-- radial dimension from center + chord point + positive leader length;
-- diametric dimension from center + chord point + positive leader length;
-- X/Y ordinate dimension from definition point + leader endpoint.
+Current exact continuation instructions are in:
 
-The ezdxf backend uses native dimension builders and has a real DXF save/reopen correctness test.
-The COM backend maps to typed ActiveX `AddDimAngular`, `AddDimRadial`, `AddDimDiametric` and
-`AddDimOrdinate`; no `SendCommand` path is used. Generic COM object normalization treats all
-`AcDb*Dimension` object types as common `DIMENSION` entities.
+`docs/SESSION_HANDOFF_2026-09-11_FEATURE_STREAMING_PRODUCTION.md`
 
-`autocad.dimensions.advanced` remains capability-false (`A3_2_staged_not_public` on ezdxf and
-staged/non-public on COM) despite its AutoCAD 2027 native PASS. Public MCP surface remains exactly
-50 tools; live evidence is retained in `tests/test_advanced_dimensions.py` JUnit runs.
-
-### A3.3 — Measurement / intersection analysis staged
-
-A focused `AnalysisContract` now provides three backend-internal verification primitives:
-
-- `object_measure(object_id)` for exact typed metrics plus WCS bounding box;
-- `drawing_extents()` for the combined WCS bounding box of the current space;
-- `object_intersections(first_id, second_id, extend_mode)` for exact intersection points.
-
-The ezdxf backend computes exact LINE/CIRCLE/ARC/LWPOLYLINE core metrics and uses `ezdxf.bbox` for
-extents. LWPOLYLINE bulges are included in length/area calculations. Generic intersections are
-intentionally refused on ezdxf because a complete exact solver is not implemented.
-
-The COM backend reads typed ActiveX properties (`Length`, `Radius`, `Circumference`, `Area`,
-`ArcLength`, `Volume`, `Centroid` where applicable), uses `GetBoundingBox`, and maps exact
-`IntersectWith` output into normalized WCS XYZ triples. Invalid extension modes, duplicate handles
-and malformed non-XYZ COM payloads fail before or at the analysis boundary rather than being guessed.
-
-`autocad.analysis.measurement` and `autocad.analysis.intersections` remain capability-false and no
-new MCP tools are published despite the AutoCAD 2027 native PASS. Live evidence is retained in
-`tests/test_measurement_analysis.py` JUnit runs.
-
-### Verification evidence
-
-Current verification on the O1 closure tree:
-
-- AutoCAD 2027 hidden native A2: `30 passed, 1 skipped`;
-- AutoCAD 2027 hidden native A3.1: `11 passed`;
-- AutoCAD 2027 hidden native A3.2: `6 passed`;
-- AutoCAD 2027 hidden native A3.3: `8 passed`;
-- Linux full regression after O1: `195 passed, 4 skipped`;
-- Windows `.171` full Python regression after O1: `194 passed, 5 skipped`;
-- focused O1/N5/N6 native-protocol + semantic regression: `76 passed`;
-- native N2 P0–P10, N3 read-only bridge, N4 semantic snapshot, N5 typed LINE mutation/R0 rollback, N6 state-chain/drift and O1 CIRCLE/ARC/simple-LWPOLYLINE acceptance all PASS on real AutoCAD 2027;
-- O1 changed-file `ruff check`, `python -m compileall src tests` and `git diff --check` pass; full-repository Ruff debt remains separate from O1 acceptance;
-- accepted O1 bridge is `0.4.0-o1`, SHA-256 `4ad2d4138d6e71a8fa91281ea5482c592e2a0c04cb5d41ec5f2452b7cff31484`;
-- application version parsing identifies AutoCAD 2027 as COM `26.0`; usable live ProgID is `AutoCAD.Application.26`;
-- native PDF plotting retries bounded busy COM boundaries while restoring `BACKGROUNDPLOT` and prior layout state;
-- `SaveAs` remains single-shot mutation; only post-save `Name`/`FullName` reads receive bounded busy retry;
-- public MCP tool count remains exactly 50 and A3 capability promotion is still deferred.
-
-### Next gates
-
-Immediate gate after N7, **MP-2 Python MCP/provider hot reload, is CLOSED / LIVE PASS**. The runtime has a stable authenticated ASGI supervisor, replaceable stateless worker generations, deterministic request fence/drain, last-healthy fallback, protocol/contract-hash + generation/build/policy identity, source watching and bounded native-bridge readiness probing. The accepted public COM/ezdxf 50-tool runtime remains unchanged.
-
-Final MP-2 evidence: focused `41 passed`; process-level `20` successful source reloads + `10` injected startup failures PASS; Windows `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge `2` success + `1` injected failure PASS with TaskScheduler result `0`; Linux full `254 passed / 5 skipped`; Windows full `253 passed / 6 skipped`; zero post-run worker orphans. `.171` has `cloudflared` running but no CDT-AutoCAD ingress route; tunnel/service configuration remains unmodified and cannot substitute for provider readiness.
-
-Canonical closure evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`. Historical implementation handoff: `docs/SESSION_HANDOFF_2026-09-11_MP2_HOT_RELOAD.md`.
-
-### Generic CAD Execution Engine program
-
-ADR-002 fixes the Separation-of-Concerns boundary: CDT-AutoCAD is a **Generic CAD Execution Engine**. TCVN/ISO/ASME/customer rules, engineering calculations, domain constraint logic and audit/report generation belong to external Domain Agents and must not be embedded in the MCP provider or C# bridge.
-
-The approved sequence before later migration/promotion work is:
-
-1. **G1 — Generic Batch Geometry — CLOSED / LIVE PASS:** internal `0.6.0-g1` batch create for LINE/CIRCLE/ARC/simple-LWPOLYLINE, PID-targeted planar translate/rotate/uniform-scale, and referenced block insertion by definition PID. Native chunks are bounded at 32 entities, cross-chunk atomicity is explicitly false, semantic verification is bounded at 2,048 entities, and 100/1,000 scale + R0/R1/R2 live evidence is captured in `docs/evidence/g1-generic-cad-execution-2026-09-11.json`.
-2. **G2 — Schema-Agnostic Metadata:** bounded namespaced JSON `get/set/query` over Extension Dictionary/XRecord; provider PID/recovery namespaces remain reserved and inaccessible through arbitrary metadata writes.
-3. **G3 — Chunked Logical Atomicity:** multi-chunk logical `COMMITTED_VERIFIED` or exact `ROLLED_BACK_VERIFIED` outcome using checkpoint/journal/compensation and predecessor fingerprint proof; uncertainty blocks later mutation.
-4. **Scale graduation:** `100 → 1,000 → 5,000 → 10,000` entities with correctness, injected failure and scalability evidence at each tier.
-
-G3 is semantic/logical atomicity across bounded native transactions, not one giant AutoCAD `DocumentLock + Transaction`. If later requirements demand that intermediate state never appear in the live DWG, that is a separate off-document/staging Database capability and must be designed/accepted independently.
-
-G1 closure did not change the public 50-tool contract; G2/G3 implementation likewise does not automatically change it. Each phase needs TDD, native build, real AutoCAD 2027 Interactive Session 1 acceptance, evidence, review and a separate commit. Formal N8/public migration remains separately gated. Existing Autodesk-reference warning debt and repository lint-tool availability remain tracked separately.
-
-See `docs/LIVE_ACCEPTANCE.md` for the complete primary-certification runbook. Do not extract shared
-runtime from this lane; reusable infrastructure still requires Rule-of-Two cross-provider evidence.
+Do not pull/reset/clean over the current dirty promotion tree. Do not stage `.gitignore`, `_private/`, `_test_workspace/` or `specs/**` into the promotion commit.

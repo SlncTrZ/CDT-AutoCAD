@@ -299,6 +299,7 @@ class EntitySemanticState(SerializableModel):
     metrics: Mapping[str, Any] | None = None
     style: Mapping[str, Any] | None = None
     hierarchy: Mapping[str, Any] | None = None
+    metadata: Mapping[str, Any] | None = None
     fingerprints: FingerprintSet = FingerprintSet()
 
     def __post_init__(self) -> None:
@@ -308,7 +309,7 @@ class EntitySemanticState(SerializableModel):
         object.__setattr__(self, "geometry", _freeze(self.geometry))
         if not isinstance(self.fingerprints, FingerprintSet):
             object.__setattr__(self, "fingerprints", FingerprintSet(**self.fingerprints))
-        for name in ("bbox", "metrics", "style", "hierarchy"):
+        for name in ("bbox", "metrics", "style", "hierarchy", "metadata"):
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, _freeze(value))

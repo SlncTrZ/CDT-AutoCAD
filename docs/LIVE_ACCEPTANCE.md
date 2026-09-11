@@ -1,8 +1,38 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-11 +07:00
-> Scope: current COM/A3 native baseline; staged .NET bridge N0–N7 + O1 + G1 accepted internally; public 50-tool contract unchanged
+> Updated: 2026-09-11 21:35 +07:00
+> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
+> Public promotion: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` — **final close gates PASS; selective commit/push is the publication step**
+
+## 0. Current production live gate
+
+The reviewed public-promotion tree preserves both the historical COM/A3 acceptance below and the newer strong-integrity native evidence.
+
+Current live native requirements already measured PASS on `.171` AutoCAD 2027 Session 1:
+
+- bridge `0.8.1-g3`, document fingerprint schema v3;
+- schema-agnostic metadata commit/readback/query plus exact R0/R1 recovery;
+- one logical predecessor checkpoint across yielded native micro-chunks;
+- micro-chunk maximum 32 entities and one batch mutation per AutoCAD Idle tick;
+- 100 / 1,000 / 5,000 / 10,000 entity graduation with beginning/middle/end fault injection and exact predecessor R2 restoration;
+- 10,000 entities = 313 native chunks, 10,000 unique persistent PIDs, zero pending recovery, stable AutoCAD/bridge process identity;
+- Feature-based Chunks Streaming: Feature 1 commit, Feature 2 failure at native chunk 1 restores only Feature 2 predecessor, Feature 1 remains exact, Feature 3 continues successfully;
+- feature presentation pacing recommendation 300 ms; live measured pause 300.295 ms;
+- no arbitrary C#/AutoLISP/shell/macro/free-text command surface.
+
+Canonical current evidence:
+
+```text
+docs/evidence/g23-live-2026-09-11.json
+docs/evidence/g3-scale-100-2026-09-11.json
+docs/evidence/g3-scale-1000-2026-09-11.json
+docs/evidence/g3-scale-5000-2026-09-11.json
+docs/evidence/g3-scale-10000-2026-09-11.json
+docs/evidence/feature-stream-production-2026-09-11.json
+```
+
+Final close-gate result on the promotion tree: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**; Linux/Windows compileall and `git diff --check` PASS; focused security/code review found no blocking issue or arbitrary-command regression. Ruff was unavailable in the prepared Linux and Windows environments and is recorded as a tooling gap rather than a false PASS. Older sections below retain historical wording such as “50 tools” where that wording records the state of an earlier acceptance run.
 
 ## 1. Certification policy
 

@@ -5,6 +5,7 @@ Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 16:13
 from __future__ import annotations
 
 import argparse
+import asyncio
 from typing import Any
 
 from fastmcp import FastMCP
@@ -21,7 +22,9 @@ from .config import Settings
 from .contract_identity import (
     COMMON_CONTRACT_VERSION as _COMMON_CONTRACT_VERSION,
     CONTRACT_VERSION as _CONTRACT_VERSION,
+    EXECUTION_MODEL as _EXECUTION_MODEL,
     PROTOCOL_VERSION as _PROTOCOL_VERSION,
+    PUBLIC_TOOL_COUNT as _PUBLIC_TOOL_COUNT,
     UPDATED_AT as _UPDATED_AT,
     contract_hash as _contract_hash,
     contract_material as _contract_material,
@@ -33,6 +36,7 @@ from .errors import (
     StateConflictError,
     UnsupportedCapabilityError,
 )
+from .native_bridge.public_runtime import NativePublicFacade
 from .runtime_identity import RuntimeIdentity
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -219,6 +223,148 @@ _TOOL_DESCRIPTIONS = {
         "Capture the live AutoCAD application window as PNG bytes; this is read-only and requires "
         "the live COM screenshot capability."
     ),
+    "document_configure_units": (
+        "Configure drawing insertion units, measurement system, linear format, and precision using "
+        "a bounded typed schema instead of arbitrary AutoCAD system-variable access."
+    ),
+    "document_dependencies": (
+        "Inspect external-reference dependencies for the active drawing and report contained, "
+        "resolved, loaded, and completeness state without silently following outside-root paths."
+    ),
+    "artifact_seal": (
+        "Save the active drawing, require a clean persisted state, copy it to a content-addressed "
+        "accepted artifact, and write a SHA-256 manifest for stable handoff provenance."
+    ),
+    "object_query": (
+        "Query a bounded object set by type/layer and optional WCS bounding window, returning normalized "
+        "objects plus measured bounds so source-registration workflows do not need side-channel DXF export."
+    ),
+    "layer_update_state": (
+        "Update allowlisted layer state such as on/off, frozen, locked, color, linetype, or lineweight; "
+        "unsafe changes to the current layer are refused before mutation."
+    ),
+    "xref_list": (
+        "List live AutoCAD external references with contained/resolved/loaded state while redacting paths "
+        "that fall outside configured allowed roots."
+    ),
+    "xref_attach": (
+        "Attach or overlay one allowed DWG/DXF external reference with a bounded WCS transform and optional "
+        "layer; source paths are canonicalized before AutoCAD side effects."
+    ),
+    "xref_reload": (
+        "Reload one existing XREF only when its resolved source remains inside configured allowed roots."
+    ),
+    "xref_unload": (
+        "Unload one existing XREF definition without deleting it, preserving a reversible reference state."
+    ),
+    "xref_detach": (
+        "Detach one existing XREF definition from the active document; this is destructive to reference state."
+    ),
+    "view_set_direction": (
+        "Set a normalized 3D model-space view direction from a WCS vector and zoom to extents; this may alter "
+        "persisted view state even though it does not modify CAD geometry."
+    ),
+    "view_set_preset": (
+        "Apply an allowlisted orthographic or isometric 3D view preset such as se_isometric using typed "
+        "direction vectors rather than free-text AutoCAD commands."
+    ),
+    "view_set_visual_style": (
+        "Apply an allowlisted model-space visual style such as shades_of_gray through a bounded internal "
+        "AutoCAD command mapping; arbitrary command text is never accepted from callers."
+    ),
+    "dimension_angular": (
+        "Create a typed angular dimension from one vertex, two WCS ray points, and a text point; invalid "
+        "collinear rays are rejected before mutation."
+    ),
+    "dimension_radial": (
+        "Create a typed radial dimension from center/chord geometry and positive leader length using the "
+        "active drawing dimension style."
+    ),
+    "dimension_diametric": (
+        "Create a typed diametric dimension from center/chord geometry and positive leader length using the "
+        "active drawing dimension style."
+    ),
+    "dimension_ordinate": (
+        "Create an X- or Y-ordinate dimension from a WCS definition point and leader endpoint with strict "
+        "axis validation."
+    ),
+    "object_measure": (
+        "Measure one object using the active backend's exact supported geometry API and return type-specific "
+        "metrics plus WCS bounding box for deterministic verification."
+    ),
+    "drawing_extents": (
+        "Measure the current drawing-space WCS extents using the backend geometry engine without changing "
+        "document objects."
+    ),
+    "object_intersections": (
+        "Compute exact supported intersections between two distinct objects with an explicit extension mode; "
+        "unsupported solvers fail closed rather than approximate silently."
+    ),
+    "solid_create_primitive": (
+        "Create a native ACIS BOX, CYLINDER, SPHERE, CONE, TORUS, or WEDGE from typed numeric parameters; "
+        "the live AutoCAD backend is required and an optional output layer is applied explicitly."
+    ),
+    "solid_extrude": (
+        "Create an ACIS 3DSOLID by extruding a closed planar profile by non-zero height and bounded taper angle; "
+        "temporary regions are cleaned deterministically."
+    ),
+    "solid_sweep": (
+        "Create an ACIS 3DSOLID by sweeping a closed profile along a supported typed CAD curve path; unsupported "
+        "path types are refused before opaque AutoCAD failures."
+    ),
+    "solid_revolve": (
+        "Create an ACIS 3DSOLID by revolving a closed planar profile around a non-degenerate WCS 3D axis by a "
+        "non-zero angle within plus/minus 360 degrees."
+    ),
+    "solid_boolean": (
+        "Apply UNION, SUBTRACT, or INTERSECT between two distinct ACIS 3DSOLIDs and return post-operation volume, "
+        "centroid, bounding box, and tool-consumption state."
+    ),
+    "solid_transform": (
+        "Apply one typed 3D move, rotate, uniform-scale, or mirror operation to an ACIS solid; free-form matrices "
+        "and arbitrary commands are not accepted."
+    ),
+    "solid_inspect": (
+        "Inspect an ACIS 3DSOLID by handle and return layer, visibility, volume, centroid, and WCS bounding box; "
+        "face-level topology is reported as unsupported when it cannot be proven through ActiveX."
+    ),
+    "solid_export": (
+        "Export selected native ACIS solids to a contained SAT artifact using AutoCAD's typed Export API and "
+        "return SHA-256 provenance; unsupported STEP/STL requests are refused rather than emulated unsafely."
+    ),
+    "native_integrity_status": (
+        "Inspect the same-session managed native bridge and the exact active AutoCAD document binding, including "
+        "persistent document PID and semantic fingerprint; this route never falls back to ordinary COM mutation."
+    ),
+    "feature_execute": (
+        "Execute one complete generic feature as a feature-local logical transaction. The feature may mix typed create, "
+        "block-insert, and transform actions; native micro-chunks remain bounded and only the current feature rolls back "
+        "on failure. Domain meaning stays outside CDT-AutoCAD and successful receipts recommend 300 ms presentation pacing."
+    ),
+    "batch_create_entities": (
+        "Create 1..10000 generic typed CAD primitives through the managed native bridge using bounded chunks, one "
+        "AutoCAD Idle yield between chunks, and one logical predecessor checkpoint for all-or-nothing G3 recovery."
+    ),
+    "batch_insert_blocks": (
+        "Insert 1..10000 persistent-PID-bound block references through the managed native bridge using bounded chunks "
+        "and one G3 logical predecessor checkpoint; no weaker COM fallback is permitted."
+    ),
+    "batch_transform_entities": (
+        "Transform 1..10000 persistent semantic PIDs with one typed translate, rotate-Z, or uniform-scale operation through "
+        "the managed native bridge; bounded chunks remain logically atomic through exact predecessor recovery."
+    ),
+    "metadata_get": (
+        "Read one schema-agnostic metadata namespace from a persistent semantic PID through the native bridge. Provider "
+        "identity/recovery namespaces are reserved and domain schemas remain outside CDT-AutoCAD."
+    ),
+    "metadata_set": (
+        "Set one bounded schema-agnostic JSON metadata namespace on a persistent semantic PID with fingerprint guard, "
+        "provisional validation, independent read-back, and exact recovery; no COM fallback is used."
+    ),
+    "metadata_query": (
+        "Query a bounded schema-agnostic metadata namespace across the active native document, optionally matching one "
+        "dotted JSON path to an exact JSON value; results are capped and never interpreted as domain rules."
+    ),
     "transaction_begin": (
         "Begin a backend-tracked transaction or undo scope on the bound document; nested depth is "
         "limited and document switching is blocked while active."
@@ -252,6 +398,8 @@ def _help_payload(backend: AutoCADBackend) -> dict[str, Any]:
         "common_contract_version": _COMMON_CONTRACT_VERSION,
         "provider_extension_version": _CONTRACT_VERSION,
         "contract_hash": contract_hash,
+        "public_tool_count": _PUBLIC_TOOL_COUNT,
+        "execution_model": _EXECUTION_MODEL,
         "updated_at": _UPDATED_AT,
         "authentication": "Bearer token required for HTTP transport; credentials are never returned",
         "capabilities": backend.capabilities(),
@@ -305,6 +453,8 @@ def _status_contract(backend: AutoCADBackend, backend_status: dict[str, Any]) ->
         "build_identity": {
             "provider_version": __version__,
             "contract_version": _CONTRACT_VERSION,
+            "public_tool_count": _PUBLIC_TOOL_COUNT,
+            "execution_model": _EXECUTION_MODEL,
             "runtime_manifest_attached": False,
             "source_or_dll_claim_requires_manifest": True,
         },
@@ -396,6 +546,7 @@ def create_mcp(
         backend = ComBackend(settings)
     else:
         backend = EzdxfBackend(settings)
+    native_facade = NativePublicFacade(settings)
     auth = None
     if settings.auth_token:
         auth = StaticTokenVerifier(
@@ -413,7 +564,9 @@ def create_mcp(
         instructions=(
             "CDT_Engineer AutoCAD provider. Use system_capabilities before relying on "
             "backend-specific features. The ezdxf backend is headless/DXF-first; the COM backend "
-            "controls a live Windows AutoCAD session and supports native DWG when available."
+            "controls a live Windows AutoCAD session and supports native DWG when available. For production domain "
+            "workflows, prefer feature_execute so each logical feature commits or rolls back independently while "
+            "previously accepted features remain intact."
         ),
     )
     app.add_middleware(
@@ -467,8 +620,80 @@ def create_mcp(
             "backend": backend.name,
             "common_contract_version": _COMMON_CONTRACT_VERSION,
             "provider_extension_version": _CONTRACT_VERSION,
+            "public_tool_count": _PUBLIC_TOOL_COUNT,
+            "execution_model": _EXECUTION_MODEL,
             "capabilities": backend.capabilities(),
         }
+
+    @provider_tool(tags={"native", "read"})
+    async def native_integrity_status() -> dict[str, Any]:
+        return await asyncio.to_thread(native_facade.status)
+
+    @provider_tool(tags={"native", "feature", "write"})
+    async def feature_execute(
+        feature_id: str,
+        feature_sequence: int,
+        correlation_id: str,
+        actions: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            native_facade.feature_execute,
+            feature_id=feature_id,
+            feature_sequence=feature_sequence,
+            correlation_id=correlation_id,
+            actions=actions,
+        )
+
+    @provider_tool(tags={"native", "entity", "write"})
+    async def batch_create_entities(entities: list[dict[str, Any]]) -> dict[str, Any]:
+        return await asyncio.to_thread(native_facade.batch_create_entities, entities)
+
+    @provider_tool(tags={"native", "block", "write"})
+    async def batch_insert_blocks(inserts: list[dict[str, Any]]) -> dict[str, Any]:
+        return await asyncio.to_thread(native_facade.batch_insert_blocks, inserts)
+
+    @provider_tool(tags={"native", "entity", "write"})
+    async def batch_transform_entities(
+        semantic_pids: list[str],
+        transform: dict[str, Any],
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            native_facade.batch_transform_entities,
+            semantic_pids,
+            transform,
+        )
+
+    @provider_tool(tags={"native", "metadata", "read"})
+    async def metadata_get(semantic_pid: str, namespace: str) -> dict[str, Any]:
+        return await asyncio.to_thread(native_facade.metadata_get, semantic_pid, namespace)
+
+    @provider_tool(tags={"native", "metadata", "write"})
+    async def metadata_set(
+        semantic_pid: str,
+        namespace: str,
+        value: Any,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            native_facade.metadata_set,
+            semantic_pid,
+            namespace,
+            value,
+        )
+
+    @provider_tool(tags={"native", "metadata", "read"})
+    async def metadata_query(
+        namespace: str,
+        path: str | None = None,
+        equals: Any = None,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            native_facade.metadata_query,
+            namespace,
+            path=path,
+            equals=equals,
+            limit=limit,
+        )
 
     @provider_tool(tags={"document", "write"})
     async def document_new() -> dict[str, Any]:
@@ -481,6 +706,25 @@ def create_mcp(
     @provider_tool(tags={"document", "read"})
     async def document_info() -> dict[str, Any]:
         return await backend.document_info()
+
+    @provider_tool(tags={"document", "write"})
+    async def document_configure_units(
+        insertion_units: str | None = None,
+        measurement: str | None = None,
+        linear_format: str | None = None,
+        linear_precision: int | None = None,
+    ) -> dict[str, Any]:
+        return await backend.document_configure_units(
+            insertion_units, measurement, linear_format, linear_precision
+        )
+
+    @provider_tool(tags={"document", "read"})
+    async def document_dependencies() -> dict[str, Any]:
+        return await backend.document_dependencies()
+
+    @provider_tool(tags={"document", "write"})
+    async def artifact_seal(destination_dir: str | None = None) -> dict[str, Any]:
+        return await backend.artifact_seal(destination_dir)
 
     @provider_tool(tags={"document", "write"})
     async def document_save(path: str | None = None) -> dict[str, Any]:
@@ -522,6 +766,75 @@ def create_mcp(
         layer_filter: str | None = None,
     ) -> int:
         return await backend.object_count(type_filter, layer_filter)
+
+    @provider_tool(tags={"object", "read"})
+    async def object_query(
+        type_filter: str | None = None,
+        layer_filter: str | None = None,
+        min_x: float | None = None,
+        min_y: float | None = None,
+        max_x: float | None = None,
+        max_y: float | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        if not 1 <= int(limit) <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        if int(offset) < 0:
+            raise ValueError("offset must be >= 0")
+        window_values = (min_x, min_y, max_x, max_y)
+        has_window = any(value is not None for value in window_values)
+        if has_window and not all(value is not None for value in window_values):
+            raise ValueError("spatial query requires min_x, min_y, max_x and max_y together")
+        if has_window and (float(min_x) >= float(max_x) or float(min_y) >= float(max_y)):
+            raise ValueError("spatial query window must have positive width and height")
+
+        total = await backend.object_count(type_filter, layer_filter)
+        scan_limit = min(total, 5000)
+        candidates = []
+        scan_offset = 0
+        while scan_offset < scan_limit:
+            page_size = min(1000, scan_limit - scan_offset)
+            page = await backend.object_list(type_filter, layer_filter, page_size, scan_offset)
+            if not page:
+                break
+            candidates.extend(page)
+            scan_offset += len(page)
+            if len(page) < page_size:
+                break
+        matched: list[dict[str, Any]] = []
+        for row in candidates:
+            payload = row.to_dict()
+            if has_window:
+                measured = await backend.object_measure(row.id)
+                bbox = measured.get("bounding_box")
+                if not isinstance(bbox, dict):
+                    continue
+                low = bbox.get("min")
+                high = bbox.get("max")
+                if not isinstance(low, list) or not isinstance(high, list) or len(low) < 2 or len(high) < 2:
+                    continue
+                intersects = not (
+                    float(high[0]) < float(min_x)
+                    or float(low[0]) > float(max_x)
+                    or float(high[1]) < float(min_y)
+                    or float(low[1]) > float(max_y)
+                )
+                if not intersects:
+                    continue
+                payload["measurement"] = measured
+            matched.append(payload)
+        page = matched[int(offset): int(offset) + int(limit)]
+        return {
+            "items": page,
+            "count": len(page),
+            "matched_count": len(matched),
+            "source_count": total,
+            "offset": int(offset),
+            "limit": int(limit),
+            "complete": total <= scan_limit,
+            "scan_limit": scan_limit,
+        }
 
     @provider_tool(tags={"object", "write"})
     async def object_set_properties(
@@ -610,8 +923,15 @@ def create_mcp(
         closed: bool = False,
         layer: str | None = None,
         color: int | None = None,
+        bulges: list[float] | None = None,
+        widths: list[list[float]] | None = None,
+        elevation: float = 0.0,
     ) -> dict[str, Any]:
-        return (await backend.entity_create_polyline(points, closed, layer, color)).to_dict()
+        return (
+            await backend.entity_create_polyline(
+                points, closed, layer, color, bulges, widths, elevation
+            )
+        ).to_dict()
 
     @provider_tool(tags={"entity", "write"})
     async def entity_create_text(
@@ -669,6 +989,69 @@ def create_mcp(
             await backend.dimension_aligned(x1, y1, x2, y2, dim_x, dim_y, layer)
         ).to_dict()
 
+    @provider_tool(tags={"dimension", "write"})
+    async def dimension_angular(
+        vertex_x: float,
+        vertex_y: float,
+        first_x: float,
+        first_y: float,
+        second_x: float,
+        second_y: float,
+        text_x: float,
+        text_y: float,
+        layer: str | None = None,
+    ) -> dict[str, Any]:
+        return (
+            await backend.dimension_angular(
+                vertex_x, vertex_y, first_x, first_y, second_x, second_y, text_x, text_y, layer
+            )
+        ).to_dict()
+
+    @provider_tool(tags={"dimension", "write"})
+    async def dimension_radial(
+        center_x: float,
+        center_y: float,
+        chord_x: float,
+        chord_y: float,
+        leader_length: float,
+        layer: str | None = None,
+    ) -> dict[str, Any]:
+        return (
+            await backend.dimension_radial(
+                center_x, center_y, chord_x, chord_y, leader_length, layer
+            )
+        ).to_dict()
+
+    @provider_tool(tags={"dimension", "write"})
+    async def dimension_diametric(
+        center_x: float,
+        center_y: float,
+        chord_x: float,
+        chord_y: float,
+        leader_length: float,
+        layer: str | None = None,
+    ) -> dict[str, Any]:
+        return (
+            await backend.dimension_diametric(
+                center_x, center_y, chord_x, chord_y, leader_length, layer
+            )
+        ).to_dict()
+
+    @provider_tool(tags={"dimension", "write"})
+    async def dimension_ordinate(
+        definition_x: float,
+        definition_y: float,
+        leader_x: float,
+        leader_y: float,
+        axis: str = "x",
+        layer: str | None = None,
+    ) -> dict[str, Any]:
+        return (
+            await backend.dimension_ordinate(
+                definition_x, definition_y, leader_x, leader_y, axis, layer
+            )
+        ).to_dict()
+
     @provider_tool(tags={"layer", "read"})
     async def layer_list() -> list[dict[str, Any]]:
         return [layer.to_dict() for layer in await backend.layer_list()]
@@ -681,9 +1064,42 @@ def create_mcp(
     async def layer_set_current(name: str) -> dict[str, Any]:
         return await backend.layer_set_current(name)
 
+    @provider_tool(tags={"layer", "write"})
+    async def layer_update_state(
+        name: str,
+        is_on: bool | None = None,
+        is_frozen: bool | None = None,
+        is_locked: bool | None = None,
+        color: int | None = None,
+        linetype: str | None = None,
+        lineweight: int | None = None,
+    ) -> dict[str, Any]:
+        return (
+            await backend.layer_update_state(
+                name,
+                is_on=is_on,
+                is_frozen=is_frozen,
+                is_locked=is_locked,
+                color=color,
+                linetype=linetype,
+                lineweight=lineweight,
+            )
+        ).to_dict()
+
     @provider_tool(tags={"block", "read"})
-    async def block_list() -> list[dict[str, Any]]:
-        return [block.to_dict() for block in await backend.block_list()]
+    async def block_list(
+        include_xref_dependent: bool = False,
+        include_xrefs: bool = True,
+        name_filter: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        return [
+            block.to_dict()
+            for block in await backend.block_list(
+                include_xref_dependent, include_xrefs, name_filter, limit, offset
+            )
+        ]
 
     @provider_tool(tags={"block", "write"})
     async def block_create(
@@ -707,6 +1123,50 @@ def create_mcp(
         return (
             await backend.block_insert(name, x, y, scale_x, scale_y, rotation, layer)
         ).to_dict()
+
+    @provider_tool(tags={"xref", "read"})
+    async def xref_list() -> list[dict[str, Any]]:
+        return await backend.xref_list()
+
+    @provider_tool(tags={"xref", "write"})
+    async def xref_attach(
+        path: str,
+        name: str | None = None,
+        overlay: bool = True,
+        x: float = 0.0,
+        y: float = 0.0,
+        z: float = 0.0,
+        scale_x: float = 1.0,
+        scale_y: float = 1.0,
+        scale_z: float = 1.0,
+        rotation: float = 0.0,
+        layer: str | None = None,
+    ) -> dict[str, Any]:
+        return await backend.xref_attach(
+            path,
+            name=name,
+            overlay=overlay,
+            x=x,
+            y=y,
+            z=z,
+            scale_x=scale_x,
+            scale_y=scale_y,
+            scale_z=scale_z,
+            rotation=rotation,
+            layer=layer,
+        )
+
+    @provider_tool(tags={"xref", "write"})
+    async def xref_reload(name: str) -> dict[str, Any]:
+        return await backend.xref_reload(name)
+
+    @provider_tool(tags={"xref", "write"})
+    async def xref_unload(name: str) -> dict[str, Any]:
+        return await backend.xref_unload(name)
+
+    @provider_tool(tags={"xref", "write"})
+    async def xref_detach(name: str) -> dict[str, Any]:
+        return await backend.xref_detach(name)
 
     @provider_tool(tags={"layout", "read"})
     async def layout_list() -> dict[str, Any]:
@@ -774,6 +1234,162 @@ def create_mcp(
     @provider_tool(tags={"view", "read"})
     async def view_screenshot() -> Image:
         return Image(data=await backend.view_screenshot(), format="png")
+
+    @provider_tool(tags={"view", "write"})
+    async def view_set_direction(dx: float, dy: float, dz: float) -> dict[str, Any]:
+        return await backend.view_set_direction(dx, dy, dz)
+
+    @provider_tool(tags={"view", "write"})
+    async def view_set_preset(preset: str = "se_isometric") -> dict[str, Any]:
+        return await backend.view_set_preset(preset)
+
+    @provider_tool(tags={"view", "write"})
+    async def view_set_visual_style(style: str = "shades_of_gray") -> dict[str, Any]:
+        return await backend.view_set_visual_style(style)
+
+    @provider_tool(tags={"analysis", "read"})
+    async def object_measure(object_id: str) -> dict[str, Any]:
+        return await backend.object_measure(object_id)
+
+    @provider_tool(tags={"analysis", "read"})
+    async def drawing_extents() -> dict[str, Any]:
+        return await backend.drawing_extents()
+
+    @provider_tool(tags={"analysis", "read"})
+    async def object_intersections(
+        first_id: str,
+        second_id: str,
+        extend_mode: str = "none",
+    ) -> dict[str, Any]:
+        return await backend.object_intersections(first_id, second_id, extend_mode)
+
+    @provider_tool(tags={"solid", "write"})
+    async def solid_create_primitive(
+        kind: str,
+        parameters: dict[str, float],
+        layer: str | None = None,
+    ) -> dict[str, Any]:
+        normalized = str(kind).strip().lower()
+        specs: dict[str, tuple[tuple[str, ...], Any]] = {
+            "box": (("cx", "cy", "cz", "length", "width", "height"), backend.solid_box),
+            "cylinder": (("cx", "cy", "cz", "radius", "height"), backend.solid_cylinder),
+            "sphere": (("cx", "cy", "cz", "radius"), backend.solid_sphere),
+            "cone": (("cx", "cy", "cz", "radius", "height"), backend.solid_cone),
+            "torus": (("cx", "cy", "cz", "torus_radius", "tube_radius"), backend.solid_torus),
+            "wedge": (("cx", "cy", "cz", "length", "width", "height"), backend.solid_wedge),
+        }
+        spec = specs.get(normalized)
+        if spec is None:
+            raise ValueError("solid primitive kind must be one of: box, cylinder, sphere, cone, torus, wedge")
+        fields, method = spec
+        supplied = set(parameters)
+        required = set(fields)
+        if supplied != required:
+            raise ValueError(
+                f"{normalized} parameters must contain exactly: " + ", ".join(fields)
+            )
+        values = [float(parameters[field]) for field in fields]
+        result = await method(*values)
+        if layer is not None:
+            await backend.object_set_properties(result["handle"], layer=layer)
+            result = await backend.solid_inspect(result["handle"])
+        return {**result, "primitive": normalized}
+
+    @provider_tool(tags={"solid", "write"})
+    async def solid_extrude(
+        profile_object_id: str,
+        height: float,
+        taper_angle: float = 0.0,
+        layer: str | None = None,
+    ) -> dict[str, Any]:
+        result = await backend.solid_extrude(profile_object_id, height, taper_angle)
+        if layer is not None:
+            await backend.object_set_properties(result["handle"], layer=layer)
+            result = await backend.solid_inspect(result["handle"])
+        return result
+
+    @provider_tool(tags={"solid", "write"})
+    async def solid_sweep(
+        profile_object_id: str,
+        path_object_id: str,
+        layer: str | None = None,
+    ) -> dict[str, Any]:
+        result = await backend.solid_sweep(profile_object_id, path_object_id)
+        if layer is not None:
+            await backend.object_set_properties(result["handle"], layer=layer)
+            result = await backend.solid_inspect(result["handle"])
+        return result
+
+    @provider_tool(tags={"solid", "write"})
+    async def solid_revolve(
+        profile_object_id: str,
+        axis_x1: float,
+        axis_y1: float,
+        axis_z1: float,
+        axis_x2: float,
+        axis_y2: float,
+        axis_z2: float,
+        angle_deg: float = 360.0,
+        layer: str | None = None,
+    ) -> dict[str, Any]:
+        result = await backend.solid_revolve(
+            profile_object_id,
+            axis_x1, axis_y1, axis_z1, axis_x2, axis_y2, axis_z2,
+            angle_deg,
+        )
+        if layer is not None:
+            await backend.object_set_properties(result["handle"], layer=layer)
+            result = await backend.solid_inspect(result["handle"])
+        return result
+
+    @provider_tool(tags={"solid", "write"})
+    async def solid_boolean(
+        target_handle: str,
+        tool_handle: str,
+        operation: str,
+    ) -> dict[str, Any]:
+        return await backend.solid_boolean(target_handle, tool_handle, operation)
+
+    @provider_tool(tags={"solid", "write"})
+    async def solid_transform(
+        handle: str,
+        operation: str,
+        parameters: dict[str, float],
+    ) -> dict[str, Any]:
+        normalized = str(operation).strip().lower()
+        if normalized == "move":
+            fields = ("dx", "dy", "dz")
+            if set(parameters) != set(fields):
+                raise ValueError("move parameters must contain exactly dx, dy, dz")
+            return await backend.solid_move(handle, *(float(parameters[key]) for key in fields))
+        if normalized == "rotate":
+            fields = ("axis_x1", "axis_y1", "axis_z1", "axis_x2", "axis_y2", "axis_z2", "angle_deg")
+            if set(parameters) != set(fields):
+                raise ValueError("rotate parameters must contain exactly axis endpoints and angle_deg")
+            return await backend.solid_rotate3d(handle, *(float(parameters[key]) for key in fields))
+        if normalized == "scale":
+            fields = ("base_x", "base_y", "base_z", "factor")
+            if set(parameters) != set(fields):
+                raise ValueError("scale parameters must contain exactly base_x, base_y, base_z, factor")
+            return await backend.solid_scale3d(handle, *(float(parameters[key]) for key in fields))
+        if normalized == "mirror":
+            fields = ("x1", "y1", "z1", "x2", "y2", "z2", "x3", "y3", "z3")
+            if set(parameters) != set(fields):
+                raise ValueError("mirror parameters must contain exactly three WCS plane points")
+            return await backend.solid_mirror3d(handle, *(float(parameters[key]) for key in fields))
+        raise ValueError("solid transform operation must be one of: move, rotate, scale, mirror")
+
+    @provider_tool(tags={"solid", "read"})
+    async def solid_inspect(handle: str) -> dict[str, Any]:
+        return await backend.solid_inspect(handle)
+
+    @provider_tool(tags={"solid", "export"})
+    async def solid_export(
+        handles: list[str],
+        path: str,
+        format: str = "sat",
+    ) -> dict[str, Any]:
+        return await backend.solid_export(handles, path, format)
 
     @provider_tool(tags={"transaction", "write"})
     async def transaction_begin() -> dict[str, Any]:

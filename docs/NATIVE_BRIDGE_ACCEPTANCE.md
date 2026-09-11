@@ -1,8 +1,42 @@
 # Native Bridge + Semantic Integrity Acceptance
 
-> Updated: 2026-09-10 +07:00
-> Status: N3/NB0 PASS · N4/NB1 PASS · N5/NB4 PASS · N6/NB6 PASS · O1 bounded PASS · N7/NB5 CLOSED / LIVE PASS · later promotion gates OPEN
+> Updated: 2026-09-11 21:35 +07:00
+> Current status: **N3–N7/O1 CLOSED · G1/G2/G3 CLOSED/LIVE PASS · 100/1k/5k/10k graduation PASS · Feature-based Chunks Streaming LIVE PASS · public promotion final close gates PASS**
 > Target: AutoCAD 2027 full / Windows x64 / Managed .NET
+> Current-state authority: `docs/CURRENT_CHECKPOINT.md`
+
+## 0. Production acceptance addendum — G2/G3/Feature Streaming
+
+The earlier N3–N7 sections below are retained as historical gate evidence. The current native lane has advanced to bridge `0.8.1-g3`, document fingerprint schema v3, bounded metadata and feature-local logical execution.
+
+Accepted current invariants:
+
+- native micro-chunk maximum: **32 entities**;
+- one batch mutation per AutoCAD Idle tick;
+- graduated semantic capacity: **12,288 entities**;
+- public logical feature/batch maximum: **10,000 items**;
+- G2 metadata uses schema-agnostic namespaced JSON in ExtensionDictionary/XRecord with reserved provider namespaces and bounded storage/query/numeric work;
+- metadata participates in document fingerprint schema v3;
+- G3 uses one immutable predecessor checkpoint across short native transactions and proves exact predecessor R2 recovery when grouped work fails or completion becomes uncertain;
+- final accepted state is independently verified through compact document-state read-back before checkpoint finalization;
+- logical-batch begin/finalize unknown-completion paths are reconciled fail-closed;
+- 100 / 1,000 / 5,000 / 10,000 entity live tiers all PASS beginning/middle/end failure injection with exact predecessor recovery and zero pending recoveries;
+- the 10,000-entity accepted run used **313** native chunks and produced 10,000 unique persistent PIDs;
+- Feature-based Chunks Streaming scopes recovery to the **current feature**: prior committed features survive a later feature failure;
+- successful feature receipts recommend **300 ms** presentation pacing between features, not between native micro-chunks;
+- live feature acceptance measured **300.295 ms**, preserved Feature 1 after Feature 2 failed at native chunk index 1, then successfully committed Feature 3;
+- no arbitrary C#/AutoLISP/shell/macro/free-text command execution surface was added.
+
+Canonical evidence:
+
+- `docs/evidence/g23-live-2026-09-11.json`;
+- `docs/evidence/g3-scale-100-2026-09-11.json`;
+- `docs/evidence/g3-scale-1000-2026-09-11.json`;
+- `docs/evidence/g3-scale-5000-2026-09-11.json`;
+- `docs/evidence/g3-scale-10000-2026-09-11.json`;
+- `docs/evidence/feature-stream-production-2026-09-11.json`.
+
+The public promotion is `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`. Final close gates on the reviewed promotion tree are PASS: Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**; Linux/Windows compileall and `git diff --check` PASS; focused code/security review found no blocking issue. Ruff is unavailable in both prepared regression environments and is explicitly recorded as a tooling gap. Historical statements below that say the public surface was 50 tools describe the checkpoint at which those older gates were executed.
 
 ## 1. Purpose
 

@@ -25,6 +25,10 @@ from .protocol import (
     DocumentIdentityParams,
     LineCreateParams,
     LineTargetParams,
+    LogicalBeginParams,
+    MetadataGetParams,
+    MetadataQueryParams,
+    MetadataSetParams,
     PolylineCreateParams,
     PolylineTargetParams,
     RecoveryFinalizeParams,
@@ -91,6 +95,36 @@ class NativeBridgeClient:
         )
         return self._request("bridge.document.identity", params.to_dict())
 
+    def document_state(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+    ) -> dict[str, Any]:
+        """Read compact fingerprint/entity-count state without serializing a full semantic snapshot."""
+
+        params = DocumentIdentityParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+            }
+        )
+        result = self._request("bridge.document.state", params.to_dict())
+        if (
+            result.get("runtime_document_id") != runtime_document_id
+            or result.get("document_pid") != document_pid
+            or result.get("document_fp_schema_version") != 3
+            or not isinstance(result.get("document_fp"), str)
+            or not str(result["document_fp"]).startswith("sha256:")
+            or not isinstance(result.get("entity_count"), int)
+            or int(result["entity_count"]) < 0
+        ):
+            raise BridgeClientProtocolError(
+                "INVALID_RESPONSE",
+                "bridge.document.state returned invalid compact semantic state",
+            )
+        return result
+
     def document_snapshot(
         self,
         runtime_document_id: str,
@@ -112,6 +146,86 @@ class NativeBridgeClient:
         except BridgeProtocolError as exc:
             raise BridgeClientProtocolError(exc.code, exc.safe_message) from exc
 
+    def begin_logical_batch(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+    ) -> dict[str, Any]:
+        params = LogicalBeginParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+            }
+        )
+        return self._request("bridge.logical.begin", params.to_dict())
+
+    def metadata_get(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        semantic_pid: str,
+        namespace: str,
+    ) -> dict[str, Any]:
+        params = MetadataGetParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "semantic_pid": semantic_pid,
+                "namespace": namespace,
+            }
+        )
+        return self._request("metadata.get", params.to_dict())
+
+    def metadata_set(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+        semantic_pid: str,
+        namespace: str,
+        value: Any,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
+        params = MetadataSetParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "document_pid": document_pid,
+                "expected_parent_fp": expected_parent_fp,
+                "semantic_pid": semantic_pid,
+                "namespace": namespace,
+                "value": value,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            }
+        )
+        return self._request("metadata.set", params.to_dict())
+
+    def metadata_query(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str,
+        namespace: str,
+        path: str | None = None,
+        equals: Any = None,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "runtime_document_id": runtime_document_id,
+            "document_pid": document_pid,
+            "namespace": namespace,
+            "limit": limit,
+        }
+        if path is not None:
+            payload["path"] = path
+            payload["equals"] = equals
+        params = MetadataQueryParams.from_dict(payload)
+        return self._request("metadata.query", params.to_dict())
+
     def batch_create_chunk(
         self,
         runtime_document_id: str,
@@ -120,6 +234,7 @@ class NativeBridgeClient:
         expected_parent_fp: str,
         entities: tuple[Mapping[str, Any], ...],
         fault_stage: str | None = None,
+        logical_transaction: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Execute one bounded create-only native chunk; cross-chunk atomicity belongs to G3."""
 
@@ -130,6 +245,11 @@ class NativeBridgeClient:
                 "expected_parent_fp": expected_parent_fp,
                 "entities": [dict(item) for item in entities],
                 **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+                **(
+                    {"logical_transaction": dict(logical_transaction)}
+                    if logical_transaction is not None
+                    else {}
+                ),
             }
         )
         return self._request("entity.batch.create", params.to_dict())
@@ -142,6 +262,7 @@ class NativeBridgeClient:
         expected_parent_fp: str,
         inserts: tuple[Mapping[str, Any], ...],
         fault_stage: str | None = None,
+        logical_transaction: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Insert one bounded chunk of PID-bound block references."""
 
@@ -152,6 +273,11 @@ class NativeBridgeClient:
                 "expected_parent_fp": expected_parent_fp,
                 "inserts": [dict(item) for item in inserts],
                 **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+                **(
+                    {"logical_transaction": dict(logical_transaction)}
+                    if logical_transaction is not None
+                    else {}
+                ),
             }
         )
         return self._request("entity.batch.insert_blocks", params.to_dict())
@@ -165,6 +291,7 @@ class NativeBridgeClient:
         semantic_pids: tuple[str, ...],
         transform: Mapping[str, Any],
         fault_stage: str | None = None,
+        logical_transaction: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Execute one bounded in-place planar transform chunk over persistent semantic PIDs."""
 
@@ -176,6 +303,11 @@ class NativeBridgeClient:
                 "semantic_pids": list(semantic_pids),
                 "transform": dict(transform),
                 **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+                **(
+                    {"logical_transaction": dict(logical_transaction)}
+                    if logical_transaction is not None
+                    else {}
+                ),
             }
         )
         return self._request("entity.batch.transform", params.to_dict())

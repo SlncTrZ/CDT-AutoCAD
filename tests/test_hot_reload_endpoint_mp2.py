@@ -13,7 +13,7 @@ import pytest
 import uvicorn
 from fastmcp import Client
 
-from cdt_autocad.contract_identity import CONTRACT_VERSION, PROTOCOL_VERSION, contract_hash
+from cdt_autocad.contract_identity import CONTRACT_VERSION, PROTOCOL_VERSION, PUBLIC_TOOL_COUNT, contract_hash
 from cdt_autocad.hot_reload import ReloadSupervisor
 from cdt_autocad.runtime_identity import policy_fingerprint
 from cdt_autocad.supervisor import (
@@ -59,7 +59,7 @@ async def test_same_supervisor_url_serves_new_generation_after_reload(tmp_path: 
         expected_protocol_version=PROTOCOL_VERSION,
         expected_contract_version=CONTRACT_VERSION,
         expected_contract_hash=contract_hash(),
-        expected_tool_count=50,
+        expected_tool_count=PUBLIC_TOOL_COUNT,
         require_bridge=False,
         drain_timeout_seconds=2.0,
     )
@@ -92,7 +92,7 @@ async def test_same_supervisor_url_serves_new_generation_after_reload(tmp_path: 
             assert first_status["protocol_version"] == PROTOCOL_VERSION
             assert first_status["contract_version"] == CONTRACT_VERSION
             assert first_status["contract_hash"] == contract_hash()
-            assert len(await client.list_tools()) == 50
+            assert len(await client.list_tools()) == PUBLIC_TOOL_COUNT
 
         result = await supervisor.reload(build_id)
         assert result.ok is True
@@ -102,7 +102,7 @@ async def test_same_supervisor_url_serves_new_generation_after_reload(tmp_path: 
             second_status = second.structured_content or {}
             assert second_status["runtime_generation"] == "g000002"
             assert second_status["provider_build"]["id"] == build_id
-            assert len(await client.list_tools()) == 50
+            assert len(await client.list_tools()) == PUBLIC_TOOL_COUNT
     finally:
         server.should_exit = True
         await server_task

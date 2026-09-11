@@ -26,7 +26,7 @@ internal static class SemanticFingerprint
         string prefix = string.Join(
             '\0',
             Namespace,
-            "v2",
+            "v3",
             "document",
             ProfileSignature,
             "linear",
@@ -40,6 +40,8 @@ internal static class SemanticFingerprint
     internal static string CanonicalLinearSortKey(object payload) => CanonicalJson(payload, 6);
 
     internal static string CanonicalScalarSortKey(object payload) => CanonicalJson(payload, 9);
+
+    internal static string CanonicalMetadataSortKey(object payload) => CanonicalJson(payload, 9);
 
     private static string CanonicalJson(object payload, int decimalPlaces)
     {

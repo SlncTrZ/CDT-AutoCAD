@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from cdt_autocad.contract_identity import CONTRACT_VERSION, PROTOCOL_VERSION, contract_hash
+from cdt_autocad.contract_identity import CONTRACT_VERSION, PROTOCOL_VERSION, PUBLIC_TOOL_COUNT, contract_hash
 from cdt_autocad.hot_reload import ReloadSupervisor, WorkerGeneration, WorkerHealth
 from cdt_autocad.runtime_identity import policy_fingerprint
 from cdt_autocad.supervisor import McpWorkerProbe, SubprocessWorkerLauncher, source_build_id
@@ -98,7 +98,7 @@ async def test_startup_probe_bounds_each_attempt_and_retries_after_hung_snapshot
         protocol_version=PROTOCOL_VERSION,
         contract_version=CONTRACT_VERSION,
         contract_hash=contract_hash(),
-        tool_count=50,
+        tool_count=PUBLIC_TOOL_COUNT,
         startup_ready=True,
         runtime_ready=False,
         transaction_depth=0,
@@ -158,7 +158,7 @@ async def test_real_worker_process_bootstrap_and_three_reload_generations(tmp_pa
         expected_protocol_version=PROTOCOL_VERSION,
         expected_contract_version=CONTRACT_VERSION,
         expected_contract_hash=contract_hash(),
-        expected_tool_count=50,
+        expected_tool_count=PUBLIC_TOOL_COUNT,
         require_bridge=False,
         drain_timeout_seconds=2.0,
     )
@@ -173,7 +173,7 @@ async def test_real_worker_process_bootstrap_and_three_reload_generations(tmp_pa
         assert initial_health.protocol_version == PROTOCOL_VERSION
         assert initial_health.contract_version == CONTRACT_VERSION
         assert initial_health.contract_hash == contract_hash()
-        assert initial_health.tool_count == 50
+        assert initial_health.tool_count == PUBLIC_TOOL_COUNT
         assert initial_health.policy_fingerprint == policy_fp
 
         seen_pids = {initial.process_id}

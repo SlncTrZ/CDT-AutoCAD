@@ -61,6 +61,7 @@ def _entity_from_wire(value: Any, document_pid: str) -> EntitySemanticState:
     metrics = _optional_mapping(raw.get("metrics"), "entity.metrics")
     style = _optional_mapping(raw.get("style"), "entity.style")
     hierarchy = _optional_mapping(raw.get("hierarchy"), "entity.hierarchy")
+    metadata = _optional_mapping(raw.get("metadata", {}), "entity.metadata") or {}
 
     provisional = EntitySemanticState(
         semantic_pid=semantic_pid,
@@ -72,6 +73,7 @@ def _entity_from_wire(value: Any, document_pid: str) -> EntitySemanticState:
         metrics=metrics,
         style=style,
         hierarchy=hierarchy,
+        metadata=metadata,
     )
     geometry_fp = fingerprint_geometry(provisional)
     style_fp = fingerprint_style(style or {})
@@ -93,6 +95,7 @@ def _entity_from_wire(value: Any, document_pid: str) -> EntitySemanticState:
         metrics=metrics,
         style=style,
         hierarchy=hierarchy,
+        metadata=metadata,
         fingerprints=FingerprintSet(
             geometry_fp=geometry_fp,
             style_fp=style_fp,

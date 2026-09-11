@@ -36,6 +36,20 @@ from .base import AutoCADBackend
 
 _T = TypeVar("_T")
 
+
+_INSERTION_UNIT_CODES = {
+    "unitless": 0, "inches": 1, "feet": 2, "miles": 3,
+    "millimeters": 4, "millimetres": 4, "mm": 4,
+    "centimeters": 5, "centimetres": 5, "cm": 5,
+    "meters": 6, "metres": 6, "m": 6,
+    "kilometers": 7, "kilometres": 7, "km": 7,
+}
+_INSERTION_UNIT_NAMES = {0: "unitless", 1: "inches", 2: "feet", 3: "miles", 4: "millimeters", 5: "centimeters", 6: "meters", 7: "kilometers"}
+_MEASUREMENT_CODES = {"english": 0, "metric": 1}
+_MEASUREMENT_NAMES = {0: "english", 1: "metric"}
+_LINEAR_FORMAT_CODES = {"scientific": 1, "decimal": 2, "engineering": 3, "architectural": 4, "fractional": 5}
+_LINEAR_FORMAT_NAMES = {value: key for key, value in _LINEAR_FORMAT_CODES.items()}
+
 _UNIT_NAMES = {
     0: "unitless",
     1: "inches",
@@ -218,9 +232,11 @@ class EzdxfBackend(AutoCADBackend):
             "common.document.new": Capability(True, "native"),
             "common.document.open": Capability(True, "native"),
             "common.document.save": Capability(True, "dxf"),
+            "common.document.units": Capability(True, "dxf_header"),
             "common.object.query": Capability(True, "native"),
             "common.object.modify": Capability(True, "native"),
             "common.organization.layers": Capability(True, "native"),
+            "common.organization.layer_state": Capability(True, "native"),
             "common.transaction.rollback": Capability(True, "compressed_snapshot"),
             "common.transaction.undo": Capability(
                 self.settings.undo_depth > 0,
@@ -232,13 +248,13 @@ class EzdxfBackend(AutoCADBackend):
             "autocad.dwg.read": Capability(False, reason="live_autocad_or_converter_required"),
             "autocad.dwg.write": Capability(False, reason="live_autocad_required"),
             "autocad.blocks": Capability(True, "native"),
+            "autocad.references.xref": Capability(False, reason="COM_backend_required_for_xref_lifecycle"),
+            "autocad.artifact.seal": Capability(False, reason="live_saved_artifact_required"),
             "autocad.layouts": Capability(True, "native"),
             "autocad.dimensions.linear": Capability(True, "native"),
             "autocad.dimensions.aligned": Capability(True, "native"),
-            "autocad.dimensions.advanced": Capability(
-                False, reason="A3_2_staged_not_public"
-            ),
-            "autocad.analysis.measurement": Capability(False, reason="A3_3_staged_not_public"),
+            "autocad.dimensions.advanced": Capability(True, "ezdxf_native"),
+            "autocad.analysis.measurement": Capability(True, "ezdxf_exact_core"),
             "autocad.analysis.intersections": Capability(
                 False, reason="generic_intersection_solver_not_implemented"
             ),
@@ -256,8 +272,14 @@ class EzdxfBackend(AutoCADBackend):
             "autocad.view.zoom": Capability(False, reason="COM_backend_required"),
             "autocad.viewport.capture": Capability(False, reason="COM_backend_required"),
             "autocad.view.3d": Capability(False, reason="COM_backend_required"),
+            "autocad.view.visual_style": Capability(False, reason="COM_backend_required"),
             "autocad.geometry.3d_polyline": Capability(False, reason="COM_backend_required"),
+            "autocad.geometry.lwpolyline.curves": Capability(True, "ezdxf_lwpolyline"),
             "autocad.solid.acis": Capability(False, reason="COM_backend_required"),
+            "autocad.solid.export.sat": Capability(False, reason="COM_backend_required"),
+            "autocad.solid.edge_fillet": Capability(False, reason="COM_backend_required"),
+            "autocad.solid.edge_chamfer": Capability(False, reason="COM_backend_required"),
+            "autocad.solid.shell": Capability(False, reason="COM_backend_required"),
             "autocad.solid.loft": Capability(False, reason="COM_backend_required"),
         }
         return {key: value.to_dict() for key, value in capabilities.items()}
@@ -628,15 +650,36 @@ class EzdxfBackend(AutoCADBackend):
         closed: bool = False,
         layer: str | None = None,
         color: int | None = None,
+        bulges: list[float] | None = None,
+        widths: list[list[float]] | None = None,
+        elevation: float = 0.0,
     ) -> EntityInfo:
         if len(points) < 2 or any(len(point) < 2 for point in points):
             raise ValueError("polyline requires at least two [x, y] points")
+        vertex_count = len(points)
+        normalized_bulges = [0.0] * vertex_count if bulges is None else [float(v) for v in bulges]
+        if len(normalized_bulges) != vertex_count or not all(math.isfinite(v) for v in normalized_bulges):
+            raise ValueError("bulges must contain one finite value per polyline vertex")
+        normalized_widths = ([[0.0, 0.0] for _ in range(vertex_count)] if widths is None else widths)
+        if len(normalized_widths) != vertex_count or any(len(pair) != 2 for pair in normalized_widths):
+            raise ValueError("widths must contain [start_width, end_width] for every vertex")
+        width_pairs = [(float(pair[0]), float(pair[1])) for pair in normalized_widths]
+        if any((not math.isfinite(a) or not math.isfinite(b) or a < 0 or b < 0) for a, b in width_pairs):
+            raise ValueError("polyline widths must be finite values >= 0")
+        if not math.isfinite(float(elevation)):
+            raise ValueError("elevation must be finite")
+        normalized_points = [(float(point[0]), float(point[1])) for point in points]
+        if any(not math.isfinite(v) for point in normalized_points for v in point):
+            raise ValueError("polyline coordinates must be finite")
 
         def _sync() -> EntityInfo:
             layer_name, normalized_color = self._prepare_attrs(layer, color)
-            entity = self._space().add_lwpolyline(
-                [(float(point[0]), float(point[1])) for point in points], close=closed
-            )
+            values = [
+                (x, y, width_pairs[index][0], width_pairs[index][1], normalized_bulges[index])
+                for index, (x, y) in enumerate(normalized_points)
+            ]
+            entity = self._space().add_lwpolyline(values, format="xyseb", close=closed)
+            entity.dxf.elevation = float(elevation)
             self._apply_attrs(entity, layer_name, normalized_color)
             return _entity_info(entity)
 
@@ -1129,23 +1172,91 @@ class EzdxfBackend(AutoCADBackend):
 
         return await self._run(_sync, integrity_sensitive=True, record_history=True)
 
-    async def block_list(self) -> list[BlockInfo]:
+    async def layer_update_state(
+        self,
+        name: str,
+        *,
+        is_on: bool | None = None,
+        is_frozen: bool | None = None,
+        is_locked: bool | None = None,
+        color: int | None = None,
+        linetype: str | None = None,
+        lineweight: int | None = None,
+    ) -> LayerInfo:
+        wanted = str(name).strip()
+        if not wanted:
+            raise ValueError("layer name must not be empty")
+        normalized_color = self._validate_color(color) if color is not None else None
+        if lineweight is not None and not -3 <= int(lineweight) <= 211:
+            raise ValueError("lineweight must be between -3 and 211")
+
+        def _sync() -> LayerInfo:
+            doc = self._require_doc()
+            if wanted not in doc.layers:
+                raise ValueError(f"layer does not exist: {wanted}")
+            if wanted.lower() == self._current_layer.lower():
+                if is_frozen is True:
+                    raise ValueError("current layer cannot be frozen")
+                if is_on is False:
+                    raise ValueError("current layer cannot be turned off")
+            layer = doc.layers.get(wanted)
+            if is_on is not None:
+                layer.on() if is_on else layer.off()
+            if is_frozen is not None:
+                layer.freeze() if is_frozen else layer.thaw()
+            if is_locked is not None:
+                layer.lock() if is_locked else layer.unlock()
+            if normalized_color is not None:
+                layer.dxf.color = normalized_color
+            if linetype is not None:
+                requested = str(linetype).strip()
+                if not requested or requested not in doc.linetypes:
+                    raise ValueError(f"linetype does not exist: {requested}")
+                layer.dxf.linetype = requested
+            if lineweight is not None:
+                layer.dxf.lineweight = int(lineweight)
+            return _layer_info(layer, self._current_layer)
+
+        return await self._run(_sync, integrity_sensitive=True, record_history=True)
+
+    async def block_list(
+        self,
+        include_xref_dependent: bool = False,
+        include_xrefs: bool = True,
+        name_filter: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[BlockInfo]:
+        if not 1 <= int(limit) <= 1000:
+            raise ValueError("limit must be between 1 and 1000")
+        if int(offset) < 0:
+            raise ValueError("offset must be >= 0")
+        wanted_filter = str(name_filter).strip().lower() if name_filter else None
+
         def _sync() -> list[BlockInfo]:
             result: list[BlockInfo] = []
             for block in self._require_doc().blocks:
-                if block.name.startswith("*"):
+                name = str(block.name)
+                if name.startswith("*"):
+                    continue
+                is_xref = bool(block.block.dxf.get("xref_path", ""))
+                if "|" in name and not include_xref_dependent:
+                    continue
+                if is_xref and not include_xrefs:
+                    continue
+                if wanted_filter and wanted_filter not in name.lower():
                     continue
                 base = block.block.dxf.get("base_point", (0.0, 0.0, 0.0))
                 result.append(
                     BlockInfo(
-                        name=str(block.name),
+                        name=name,
                         base_point=(float(base[0]), float(base[1]), float(base[2])),
                         entity_count=len(block),
                         attribute_count=sum(1 for entity in block if entity.dxftype() == "ATTDEF"),
-                        is_xref=bool(block.block.dxf.get("xref_path", "")),
+                        is_xref=is_xref,
                     )
                 )
-            return result
+            return result[int(offset): int(offset) + int(limit)]
 
         return await self._run(_sync)
 
@@ -1250,6 +1361,60 @@ class EzdxfBackend(AutoCADBackend):
                 doc.header["$TILEMODE"] = 0
             self._current_space = resolved
             return {"ok": True, "current": resolved}
+
+        return await self._run(_sync, integrity_sensitive=True, record_history=True)
+
+    async def document_configure_units(
+        self,
+        insertion_units: str | None = None,
+        measurement: str | None = None,
+        linear_format: str | None = None,
+        linear_precision: int | None = None,
+    ) -> dict[str, Any]:
+        unit_code = None
+        if insertion_units is not None:
+            normalized = str(insertion_units).strip().lower()
+            if normalized not in _INSERTION_UNIT_CODES:
+                raise ValueError(f"unsupported insertion_units: {insertion_units}")
+            unit_code = _INSERTION_UNIT_CODES[normalized]
+        measurement_code = None
+        if measurement is not None:
+            normalized = str(measurement).strip().lower()
+            if normalized not in _MEASUREMENT_CODES:
+                raise ValueError("measurement must be 'metric' or 'english'")
+            measurement_code = _MEASUREMENT_CODES[normalized]
+        format_code = None
+        if linear_format is not None:
+            normalized = str(linear_format).strip().lower()
+            if normalized not in _LINEAR_FORMAT_CODES:
+                raise ValueError(f"unsupported linear_format: {linear_format}")
+            format_code = _LINEAR_FORMAT_CODES[normalized]
+        if linear_precision is not None and not 0 <= int(linear_precision) <= 8:
+            raise ValueError("linear_precision must be between 0 and 8")
+
+        def _sync() -> dict[str, Any]:
+            doc = self._require_doc()
+            if unit_code is not None:
+                doc.header["$INSUNITS"] = unit_code
+            if measurement_code is not None:
+                doc.header["$MEASUREMENT"] = measurement_code
+            if format_code is not None:
+                doc.header["$LUNITS"] = format_code
+            if linear_precision is not None:
+                doc.header["$LUPREC"] = int(linear_precision)
+            raw = {
+                "INSUNITS": int(doc.header.get("$INSUNITS", 0)),
+                "MEASUREMENT": int(doc.header.get("$MEASUREMENT", 0)),
+                "LUNITS": int(doc.header.get("$LUNITS", 2)),
+                "LUPREC": int(doc.header.get("$LUPREC", 4)),
+            }
+            return {
+                "insertion_units": _INSERTION_UNIT_NAMES.get(raw["INSUNITS"], f"code_{raw['INSUNITS']}"),
+                "measurement": _MEASUREMENT_NAMES.get(raw["MEASUREMENT"], f"code_{raw['MEASUREMENT']}"),
+                "linear_format": _LINEAR_FORMAT_NAMES.get(raw["LUNITS"], f"code_{raw['LUNITS']}"),
+                "linear_precision": raw["LUPREC"],
+                "raw": raw,
+            }
 
         return await self._run(_sync, integrity_sensitive=True, record_history=True)
 

@@ -23,7 +23,7 @@ import httpx
 import uvicorn
 from fastmcp import Client
 
-from .contract_identity import CONTRACT_VERSION, PROTOCOL_VERSION, contract_hash
+from .contract_identity import CONTRACT_VERSION, PROTOCOL_VERSION, PUBLIC_TOOL_COUNT, contract_hash
 from .hot_reload import (
     ReloadSupervisor,
     ReloadUnavailableError,
@@ -33,7 +33,7 @@ from .hot_reload import (
 )
 from .runtime_identity import policy_fingerprint
 
-_EXPECTED_TOOL_COUNT = 50
+_EXPECTED_TOOL_COUNT = PUBLIC_TOOL_COUNT
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _HOP_BY_HOP_HEADERS = {
     b"connection",

@@ -1,8 +1,8 @@
 # Semantic State Protocol — CDT-AutoCAD Target Contract
 
-> Updated: 2026-09-10 +07:00
-> Status: CONTRACT BASELINE · N1–N7 + O1 implemented/accepted for bounded scopes
-> Scope: source semantics, native extraction, PID, canonicalization, fingerprinting, diff, rollback and deterministic validation
+> Updated: 2026-09-11 20:30 +07:00
+> Status: CONTRACT BASELINE · N1–N7/O1 + G1/G2/G3 implemented/live-accepted for documented scopes · Feature-based Chunks Streaming live-accepted
+> Scope: source semantics, native extraction, PID, canonicalization, fingerprinting, diff, metadata, feature-local rollback and deterministic validation
 
 ## 1. System invariant
 
@@ -21,17 +21,15 @@ The Semantic State Loop is the control architecture. AutoCAD .NET, COM, ezdxf an
 
 As of the current checkpoint:
 
-- N1 implements the Python semantic models, canonicalization/fingerprint primitives, rollback receipts and state-chain primitives;
-- N2 live-verifies persistent PID carrier/clone semantics;
-- N3 live-verifies the Managed .NET transport and runtime-document identity boundary;
-- N4 live-verifies bounded native `SemanticSnapshot` extraction;
-- N5 live-verifies fixed-schema LINE create/update/delete with composite parent binding, native transaction boundaries and independently verified R0 abort rollback;
-- N6 live-verifies deterministic semantic delta, requested-geometry/allowed-effects validation, duplicate detection, state-chain continuity, manual-drift blocking and post-dispatch uncertainty latching;
-- O1 live-verifies that the same parent-PID-transaction-N6 chain model extends internally to CIRCLE, ARC and simple LWPOLYLINE create/update/delete, for an exact 12-operation staged allowlist including LINE;
-- N7 is actively implementing provisional in-transaction validation, independent persisted-state comparison, provider-owned checkpoint manifests/artifact hashes, typed recovery list/resolve/finalize, R1 compensation and R2 checkpoint restoration;
-- N7 is accepted for its bounded checkpoint-backed post-commit recovery scope; activation-safe R2 after real AutoCAD restart passed with exact predecessor PID/fingerprint verification. Public routing/promotion remains separate.
+- N1–N7 and O1 are closed/live-accepted for their documented semantic/PID/typed-mutation/recovery scopes;
+- G1 provides bounded generic batch create/transform/block insertion with native chunks capped at 32 and Idle-yield scheduling;
+- G2 provides schema-agnostic namespaced JSON metadata over ExtensionDictionary/XRecord with bounded storage/query work and metadata participation in document fingerprint schema v3;
+- G3 provides one immutable predecessor checkpoint across yielded native chunks, independent final compact-state verification and exact R2 predecessor restoration for logical failure or unknown completion;
+- scale graduation is live-accepted at 100, 1,000, 5,000 and 10,000 entities, with beginning/middle/end failure injection and zero pending recovery;
+- Feature-based Chunks Streaming is the Production Domain orchestration model: one caller-defined feature owns one logical predecessor; failure restores only the current feature while prior committed features remain accepted;
+- the current public-promotion candidate is `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`, but final regression/review/commit remains open.
 
-Accordingly, the protocol below is partly implemented and partly normative target contract. The working N7 candidate attempts to convert post-commit validation/integrity failures from `STATE_UNCERTAIN` into verified R1/R2 restoration, but no such recovery may be treated as accepted until the N7 close gate passes. Current status authority: `docs/CURRENT_CHECKPOINT.md`; unfinished N7 details: `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
+The protocol below remains both implemented contract and normative guardrail. Current status authority is `docs/CURRENT_CHECKPOINT.md`; historical N7 details remain in `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
 
 ## 2. Core protocol objects
 
@@ -266,6 +264,12 @@ N5 introduces **document fingerprint schema v2** without changing the v1 geometr
 `SemanticSnapshot.saved` remains observable state, but it is excluded from `document_fp` because AutoCAD `DBMOD` is volatile lifecycle metadata rather than drawing semantics. Native acceptance measured both behaviors after `Transaction.Abort()`: one create-abort left `DBMOD=1`, while an update-abort returned `DBMOD=0`, even though independent semantic read-back restored the exact same geometry/PID/style/extents state in both cases. Treating `saved` as semantic identity would therefore turn a verified R0 rollback into a false state-drift failure.
 
 Physical-file/checkpoint identity is separate and must use `artifact_fp` plus the file/checkpoint policy when required.
+
+#### 6.5.2 Document fingerprint schema v3
+
+G2 advances the semantic document fingerprint to **schema v3**. V3 preserves the v2 decision that volatile `saved/DBMOD` is not semantic identity and additionally includes schema-agnostic entity metadata in the canonical entity state. A metadata change therefore advances `document_fp` even when geometry, PID, layer and style are unchanged.
+
+Metadata is canonicalized and bounded before persistence/hashing. Provider-owned identity/recovery namespaces remain outside arbitrary caller mutation. The native bridge advertises the document fingerprint schema explicitly; callers must never compare v2 and v3 fingerprints as if they were the same domain.
 
 ### 6.6 Duplicate detection
 
@@ -519,7 +523,7 @@ During migration:
 
 - COM/ezdxf may populate a subset of semantic fields for parity tests;
 - the staged .NET bridge provides N4 bounded native extraction and typed native mutation; N6 provides deterministic delta/state-chain validation and O1 extends the internal accepted mutation set to LINE/CIRCLE/ARC/simple-LWPOLYLINE without changing the public MCP surface;
-- document fingerprint schema v1 evidence remains historical; N5+ parent-state binding uses schema v2, which excludes volatile `saved/DBMOD` from semantic identity;
+- document fingerprint schema v1/v2 evidence remains historical; G2/G3 current parent-state binding uses schema v3, which retains the v2 exclusion of volatile `saved/DBMOD` and adds canonical schema-agnostic metadata to entity semantic state;
 - current native snapshots expose no relation/topology data, so N6 does not claim topology validation that is not present in authoritative extraction;
 - N7 post-commit recovery/R1/R2 is CLOSED / LIVE PASS for the bounded internal candidate, including activation-safe R2 after real AutoCAD restart;
 - Python MCP/provider hot reload is a mandatory prerequisite before deep N8/N9/N10 migration: one authoritative generation, deterministic in-flight drain/refusal, health-proven generation switch and fail-safe rollback to the previous healthy generation are required;

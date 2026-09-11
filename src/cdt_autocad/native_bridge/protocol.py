@@ -9,6 +9,7 @@ import math
 import re
 import struct
 from collections.abc import Mapping
+from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
 from typing import Any, BinaryIO
 from uuid import UUID
@@ -18,6 +19,13 @@ MAX_FRAME_BYTES = 65_536
 MAX_ERROR_MESSAGE_CHARS = 512
 MAX_SIMPLE_POLYLINE_VERTICES = 128
 MAX_BATCH_CHUNK_ENTITIES = 32
+MAX_METADATA_JSON_BYTES = 8_192
+MAX_METADATA_DEPTH = 8
+MAX_METADATA_KEYS = 256
+MAX_METADATA_STRING_CHARS = 2_048
+MAX_METADATA_QUERY_RESULTS = 1_000
+MAX_METADATA_DECIMAL_ABS = Decimal("79228162514264337593543950335")
+MAX_LOGICAL_BATCH_ITEMS = 10_000
 
 _READ_ONLY_OPERATIONS = frozenset(
     {
@@ -25,7 +33,10 @@ _READ_ONLY_OPERATIONS = frozenset(
         "bridge.documents.list",
         "bridge.document.identity",
         "bridge.document.snapshot",
+        "bridge.document.state",
         "bridge.recovery.list",
+        "metadata.get",
+        "metadata.query",
     }
 )
 _MUTATION_OPERATIONS = frozenset(
@@ -45,12 +56,14 @@ _MUTATION_OPERATIONS = frozenset(
         "entity.create.lwpolyline",
         "entity.update.lwpolyline",
         "entity.delete.lwpolyline",
+        "metadata.set",
     }
 )
 _RECOVERY_OPERATIONS = frozenset(
     {
         "bridge.recovery.resolve",
         "bridge.recovery.finalize",
+        "bridge.logical.begin",
     }
 )
 _ALLOWED_OPERATIONS = _READ_ONLY_OPERATIONS | _MUTATION_OPERATIONS | _RECOVERY_OPERATIONS
@@ -63,6 +76,9 @@ _FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ERROR_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _CHECKPOINT_ID_RE = re.compile(r"^cp:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 _ENTITY_PID_RE = re.compile(r"^pid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+_METADATA_NAMESPACE_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}(?:\.[a-z0-9][a-z0-9_-]{0,31}){1,7}$")
+_METADATA_PATH_RE = re.compile(r"^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){0,7}$")
+_RESERVED_METADATA_PREFIXES = ("slnctrz.", "cdt.", "provider.")
 _FAULT_STAGES = frozenset(
     {
         "after_apply_before_commit",
@@ -255,6 +271,71 @@ class RecoveryFinalizeParams:
         }
 
 
+@dataclass(frozen=True)
+class LogicalBeginParams:
+    runtime_document_id: str
+    document_pid: str
+    expected_parent_fp: str
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> LogicalBeginParams:
+        allowed = {"runtime_document_id", "document_pid", "expected_parent_fp"}
+        if set(value) != allowed:
+            raise BridgeProtocolError("INVALID_PARAMS", "logical begin params must use the exact typed schema")
+        runtime_id = _canonical_uuid(
+            value.get("runtime_document_id"),
+            code="INVALID_RUNTIME_DOCUMENT_ID",
+            field_name="runtime_document_id",
+        )
+        document_pid = value.get("document_pid")
+        if not isinstance(document_pid, str) or not document_pid.strip():
+            raise BridgeProtocolError("INVALID_PARAMS", "document_pid is required for logical batch")
+        return cls(
+            runtime_id,
+            document_pid,
+            _canonical_fingerprint(value.get("expected_parent_fp"), "expected_parent_fp"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "expected_parent_fp": self.expected_parent_fp,
+        }
+
+
+@dataclass(frozen=True)
+class LogicalBatchBinding:
+    checkpoint_id: str
+    checkpoint_artifact_fp: str
+    expected_restore_fp: str
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> LogicalBatchBinding:
+        allowed = {"checkpoint_id", "checkpoint_artifact_fp", "expected_restore_fp"}
+        if set(value) != allowed:
+            raise BridgeProtocolError("INVALID_PARAMS", "logical_transaction must use the exact checkpoint binding schema")
+        return cls(
+            _canonical_checkpoint_id(value.get("checkpoint_id")),
+            _canonical_fingerprint(value.get("checkpoint_artifact_fp"), "checkpoint_artifact_fp"),
+            _canonical_fingerprint(value.get("expected_restore_fp"), "expected_restore_fp"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "checkpoint_id": self.checkpoint_id,
+            "checkpoint_artifact_fp": self.checkpoint_artifact_fp,
+            "expected_restore_fp": self.expected_restore_fp,
+        }
+
+
+def _logical_binding(value: Any) -> LogicalBatchBinding | None:
+    if value is None:
+        return None
+    mapping = _require_mapping(value, code="INVALID_PARAMS", field_name="logical_transaction")
+    return LogicalBatchBinding.from_dict(mapping)
+
+
 def _mutation_binding(value: Mapping[str, Any], allowed: frozenset[str]) -> tuple[str, str, str, str | None]:
     unknown = set(value) - allowed
     if unknown:
@@ -311,6 +392,199 @@ def _canonical_entity_pid(value: Any) -> str:
     if not isinstance(value, str) or _ENTITY_PID_RE.fullmatch(value) is None:
         raise BridgeProtocolError("INVALID_PARAMS", "semantic_pids must contain canonical pid:<uuid> values")
     return value
+
+
+def _metadata_namespace(value: Any) -> str:
+    if not isinstance(value, str) or len(value) > 128 or _METADATA_NAMESPACE_RE.fullmatch(value) is None:
+        raise BridgeProtocolError(
+            "INVALID_PARAMS",
+            "metadata namespace must be a lowercase dotted identifier such as customer.mechanical.v1",
+        )
+    if value.startswith(_RESERVED_METADATA_PREFIXES):
+        raise BridgeProtocolError("INVALID_PARAMS", "metadata namespace is reserved by the provider")
+    return value
+
+
+def _metadata_path(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or _METADATA_PATH_RE.fullmatch(value) is None:
+        raise BridgeProtocolError("INVALID_PARAMS", "metadata query path must be a dotted JSON object path")
+    return value
+
+
+def _canonical_metadata_value(value: Any) -> Any:
+    key_count = 0
+
+    def normalize(item: Any, depth: int) -> Any:
+        nonlocal key_count
+        if depth > MAX_METADATA_DEPTH:
+            raise BridgeProtocolError("INVALID_PARAMS", "metadata JSON exceeds maximum nesting depth")
+        if item is None or isinstance(item, bool):
+            return item
+        if isinstance(item, int | float):
+            if isinstance(item, float) and not math.isfinite(item):
+                raise BridgeProtocolError("INVALID_PARAMS", "metadata JSON numbers must be finite")
+            try:
+                decimal_value = Decimal(str(item))
+            except (InvalidOperation, ValueError) as exc:
+                raise BridgeProtocolError("INVALID_PARAMS", "metadata JSON numbers must be decimal-compatible") from exc
+            if not decimal_value.is_finite() or abs(decimal_value) > MAX_METADATA_DECIMAL_ABS:
+                raise BridgeProtocolError("INVALID_PARAMS", "metadata JSON numbers exceed native decimal range")
+            return item
+        if isinstance(item, str):
+            if len(item) > MAX_METADATA_STRING_CHARS:
+                raise BridgeProtocolError("INVALID_PARAMS", "metadata JSON string exceeds maximum length")
+            return item
+        if isinstance(item, list | tuple):
+            return [normalize(child, depth + 1) for child in item]
+        if isinstance(item, Mapping):
+            result: dict[str, Any] = {}
+            for key, child in item.items():
+                if not isinstance(key, str) or not key or len(key) > 128:
+                    raise BridgeProtocolError("INVALID_PARAMS", "metadata JSON object keys must be non-empty strings <=128 chars")
+                key_count += 1
+                if key_count > MAX_METADATA_KEYS:
+                    raise BridgeProtocolError("INVALID_PARAMS", "metadata JSON exceeds maximum key count")
+                result[key] = normalize(child, depth + 1)
+            return result
+        raise BridgeProtocolError("INVALID_PARAMS", "metadata value must be JSON-compatible")
+
+    normalized = normalize(value, 1)
+    try:
+        encoded = json.dumps(
+            normalized, ensure_ascii=False, allow_nan=False, separators=(",", ":"), sort_keys=True
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise BridgeProtocolError("INVALID_PARAMS", "metadata value must be valid JSON") from exc
+    if len(encoded) > MAX_METADATA_JSON_BYTES:
+        raise BridgeProtocolError("INVALID_PARAMS", "metadata JSON exceeds encoded-size limit")
+    return json.loads(encoded.decode("utf-8"))
+
+
+@dataclass(frozen=True)
+class MetadataGetParams:
+    runtime_document_id: str
+    document_pid: str
+    semantic_pid: str
+    namespace: str
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> MetadataGetParams:
+        allowed = {"runtime_document_id", "document_pid", "semantic_pid", "namespace"}
+        if set(value) != allowed:
+            raise BridgeProtocolError("INVALID_PARAMS", "metadata get params must use the exact typed schema")
+        runtime_id = _canonical_uuid(
+            value.get("runtime_document_id"), code="INVALID_RUNTIME_DOCUMENT_ID", field_name="runtime_document_id"
+        )
+        document_pid = value.get("document_pid")
+        if not isinstance(document_pid, str) or not document_pid.strip():
+            raise BridgeProtocolError("INVALID_PARAMS", "document_pid is required for metadata")
+        semantic_pid = _canonical_entity_pid(value.get("semantic_pid"))
+        return cls(runtime_id, document_pid, semantic_pid, _metadata_namespace(value.get("namespace")))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "semantic_pid": self.semantic_pid,
+            "namespace": self.namespace,
+        }
+
+
+@dataclass(frozen=True)
+class MetadataSetParams:
+    runtime_document_id: str
+    document_pid: str
+    expected_parent_fp: str
+    semantic_pid: str
+    namespace: str
+    value: Any
+    fault_stage: str | None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> MetadataSetParams:
+        allowed = _MUTATION_BINDING_FIELDS | {"semantic_pid", "namespace", "value"}
+        runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
+        if fault_stage is not None and fault_stage != "after_apply_before_commit":
+            raise BridgeProtocolError("INVALID_PARAMS", "metadata set only enables the pre-commit fault stage")
+        return cls(
+            runtime_id,
+            document_pid,
+            parent_fp,
+            _canonical_entity_pid(value.get("semantic_pid")),
+            _metadata_namespace(value.get("namespace")),
+            _canonical_metadata_value(value.get("value")),
+            fault_stage,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        result = {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "expected_parent_fp": self.expected_parent_fp,
+            "semantic_pid": self.semantic_pid,
+            "namespace": self.namespace,
+            "value": self.value,
+        }
+        if self.fault_stage is not None:
+            result["fault_stage"] = self.fault_stage
+        return result
+
+
+@dataclass(frozen=True)
+class MetadataQueryParams:
+    runtime_document_id: str
+    document_pid: str
+    namespace: str
+    path: str | None = None
+    equals: Any = None
+    has_equals: bool = False
+    limit: int = 200
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> MetadataQueryParams:
+        allowed = {"runtime_document_id", "document_pid", "namespace", "path", "equals", "limit"}
+        unknown = set(value) - allowed
+        if unknown:
+            raise BridgeProtocolError("INVALID_PARAMS", "metadata query params contain unknown fields")
+        required = {"runtime_document_id", "document_pid", "namespace"}
+        if not required <= set(value):
+            raise BridgeProtocolError("INVALID_PARAMS", "metadata query requires runtime_document_id, document_pid and namespace")
+        if ("path" in value) != ("equals" in value):
+            raise BridgeProtocolError("INVALID_PARAMS", "metadata query path and equals must be supplied together")
+        runtime_id = _canonical_uuid(
+            value.get("runtime_document_id"), code="INVALID_RUNTIME_DOCUMENT_ID", field_name="runtime_document_id"
+        )
+        document_pid = value.get("document_pid")
+        if not isinstance(document_pid, str) or not document_pid.strip():
+            raise BridgeProtocolError("INVALID_PARAMS", "document_pid is required for metadata")
+        raw_limit = value.get("limit", 200)
+        if isinstance(raw_limit, bool) or not isinstance(raw_limit, int) or not 1 <= raw_limit <= MAX_METADATA_QUERY_RESULTS:
+            raise BridgeProtocolError("INVALID_PARAMS", f"metadata query limit must be 1..{MAX_METADATA_QUERY_RESULTS}")
+        has_equals = "equals" in value
+        equals = _canonical_metadata_value(value.get("equals")) if has_equals else None
+        return cls(
+            runtime_id,
+            document_pid,
+            _metadata_namespace(value.get("namespace")),
+            _metadata_path(value.get("path")),
+            equals,
+            has_equals,
+            raw_limit,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_document_id": self.runtime_document_id,
+            "document_pid": self.document_pid,
+            "namespace": self.namespace,
+            "limit": self.limit,
+        }
+        if self.path is not None:
+            result["path"] = self.path
+            result["equals"] = self.equals
+        return result
 
 
 def _points2(value: Any) -> tuple[tuple[float, float], ...]:
@@ -428,10 +702,11 @@ class BatchCreateParams:
     expected_parent_fp: str
     entities: tuple[BatchCreateEntitySpec, ...]
     fault_stage: str | None = None
+    logical_transaction: LogicalBatchBinding | None = None
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> BatchCreateParams:
-        allowed = _MUTATION_BINDING_FIELDS | {"entities"}
+        allowed = _MUTATION_BINDING_FIELDS | {"entities", "logical_transaction"}
         runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
         if fault_stage is not None and fault_stage != "after_apply_before_commit":
             raise BridgeProtocolError(
@@ -450,7 +725,14 @@ class BatchCreateParams:
             )
             for item in raw_entities
         )
-        return cls(runtime_id, document_pid, parent_fp, entities, fault_stage)
+        return cls(
+            runtime_id,
+            document_pid,
+            parent_fp,
+            entities,
+            fault_stage,
+            _logical_binding(value.get("logical_transaction")),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -461,6 +743,8 @@ class BatchCreateParams:
         }
         if self.fault_stage is not None:
             result["fault_stage"] = self.fault_stage
+        if self.logical_transaction is not None:
+            result["logical_transaction"] = self.logical_transaction.to_dict()
         return result
 
 
@@ -544,10 +828,11 @@ class BatchTransformParams:
     semantic_pids: tuple[str, ...]
     transform: BatchTransformSpec
     fault_stage: str | None = None
+    logical_transaction: LogicalBatchBinding | None = None
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> BatchTransformParams:
-        allowed = _MUTATION_BINDING_FIELDS | {"semantic_pids", "transform"}
+        allowed = _MUTATION_BINDING_FIELDS | {"semantic_pids", "transform", "logical_transaction"}
         runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
         if fault_stage is not None and fault_stage != "after_apply_before_commit":
             raise BridgeProtocolError(
@@ -566,7 +851,10 @@ class BatchTransformParams:
         transform = BatchTransformSpec.from_dict(
             _require_mapping(value.get("transform"), code="INVALID_PARAMS", field_name="transform")
         )
-        return cls(runtime_id, document_pid, parent_fp, semantic_pids, transform, fault_stage)
+        return cls(
+            runtime_id, document_pid, parent_fp, semantic_pids, transform, fault_stage,
+            _logical_binding(value.get("logical_transaction")),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -578,6 +866,8 @@ class BatchTransformParams:
         }
         if self.fault_stage is not None:
             result["fault_stage"] = self.fault_stage
+        if self.logical_transaction is not None:
+            result["logical_transaction"] = self.logical_transaction.to_dict()
         return result
 
 
@@ -637,10 +927,11 @@ class BatchInsertBlocksParams:
     expected_parent_fp: str
     inserts: tuple[BatchInsertBlockSpec, ...]
     fault_stage: str | None = None
+    logical_transaction: LogicalBatchBinding | None = None
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> BatchInsertBlocksParams:
-        allowed = _MUTATION_BINDING_FIELDS | {"inserts"}
+        allowed = _MUTATION_BINDING_FIELDS | {"inserts", "logical_transaction"}
         runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
         if fault_stage is not None and fault_stage != "after_apply_before_commit":
             raise BridgeProtocolError(
@@ -659,7 +950,10 @@ class BatchInsertBlocksParams:
             )
             for item in raw_inserts
         )
-        return cls(runtime_id, document_pid, parent_fp, inserts, fault_stage)
+        return cls(
+            runtime_id, document_pid, parent_fp, inserts, fault_stage,
+            _logical_binding(value.get("logical_transaction")),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -670,6 +964,8 @@ class BatchInsertBlocksParams:
         }
         if self.fault_stage is not None:
             result["fault_stage"] = self.fault_stage
+        if self.logical_transaction is not None:
+            result["logical_transaction"] = self.logical_transaction.to_dict()
         return result
 
 
@@ -1018,6 +1314,10 @@ class BridgeRequest:
     operation: str
     params: (
         DocumentIdentityParams
+        | LogicalBeginParams
+        | MetadataGetParams
+        | MetadataSetParams
+        | MetadataQueryParams
         | BatchCreateParams
         | BatchInsertBlocksParams
         | BatchTransformParams
@@ -1058,7 +1358,7 @@ class BridgeRequest:
             code="INVALID_PARAMS",
             field_name="params",
         )
-        if operation in {"bridge.document.identity", "bridge.document.snapshot"}:
+        if operation in {"bridge.document.identity", "bridge.document.snapshot", "bridge.document.state"}:
             params: (
                 DocumentIdentityParams
                 | BatchCreateParams
@@ -1076,6 +1376,14 @@ class BridgeRequest:
                 | RecoveryFinalizeParams
                 | Mapping[str, Any]
             ) = DocumentIdentityParams.from_dict(raw_params)
+        elif operation == "bridge.logical.begin":
+            params = LogicalBeginParams.from_dict(raw_params)
+        elif operation == "metadata.get":
+            params = MetadataGetParams.from_dict(raw_params)
+        elif operation == "metadata.set":
+            params = MetadataSetParams.from_dict(raw_params)
+        elif operation == "metadata.query":
+            params = MetadataQueryParams.from_dict(raw_params)
         elif operation == "entity.batch.create":
             params = BatchCreateParams.from_dict(raw_params)
         elif operation == "entity.batch.insert_blocks":

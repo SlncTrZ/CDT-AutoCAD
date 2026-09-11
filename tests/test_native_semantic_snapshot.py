@@ -43,11 +43,12 @@ def _snapshot_result() -> dict:
                 "metrics": {"length": 10.0},
                 "style": {"linetype": "ByLayer", "lineweight": "ByLayer"},
                 "hierarchy": {"owner_space": "Model"},
+                "metadata": {},
             }
         ],
         "relations": [],
         "styles": [{"kind": "layer", "name": "0", "is_off": False}],
-        "document_fp_schema_version": 2,
+        "document_fp_schema_version": 3,
         "document_fp": "",
     }
 
@@ -133,3 +134,22 @@ def test_document_snapshot_rejects_missing_or_duplicate_semantic_pid():
     client = NativeBridgeClient(SnapshotTransport(raw), request_id_factory=lambda: REQUEST_ID)
     with pytest.raises(BridgeClientProtocolError, match="INVALID_SNAPSHOT"):
         client.document_snapshot(RUNTIME_DOCUMENT_ID, document_pid=DOCUMENT_PID, verify_fingerprint=False)
+
+
+def test_document_fingerprint_v3_includes_schema_agnostic_metadata():
+    raw, snapshot_without_metadata = _result_with_valid_fp()
+    changed = deepcopy(raw)
+    changed["entities"][0]["metadata"] = {
+        "customer.mechanical.v1": {"part_no": "P-100", "revision": 3}
+    }
+    changed["document_fp"] = ""
+    client = NativeBridgeClient(
+        SnapshotTransport(changed), request_id_factory=lambda: REQUEST_ID
+    )
+    snapshot_with_metadata = client.document_snapshot(
+        RUNTIME_DOCUMENT_ID,
+        document_pid=DOCUMENT_PID,
+        verify_fingerprint=False,
+    )
+    assert snapshot_with_metadata.entities[0].metadata["customer.mechanical.v1"]["part_no"] == "P-100"
+    assert fingerprint_document(snapshot_with_metadata) != fingerprint_document(snapshot_without_metadata)

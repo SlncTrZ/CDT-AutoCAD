@@ -1,0 +1,39 @@
+{
+  "baseline_document_fp": "sha256:b63b20859841ab0489bef7aad4f815d2a235b513d8922adcf03e33a7f4ad53c1",
+  "bridge_process_id": 21764,
+  "bridge_version": "0.8.1-g3",
+  "correlation_id": "feature-stream-live-2026-09-11",
+  "document_pid": "doc:031fa2ce-8150-44ce-a8fc-cdfe8d629d3c",
+  "duration_seconds": 5.801,
+  "execution_model": "feature-based-chunks-streaming-v1",
+  "feature_1": {
+    "affected_pids": 40,
+    "feature_id": "showcase.centerline",
+    "native_chunks": 2,
+    "observed_delay_ms": 300.295,
+    "post_document_fp": "sha256:46e133c398e54107370a9520625aef173ca0e29a6be18e6c909a459572fd7a32",
+    "recommended_next_delay_ms": 300,
+    "status": "COMMITTED"
+  },
+  "feature_2": {
+    "failed_native_chunk_index": 1,
+    "feature_id": "showcase.curb-edge",
+    "prior_feature_preserved": true,
+    "recommended_next_delay_ms": 0,
+    "rollback_document_fp": "sha256:46e133c398e54107370a9520625aef173ca0e29a6be18e6c909a459572fd7a32",
+    "status": "ROLLED_BACK_VERIFIED"
+  },
+  "feature_3": {
+    "affected_pids": 8,
+    "feature_id": "showcase.corner-detail",
+    "native_chunks": 1,
+    "post_document_fp": "sha256:3e10925fb7707800b983d544da0f05114efe2fa58e479fb525d01cb7cd38e121",
+    "status": "COMMITTED"
+  },
+  "final_entity_count": 60,
+  "original_documents": [],
+  "pending_recoveries": 0,
+  "schema_version": 1,
+  "session_id": 1,
+  "status": "PASS"
+}

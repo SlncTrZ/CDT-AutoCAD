@@ -25,27 +25,26 @@ Forbidden unless explicitly assigned:
 
 ## Current checkpoint
 
-- Provider version: `0.3.0rc1`
-- Contract: `autocad-a2-v1-rc1`
-- Public surface: 50 MCP tools
-- A2 native AutoCAD 2027 acceptance: PASS on Windows `.171`; release-candidate state retained pending explicit promotion/release review.
-- Primary certification target: AutoCAD 2027 full, Windows x64, ActiveX COM `26.0` / `AutoCAD.Application.26`.
-- A3.1 ACIS backend: live-verified on AutoCAD 2027; remains staged/private until explicit promotion.
-- A3.2 advanced dimensions: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
-- A3.3 analysis: live-verified on AutoCAD 2027; capability-false/non-public pending explicit promotion.
-- Historical pre-split extraction baseline: 54 tests PASS, 2 live-Windows/AutoCAD tests SKIP; this is not the current regression count.
-- Native semantic checkpoints N0–N7 are closed for their documented scopes; O1 additionally live-verifies internal CIRCLE/ARC/simple-LWPOLYLINE typed mutation over the N5/N6 integrity model; N7 live-verifies checkpoint-backed post-commit R1/R2 recovery including activation-safe R2 after real AutoCAD restart.
-- Current O1 regression checkpoint: Linux full suite 195 PASS / 4 SKIP; Windows `.171` full suite 194 PASS / 5 SKIP; focused O1/N5/N6 76 PASS; O1 native acceptance PASS on real AutoCAD 2027 Session 1; C# bridge build 0 errors with three documented unsuppressed `MSB3277` warning families.
+- Primary certification target: AutoCAD 2027 full, Windows x64, ActiveX COM `26.0` / `AutoCAD.Application.26`, Managed .NET `net10.0-windows`.
+- Current public-promotion candidate in the dirty working tree: provider `0.4.0rc1`, contract `autocad-generic-v1-rc1`, **86 MCP tools**, execution model `feature-based-chunks-streaming-v1`.
+- The promotion candidate is **not release-closed** until final Linux/Windows regressions, C# Release/x64 build, review, selective staging, commit and push pass on one reviewed tree.
+- N0–N7 and O1 are CLOSED/LIVE PASS for their documented native scopes; MP-2 hot reload is CLOSED/LIVE PASS.
+- G1 Generic Batch Geometry, G2 Schema-Agnostic Metadata and G3 Chunked Logical Atomicity are CLOSED/LIVE PASS on real AutoCAD 2027.
+- Native bridge candidate: `0.8.1-g3`; document fingerprint schema v3; native micro-chunk max 32; graduated semantic capacity 12,288; logical feature/batch cap 10,000; one batch mutation per AutoCAD Idle tick.
+- Scale graduation 100 / 1,000 / 5,000 / 10,000 is LIVE PASS with beginning/middle/end failure injection, exact predecessor recovery, zero pending recovery and process-stability evidence.
+- Feature-based Chunks Streaming is the approved Production Domain execution model: the Domain Agent defines one meaningful feature; a failed current feature rolls back to its own predecessor without undoing earlier committed features. Default presentation pacing is 300 ms between completed features, not between native micro-chunks.
+- Domain semantics remain outside CDT-AutoCAD. `feature_id` is correlation metadata; the provider must not interpret road/manhole/kiosk/beam/pipe/TCVN or similar business meaning.
+- Canonical current-state authority: `docs/CURRENT_CHECKPOINT.md`; session continuation: `docs/SESSION_HANDOFF_2026-09-11_FEATURE_STREAMING_PRODUCTION.md`.
 
 ## Current delivery gates
 
-1. Preserve the live-verified current `ezdxf + COM` baseline and public 50-tool contract during migration.
-2. `N0` documentation freeze is complete; preserve its architecture boundary.
-3. `N1` semantic contract models/canonical fingerprint engine are implemented and regression-verified; preserve golden fingerprints/state-chain invariants.
-4. `N2` persistent PID storage/clone policy is live-verified on AutoCAD 2027 and closed; preserve NOD/XRecord document-lineage PID plus Extension-Dictionary/XRecord DBObject PID and mandatory clone reconciliation. Raw DWG copies may share lineage PID.
-5. `N3` Managed .NET bridge skeleton + local typed IPC, `N4` native bounded SemanticSnapshot extraction, `N5` parent-guarded LINE transaction/R0 rollback, `N6` semantic delta/state-chain enforcement and `N7` checkpoint-backed post-commit recovery are CLOSED/LIVE PASS. O1 extends the internal typed allowlist to CIRCLE, ARC and simple LWPOLYLINE create/update/delete while preserving the same `expected_parent_fp` + persistent-PID invariants. N7 R2 is activation-safe across AutoCAD Idle ticks and proves runtime rebound + document PID + exact predecessor fingerprint after real process restart.
-6. Every mutation architecture must preserve the two pillars: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting; N7 recovery is accepted only for its documented bounded staged scope and must not be described as public promotion or whole-DWG coverage.
-7. Continue A3/public capability promotion only through explicit contract/version changes; native implementation or verification alone does not publish tools.
+1. Do not reimplement or reopen G1/G2/G3/Feature Streaming without regression evidence; their documented live gates are already accepted.
+2. Preserve the two pillars: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting. Unknown or unverifiable completion remains fail-closed.
+3. Preserve native chunk bounds and Idle-yield responsiveness; logical/feature atomicity must not be implemented as one giant long-lived AutoCAD transaction.
+4. Finish the explicit public contract promotion only through `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` identity plus final regression/review evidence.
+5. Next session must run full Linux regression, Windows `.171` regression, C# Release/x64 build, compile/hygiene, `git diff --check` and code/security review before commit/push.
+6. Stage surgically. Do not stage `.gitignore`, `_private/`, `_test_workspace/` or `specs/**` in the promotion commit unless explicitly authorized.
+7. Historical evidence/handoff files may legitimately mention 50 tools, fingerprint v2 or staged A3 because those values describe their original checkpoint; do not rewrite historical evidence to pretend it ran under the new contract.
 8. Any reference-driven/user-reviewed drawing must satisfy both Semantic State integrity and `docs/DRAWING_QUALITY_ACCEPTANCE.md`.
 
 ## Required workflow

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ApplicationPackage
   SchemaVersion="1.0"
-  AppVersion="0.6.0"
+  AppVersion="0.8.1"
   Author="SlncTrZ"
   ProductCode="{4D415D51-4330-4D99-BABE-98F8A5C88A9B}"
   UpgradeCode="{E24D03FB-C8BB-46F1-A53C-2DDDE636101C}"
@@ -17,7 +17,7 @@
     <ComponentEntry
       AppName="CDT.AutoCAD.Bridge"
       ModuleName="./Contents/Windows/CDT.AutoCAD.Bridge.dll"
-      AppDescription="Internal staged G1 generic CAD native bridge"
+      AppDescription="Internal staged G3 generic CAD native bridge"
       LoadOnAutoCADStartup="true">
     </ComponentEntry>
   </Components>

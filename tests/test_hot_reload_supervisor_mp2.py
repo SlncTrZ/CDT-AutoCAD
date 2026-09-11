@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from cdt_autocad.contract_identity import CONTRACT_VERSION, PROTOCOL_VERSION
+from cdt_autocad.contract_identity import CONTRACT_VERSION, PROTOCOL_VERSION, PUBLIC_TOOL_COUNT
 from cdt_autocad.hot_reload import (
     ReloadSupervisor,
     ReloadUnavailableError,
@@ -82,7 +82,7 @@ def health(
         protocol_version=protocol_version,
         contract_version=CONTRACT_VERSION,
         contract_hash=contract_hash,
-        tool_count=50,
+        tool_count=PUBLIC_TOOL_COUNT,
         startup_ready=startup_ready,
         runtime_ready=runtime_ready,
         transaction_depth=transaction_depth,
@@ -143,7 +143,7 @@ async def test_reload_fences_new_requests_and_drains_old_before_promotion():
         expected_protocol_version=PROTOCOL_VERSION,
         expected_contract_version=CONTRACT_VERSION,
         expected_contract_hash=_CONTRACT_HASH,
-        expected_tool_count=50,
+        expected_tool_count=PUBLIC_TOOL_COUNT,
         require_bridge=False,
         drain_timeout_seconds=1.0,
     )
@@ -186,7 +186,7 @@ async def test_failed_candidate_startup_health_preserves_last_healthy_generation
         expected_protocol_version=PROTOCOL_VERSION,
         expected_contract_version=CONTRACT_VERSION,
         expected_contract_hash=_CONTRACT_HASH,
-        expected_tool_count=50,
+        expected_tool_count=PUBLIC_TOOL_COUNT,
         require_bridge=False,
     )
     await supervisor.bootstrap("build-a")
@@ -232,7 +232,7 @@ async def test_candidate_protocol_or_contract_hash_mismatch_blocks_promotion(
         expected_protocol_version=PROTOCOL_VERSION,
         expected_contract_version=CONTRACT_VERSION,
         expected_contract_hash=_CONTRACT_HASH,
-        expected_tool_count=50,
+        expected_tool_count=PUBLIC_TOOL_COUNT,
         require_bridge=False,
     )
     await supervisor.bootstrap("build-a")
@@ -256,7 +256,7 @@ async def test_drain_timeout_preserves_old_generation_and_reopens_gate():
         expected_protocol_version=PROTOCOL_VERSION,
         expected_contract_version=CONTRACT_VERSION,
         expected_contract_hash=_CONTRACT_HASH,
-        expected_tool_count=50,
+        expected_tool_count=PUBLIC_TOOL_COUNT,
         require_bridge=False,
         drain_timeout_seconds=0.02,
     )
@@ -298,7 +298,7 @@ async def test_pending_transaction_recovery_or_uncertainty_blocks_activation(
         expected_protocol_version=PROTOCOL_VERSION,
         expected_contract_version=CONTRACT_VERSION,
         expected_contract_hash=_CONTRACT_HASH,
-        expected_tool_count=50,
+        expected_tool_count=PUBLIC_TOOL_COUNT,
         require_bridge=False,
     )
     await supervisor.bootstrap("build-a")
@@ -340,7 +340,7 @@ async def test_twenty_successes_and_ten_injected_failures_keep_one_authoritative
         expected_protocol_version=PROTOCOL_VERSION,
         expected_contract_version=CONTRACT_VERSION,
         expected_contract_hash=_CONTRACT_HASH,
-        expected_tool_count=50,
+        expected_tool_count=PUBLIC_TOOL_COUNT,
         require_bridge=False,
     )
     await supervisor.bootstrap("build-0")
@@ -381,7 +381,7 @@ async def test_telemetry_failure_cannot_change_reload_result():
         expected_protocol_version=PROTOCOL_VERSION,
         expected_contract_version=CONTRACT_VERSION,
         expected_contract_hash=_CONTRACT_HASH,
-        expected_tool_count=50,
+        expected_tool_count=PUBLIC_TOOL_COUNT,
         require_bridge=False,
         event_sink=FailingSink(),
     )
@@ -410,7 +410,7 @@ async def test_frozen_auth_and_roots_are_reused_for_every_generation():
         expected_protocol_version=PROTOCOL_VERSION,
         expected_contract_version=CONTRACT_VERSION,
         expected_contract_hash=_CONTRACT_HASH,
-        expected_tool_count=50,
+        expected_tool_count=PUBLIC_TOOL_COUNT,
         require_bridge=False,
     )
     original_env["CDT_AUTOCAD_AUTH_TOKEN"] = "token-b"
@@ -459,7 +459,7 @@ async def test_candidate_recovery_or_required_bridge_blocks_promotion(
         expected_protocol_version=PROTOCOL_VERSION,
         expected_contract_version=CONTRACT_VERSION,
         expected_contract_hash=_CONTRACT_HASH,
-        expected_tool_count=50,
+        expected_tool_count=PUBLIC_TOOL_COUNT,
         require_bridge=True,
     )
     await supervisor.bootstrap("build-a")
