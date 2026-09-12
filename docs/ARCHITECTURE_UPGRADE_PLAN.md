@@ -1,7 +1,7 @@
 # Architecture Upgrade Plan — Native Bridge + Semantic State Loop
 
-> Updated: 2026-09-11 20:30 +07:00
-> Current status: **N0–N7/O1 CLOSED · MP-2 CLOSED · G1/G2/G3 CLOSED/LIVE PASS · 10k graduation PASS · Feature-based Chunks Streaming LIVE PASS · public promotion candidate pending final regression/review**
+> Updated: 2026-09-11 21:50 +07:00
+> Current status: **N0–N7/O1 CLOSED · MP-2 CLOSED · G1/G2/G3 CLOSED/LIVE PASS · 10k graduation PASS · Feature-based Chunks Streaming LIVE PASS · public promotion CLOSED/PUSHED at `0516fe3`**
 > Current-state authority: `docs/CURRENT_CHECKPOINT.md`
 > Acceptance companion: `docs/NATIVE_BRIDGE_ACCEPTANCE.md`
 
@@ -11,7 +11,7 @@ The architecture upgrade has passed the G-series stage that older sections of th
 
 G2 schema-agnostic metadata and G3 checkpoint-backed logical execution are implemented and live-verified. The approved Production Domain execution model is now **Feature-based Chunks Streaming**: one caller-defined logical feature at a time, one feature-local predecessor checkpoint, exact rollback of the current failed feature only, and optional 300 ms presentation pacing between completed features. Domain meaning remains outside the provider.
 
-The current working tree also contains an explicit public-promotion candidate `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`. That candidate is **not release-closed** until the final Linux/Windows regression, C# build, review, documentation agreement, selective staging, commit and push complete. Statements later in this document about the historical 50-tool baseline, staged A3 surface, G2/G3 being future work or N8/N10 being unopened describe earlier checkpoints and are retained as implementation history; use `docs/CURRENT_CHECKPOINT.md` for current truth.
+The public contract `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` is **release-closed and pushed** at commit `0516fe3`. Final Linux/Windows regression, C# build, review, documentation agreement and selective publication gates passed on one reviewed tree. Statements later in this document about the historical 50-tool baseline, staged A3 surface, G2/G3 being future work or N8/N10 being unopened describe earlier checkpoints and are retained as implementation history; use `docs/CURRENT_CHECKPOINT.md` for current truth.
 
 ## 1. Objective
 

@@ -4,8 +4,6 @@ Wing: code | Topic: native-g2-metadata | Updated: 2026-09-11 17:35
 
 from __future__ import annotations
 
-from uuid import UUID
-
 import pytest
 
 from cdt_autocad.native_bridge.client import NativeBridgeClient

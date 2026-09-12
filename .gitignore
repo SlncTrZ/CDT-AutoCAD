@@ -2,10 +2,25 @@
 .deps/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .runtime/
 __pycache__/
 *.pyc
+*.egg-info/
+build/
+dist/
+.coverage
+.coverage.*
+htmlcov/
 artifacts/
+
+# Local secrets/configuration
+.env
+.env.*
+
+# OS/editor residue
+.DS_Store
+Thumbs.db
 prototypes/**/bin/
 prototypes/**/obj/
 native/**/bin/
@@ -14,3 +29,6 @@ native/**/*.bundle/Contents/
 
 # Local planning and audit notes
 /_private/
+
+# Local AutoCAD destructive/live test workspace (intentionally untracked)
+_test_workspace/

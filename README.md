@@ -1,6 +1,6 @@
 # CDT-AutoCAD
 
-> Provider `0.4.0rc1` · Contract `autocad-generic-v1-rc1` · 86 public MCP tools · AutoCAD 2027 primary certification lane
+> Provider `0.4.0rc1` · Contract `autocad-generic-v1-rc1` · 86 public MCP tools · AutoCAD 2027 primary certification lane · RC/preview · Operational since 2026-09-12
 
 CDT-AutoCAD is a generic CAD execution engine built for reliable automation of real AutoCAD drawings.
 It combines a FastMCP provider, a live Windows COM backend and an in-process C# Managed .NET bridge
@@ -9,6 +9,17 @@ for persistent identity, semantic fingerprints, bounded native transactions and 
 The product deliberately does **not** contain civil, mechanical, landscape or architectural business
 rules. Domain Agents decide what to draw and what standards apply; CDT-AutoCAD executes generic CAD
 actions and proves what happened.
+
+## Operational status
+
+Operational use begins **2026-09-12** under the existing RC contract. This is an operating baseline,
+not a GA/stable-version declaration and not an expansion of capability claims.
+
+Start with [`docs/README.md`](docs/README.md) for the documentation map and
+[`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md) for live operation. Release changes follow
+[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md). Security/support policy is in
+[`SECURITY.md`](SECURITY.md) and [`SUPPORT.md`](SUPPORT.md); notable changes are tracked in
+[`CHANGELOG.md`](CHANGELOG.md).
 
 ## Production execution model
 
@@ -94,7 +105,7 @@ Two invariants are non-negotiable:
 2. **Precise Identity / PID + Fingerprinting** — ObjectId/Handle are not treated as sufficient
    semantic identity; persistent PIDs and versioned fingerprints bind the state chain.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
+See [`docs/ARCHITECTURE_UPGRADE_PLAN.md`](docs/ARCHITECTURE_UPGRADE_PLAN.md) and
 [`docs/ADR-002-GENERIC-CAD-EXECUTION-ENGINE.md`](docs/ADR-002-GENERIC-CAD-EXECUTION-ENGINE.md).
 
 ## Install
@@ -227,6 +238,20 @@ PID/fingerprint readback and deterministic geometry/measurement checks remain th
 - timeouts with unknown completion are not blindly retried;
 - credentials are never returned by tools;
 - unsupported STEP/STL, ACIS edge fillet/chamfer/shell and other unproven capabilities fail explicitly.
+
+Security reports and operational incident handling are defined in [`SECURITY.md`](SECURITY.md),
+[`SUPPORT.md`](SUPPORT.md), and [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md).
+
+## Marketing demo
+
+The public-safe integrity showcase uses only repo-owned synthetic geometry and demonstrates real
+`feature_execute` commit → injected failure → exact feature-local rollback → continued execution on
+AutoCAD 2027. Recording setup, approved claims and the current RC limitations are documented in
+[`docs/MARKETING_DEMO_RUNBOOK.md`](docs/MARKETING_DEMO_RUNBOOK.md).
+
+## License and ownership
+
+Copyright (c) 2026 **Trương Công Định (SlncTrZ)**. CDT-AutoCAD is proprietary source-available software under [`LICENSE`](LICENSE); public repository visibility does not grant an open-source license. Third-party dependency/API boundaries are documented in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and source provenance in [`SOURCE_PROVENANCE.md`](SOURCE_PROVENANCE.md).
 
 ## Development verification
 

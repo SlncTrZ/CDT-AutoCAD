@@ -14,10 +14,10 @@ from cdt_autocad.semantic.models import SemanticSnapshot
 from .protocol import (
     NATIVE_PROTOCOL_VERSION,
     ArcCreateParams,
+    ArcTargetParams,
     BatchCreateParams,
     BatchInsertBlocksParams,
     BatchTransformParams,
-    ArcTargetParams,
     BridgeProtocolError,
     BridgeRequest,
     CircleCreateParams,

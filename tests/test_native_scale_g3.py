@@ -8,7 +8,6 @@ from pathlib import Path
 
 from cdt_autocad.native_bridge.protocol import MAX_LOGICAL_BATCH_ITEMS
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

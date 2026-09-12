@@ -1,6 +1,6 @@
 # Roadmap — CDT-AutoCAD
 
-> Updated: 2026-09-11 20:30 +07:00
+> Updated: 2026-09-12 08:19 +07:00
 > Current authority: `docs/CURRENT_CHECKPOINT.md`
 > Architecture decisions: `docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`, `docs/ADR-002-GENERIC-CAD-EXECUTION-ENGINE.md`
 
@@ -46,7 +46,7 @@ The native lane is bound by persistent document/entity PIDs, expected-parent fin
 
 ### A2/A3 — Live AutoCAD product capabilities
 
-The COM lane is live-verified on full AutoCAD 2027 / Windows x64. Advanced dimensions, measurement/analysis, native ACIS 3D, view control, XREF/dependency handling, artifact sealing and related product capabilities are represented in the current promotion candidate.
+The COM lane is live-verified on full AutoCAD 2027 / Windows x64. Advanced dimensions, measurement/analysis, native ACIS 3D, view control, XREF/dependency handling, artifact sealing and related product capabilities are part of the published `0.4.0rc1` public contract.
 
 Primary live target:
 
@@ -151,7 +151,7 @@ recompute Feature 3 -> retry
 Feature 4 -> continue
 ```
 
-Public candidate entry point:
+Public entry point:
 
 ```text
 feature_execute(feature_id, feature_sequence, correlation_id, actions)
@@ -169,9 +169,9 @@ Presentation pacing defaults to **300 ms between completed features**. Native mi
 
 Live evidence proves Feature 1 commit → Feature 2 failure at its second native chunk → exact Feature-2-only restore → Feature 3 successful continuation. The observed 300 ms pause was 300.295 ms.
 
-## 6. Public promotion candidate
+## 6. Public promotion — CLOSED
 
-The current working tree intentionally advances the public identity to:
+The reviewed promotion published this public identity at commit `0516fe3`:
 
 ```text
 provider_version     0.4.0rc1
@@ -180,9 +180,9 @@ public MCP tools     86
 execution_model      feature-based-chunks-streaming-v1
 ```
 
-This is a **candidate, not yet a committed release checkpoint**. The candidate combines the broader product surface with the strong-integrity native tools and `feature_execute`.
+The promotion is **closed and pushed to `main`**. It combines the broader product surface with the strong-integrity native tools and `feature_execute`.
 
-The promotion is complete only after one reviewed tree passes:
+The reviewed tree passed:
 
 1. FastMCP catalog identity/tool-count check;
 2. full Linux regression;
@@ -193,11 +193,11 @@ The promotion is complete only after one reviewed tree passes:
 7. docs/help/contract identity agreement;
 8. surgical stage/commit/push.
 
-The latest full Linux run before all stale contract tests were migrated was `308 passed / 5 skipped / 8 failed`. The eight failures were old 50-tool/staged/fingerprint-v2 expectations, but the full suite still must be rerun after the migration edits before closure is claimed.
+Final promotion results: Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 **0 errors / 3 known MSB3277 warning families**; commit `0516fe3` pushed to `origin/main`. Historical pre-close regression numbers remain in earlier evidence/handoffs only.
 
 ## 7. Next development after promotion
 
-Once the `0.4.0rc1` promotion tree is green and committed, the next product work should be driven by real Production Domain use rather than speculative surface growth.
+With `0.4.0rc1` green and published, the next product work should be driven by real Production Domain use rather than speculative surface growth.
 
 Priorities:
 
@@ -223,8 +223,6 @@ Earlier N-series, MP-2 and G1 evidence remains under `docs/evidence/` and is his
 
 ## 9. Session continuity
 
-Current exact continuation instructions are in:
+Current status authority is `docs/CURRENT_CHECKPOINT.md`. `docs/SESSION_HANDOFF_2026-09-11_FEATURE_STREAMING_PRODUCTION.md` is retained as a historical pre-close handoff.
 
-`docs/SESSION_HANDOFF_2026-09-11_FEATURE_STREAMING_PRODUCTION.md`
-
-Do not pull/reset/clean over the current dirty promotion tree. Do not stage `.gitignore`, `_private/`, `_test_workspace/` or `specs/**` into the promotion commit.
+Operational use begins 2026-09-12 under the existing RC contract. Use `docs/OPERATIONS_RUNBOOK.md` for live operation and `docs/RELEASE_CHECKLIST.md` for future publication gates. `_private/`, `_test_workspace/`, local artifacts/runtime output and `specs/**` remain outside unrelated product commits.

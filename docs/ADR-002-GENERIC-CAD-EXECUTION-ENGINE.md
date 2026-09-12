@@ -234,7 +234,7 @@ The approved sequence has now been executed through live acceptance:
 3. **G3 — Chunked Logical Atomicity — CLOSED / LIVE PASS**;
 4. scale graduation `100 -> 1,000 -> 5,000 -> 10,000` — **CLOSED / LIVE PASS**;
 5. **Feature-based Chunks Streaming — IMPLEMENTED / LIVE PASS** as the Production Domain orchestration model;
-6. public contract promotion remains a separately reviewed version/contract change and is not considered release-closed until final regression/review/commit gates pass.
+6. the first public contract promotion is CLOSED at `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` in commit `0516fe3`; every future contract/version expansion remains a separately reviewed promotion with the same regression/review/publication discipline.
 
 Canonical current evidence is listed in `docs/CURRENT_CHECKPOINT.md` and `docs/NATIVE_BRIDGE_ACCEPTANCE.md`.
 

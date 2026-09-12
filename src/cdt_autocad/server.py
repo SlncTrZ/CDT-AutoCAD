@@ -21,12 +21,26 @@ from .backends.ezdxf_backend import EzdxfBackend
 from .config import Settings
 from .contract_identity import (
     COMMON_CONTRACT_VERSION as _COMMON_CONTRACT_VERSION,
+)
+from .contract_identity import (
     CONTRACT_VERSION as _CONTRACT_VERSION,
+)
+from .contract_identity import (
     EXECUTION_MODEL as _EXECUTION_MODEL,
+)
+from .contract_identity import (
     PROTOCOL_VERSION as _PROTOCOL_VERSION,
+)
+from .contract_identity import (
     PUBLIC_TOOL_COUNT as _PUBLIC_TOOL_COUNT,
+)
+from .contract_identity import (
     UPDATED_AT as _UPDATED_AT,
+)
+from .contract_identity import (
     contract_hash as _contract_hash,
+)
+from .contract_identity import (
     contract_material as _contract_material,
 )
 from .diagnostics import DiagnosticSink, ProviderDiagnosticMiddleware

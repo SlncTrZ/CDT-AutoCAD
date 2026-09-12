@@ -24,7 +24,8 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, TypeVar
 
-from ..command_presets import VIEW_PRESETS as _VIEW_PRESETS, visual_style_command
+from ..command_presets import VIEW_PRESETS as _VIEW_PRESETS
+from ..command_presets import visual_style_command
 from ..config import Settings
 from ..errors import (
     BackendQuarantinedError,

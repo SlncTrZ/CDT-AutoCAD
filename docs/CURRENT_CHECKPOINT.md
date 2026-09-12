@@ -1,25 +1,25 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-11 21:35 +07:00
-> Status: **N0–N7 CLOSED · O1 CLOSED/LIVE PASS · MP-2 CLOSED/LIVE PASS · G1/G2/G3 CLOSED/LIVE PASS · 10,000-entity graduation PASS · Feature-based Chunks Streaming LIVE PASS · public promotion FINAL CLOSE GATES PASS**
+> Updated: 2026-09-12 08:19 +07:00
+> Status: **OPERATIONAL RC since 2026-09-12 · N0–N7 CLOSED · O1 CLOSED/LIVE PASS · MP-2 CLOSED/LIVE PASS · G1/G2/G3 CLOSED/LIVE PASS · 10,000-entity graduation PASS · Feature-based Chunks Streaming LIVE PASS · public promotion FINAL CLOSE GATES PASS**
 > Primary certification target: **AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`**
 > Architecture boundary: **CDT-AutoCAD is a Generic CAD Execution Engine. Domain standards, engineering rules, calculations and reports remain outside the provider.**
 
 ## 1. What is authoritative now
 
-The architecture and native execution program has moved beyond the historical 50-tool A2 baseline. The current working tree contains the explicit public-promotion candidate:
+The architecture and native execution program has moved beyond the historical 50-tool A2 baseline. The reviewed public promotion is now closed and published on `main` at commit `0516fe3`:
 
 ```text
 provider_version: 0.4.0rc1
 contract_version: autocad-generic-v1-rc1
 public MCP tools: 86
 execution_model: feature-based-chunks-streaming-v1
-native bridge candidate: 0.8.1-g3
+native bridge line: 0.8.1-g3
 ```
 
 These identities have now passed the final public-promotion close gates on the reviewed promotion tree. Historical evidence files that mention `0.3.0rc1`, `autocad-a2-v1-rc1` or 50 tools remain valid for the older checkpoint they recorded and must not be rewritten as if those older runs used the new contract.
 
-The promotion commit must remain surgically staged: `.gitignore`, `_private/`, `_test_workspace/` and `specs/**` are excluded. Publication is complete only after this reviewed tree is committed and pushed to `main`.
+Public-contract promotion completed at `0516fe3`. That commit was surgically staged and excluded unrelated local/private workspace state; later legal, provenance and operational-maintenance commits do not change the promotion evidence or contract identity. Historical evidence/handoffs remain unchanged where they describe older contract identities.
 
 ## 2. Closed native architecture program
 
@@ -69,7 +69,7 @@ Domain Agent
   -> Feature 03
 ```
 
-Public orchestration candidate: `feature_execute(feature_id, feature_sequence, correlation_id, actions)`.
+Public orchestration entry point: `feature_execute(feature_id, feature_sequence, correlation_id, actions)`.
 
 A feature can mix the generic native action families already proven by G1/G3:
 
@@ -110,7 +110,7 @@ The latest native C# candidate has built Release/x64 with **0 errors**. The thre
 
 ## 5. Public contract promotion state
 
-The promotion candidate adds the generic strong-integrity native surface to the already expanded product surface. The current FastMCP catalog was measured at **86 tools** after `feature_execute` was added.
+The promoted contract adds the generic strong-integrity native surface to the broader product surface. The current FastMCP catalog is **86 tools**, including `feature_execute`.
 
 Strong-integrity tools include:
 
@@ -125,7 +125,7 @@ metadata_set
 metadata_query
 ```
 
-The candidate also promotes the previously implemented A3 public drafting/analysis/3D surface represented in the current `server.py` and backend capability maps. This promotion is intentional and therefore changes provider identity, contract identity and public tool count together.
+The same promotion exposes the previously implemented A3 drafting/analysis/3D surface represented in the current `server.py` and backend capability maps. Provider identity, contract identity and public tool count advanced together intentionally.
 
 **Final public-promotion close gates PASS on the reviewed tree.** Contract identity measured exactly **86 tools** at `0.4.0rc1 / autocad-generic-v1-rc1`; full Linux regression is **316 passed / 5 skipped**; Windows `.171` regression is **315 passed / 6 skipped**; C# `Release/x64` built with SDK `10.0.401` at **0 errors / 3 known MSB3277 warning families**. Linux and Windows `compileall` pass and `git diff --check` passes. Focused code/security review found no blocking regression or new arbitrary-command surface. Ruff could not be rerun because the Linux `.deps` wrapper has no Ruff executable payload and the Windows test venv has no Ruff module; this is recorded as a tooling availability gap, not converted into a false PASS.
 
@@ -139,14 +139,31 @@ The candidate also promotes the previously implemented A3 public drafting/analys
 | C# Release/x64 | **PASS** — SDK 10.0.401; 0 errors; 3 inherited MSB3277 warning families |
 | Compile/hygiene | **PASS with tooling note** — Linux/Windows compileall PASS; `git diff --check` PASS; Ruff unavailable in both prepared environments |
 | Focused security/code review | **PASS** — no blocking finding; fixed-command presets only, bounded protocol/storage/query surfaces, fail-closed fingerprint/recovery binding preserved |
-| Selective staging | **MANDATORY** — exclude `.gitignore`, `_private/`, `_test_workspace/`, `specs/**` |
+| Selective staging/publication | **PASS** — promotion commit `0516fe3` pushed to `main`; `.gitignore`, `_private/`, `_test_workspace/`, `specs/**` excluded |
 
 The two MP-2 assertions still hard-coded to the historical 50-tool count were the only full-Linux regression failures encountered during this close session. They were migrated to the canonical `PUBLIC_TOOL_COUNT`; the complete Linux suite then passed. No G1/G2/G3, scale or Feature Streaming implementation was reopened.
 
-## 7. Repository-state warning
+## 7. Operational-readiness gate — 2026-09-12
 
-The promotion tree is green and ready for the selective public-promotion commit. `.gitignore` is modified separately to keep `_test_workspace/` untracked; preserve it but keep it out of the promotion commit unless the owner explicitly decides otherwise.
+The repository was cleaned and re-gated before beginning operational RC use. This maintenance gate does not replace the live AutoCAD promotion evidence above and does not change the public contract.
 
-`_private/` contains benchmark findings and planning notes and must not be swept into a public/product commit. `specs/**` remains a pinned snapshot and is not to be edited.
+| Gate | Result |
+| --- | --- |
+| Linux full headless regression | **PASS** — 320 passed / 5 skipped on Python 3.12 |
+| Windows `.171` full regression | **PASS** — 319 passed / 6 skipped on Python 3.12 with `PYTHONPATH=H:\\Develop\\CDT-AutoCAD\\src` |
+| Python compile | **PASS** — Linux and Windows |
+| Ruff | **PASS** — Ruff 0.16.7, `src scripts tests` clean |
+| Package build | **PASS** — `cdt_autocad_provider-0.4.0rc1-py3-none-any.whl`; owner/license metadata verified |
+| MP-2 runner smoke | **PASS** — 1 successful reload + 1 injected startup failure + healthy recovery; stable endpoint reports 86 tools and zero pending recovery |
+| Repository hygiene | **PASS** — `git diff --check`, documentation-link check, private-artifact gate, obvious-secret scan and current provenance scan pass |
+| C# bridge | **Not rebuilt in this maintenance gate** — no C# source changed; prior `Release/x64` 0-error promotion evidence remains authoritative |
 
-For the exact handoff, continue with `docs/SESSION_HANDOFF_2026-09-11_FEATURE_STREAMING_PRODUCTION.md`.
+The cleanup also fixed the standalone MP-2 acceptance fixture so it copies the bounded command-preset registry, replaced stale hard-coded 50-tool assertions in that runner with canonical `PUBLIC_TOOL_COUNT`, and made startup failure diagnostics preserve the supervisor log tail.
+
+## 8. Operational repository state
+
+Operational use begins **2026-09-12** under the existing `0.4.0rc1` RC/preview contract. This does not declare GA/stable status and does not expand capability claims beyond accepted evidence.
+
+Repository hygiene now intentionally keeps `_private/`, `_test_workspace/`, local `artifacts/`, runtime/cache/build output and local secret files untracked. `_private/` contains benchmark/planning material and must not be swept into public/product commits. `specs/**` remains a pinned snapshot and is not to be edited.
+
+Use `docs/README.md` as the documentation map, `docs/OPERATIONS_RUNBOOK.md` for live operation and `docs/RELEASE_CHECKLIST.md` for future publication gates. `docs/SESSION_HANDOFF_2026-09-11_FEATURE_STREAMING_PRODUCTION.md` is retained only as historical pre-close evidence.

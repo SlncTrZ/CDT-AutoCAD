@@ -167,7 +167,7 @@ def _lwpolyline_metrics(entity: Any) -> tuple[float, float | None]:
     if len(points) < 2:
         return 0.0, None
 
-    segment_pairs = list(zip(points, points[1:]))
+    segment_pairs = list(zip(points, points[1:], strict=False))
     if entity.closed:
         segment_pairs.append((points[-1], points[0]))
 

@@ -404,7 +404,7 @@ class SourceWatcher:
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=self.poll_seconds)
                 break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             current = source_build_id(self.repo_root)
             if current == observed:

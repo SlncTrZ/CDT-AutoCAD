@@ -10,9 +10,10 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 _POLICY_KEYS = (
     "CDT_AUTOCAD_ALLOWED_PATHS",

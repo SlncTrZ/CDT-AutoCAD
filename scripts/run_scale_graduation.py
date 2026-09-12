@@ -9,8 +9,9 @@ import ctypes
 import json
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from cdt_autocad.native_bridge.client import NativeBridgeClient
 from cdt_autocad.native_bridge.protocol import MAX_BATCH_CHUNK_ENTITIES, MAX_LOGICAL_BATCH_ITEMS

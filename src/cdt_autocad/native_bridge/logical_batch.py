@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from .protocol import LogicalBatchBinding, MAX_BATCH_CHUNK_ENTITIES, MAX_LOGICAL_BATCH_ITEMS
+from .protocol import MAX_BATCH_CHUNK_ENTITIES, MAX_LOGICAL_BATCH_ITEMS, LogicalBatchBinding
 
 
 class LogicalBatchError(RuntimeError):

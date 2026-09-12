@@ -8,8 +8,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from cdt_autocad.native_bridge.client import NativeBridgeClient
-from cdt_autocad.native_bridge.transport_windows import NamedPipeTransport, pipe_name_for_session
 from run_g1_batch_acceptance import (
     EXPECTED_BRIDGE_VERSION,
     _retry,
@@ -17,6 +15,9 @@ from run_g1_batch_acceptance import (
     _wait_command_idle,
     _wait_file,
 )
+
+from cdt_autocad.native_bridge.client import NativeBridgeClient
+from cdt_autocad.native_bridge.transport_windows import NamedPipeTransport, pipe_name_for_session
 
 
 def _checkpoint(receipt: dict[str, Any]) -> dict[str, str]:

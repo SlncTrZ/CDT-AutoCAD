@@ -1,5 +1,5 @@
-"""CDT_Engineer AutoCAD MCP provider.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 16:13
+"""CDT-AutoCAD — Generic CAD Execution Engine for AI agents.
+Wing: code | Topic: product-identity | Updated: 2026-09-11 21:50
 """
 
 __version__ = "0.4.0rc1"

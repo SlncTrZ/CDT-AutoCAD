@@ -19,7 +19,7 @@ from cdt_autocad.errors import StateConflictError, UnsupportedCapabilityError
 
 from .client import NativeBridgeClient
 from .feature_stream import FeatureStreamExecutor
-from .logical_batch import LogicalBatchError, NativeLogicalBatchExecutor
+from .logical_batch import NativeLogicalBatchExecutor
 from .transport_windows import NamedPipeTransport, pipe_name_for_session
 
 

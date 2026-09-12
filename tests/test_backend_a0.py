@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 
 from cdt_autocad.backends.ezdxf_backend import EzdxfBackend
-from cdt_autocad.config import Settings
 from cdt_autocad.errors import (
     BackendQuarantinedError,
     BackendTimeoutError,

@@ -10,11 +10,27 @@ from pathlib import Path
 
 import pytest
 
-from cdt_autocad.contract_identity import CONTRACT_VERSION, PROTOCOL_VERSION, PUBLIC_TOOL_COUNT, contract_hash
+from cdt_autocad.contract_identity import (
+    CONTRACT_VERSION,
+    PROTOCOL_VERSION,
+    PUBLIC_TOOL_COUNT,
+    contract_hash,
+)
 from cdt_autocad.hot_reload import ReloadSupervisor, WorkerGeneration, WorkerHealth
 from cdt_autocad.runtime_identity import policy_fingerprint
 from cdt_autocad.supervisor import McpWorkerProbe, SubprocessWorkerLauncher, source_build_id
 from scripts import run_hot_reload_acceptance as acceptance_runner
+
+
+def test_acceptance_fixture_copies_runtime_command_registry(tmp_path: Path):
+    repo_root = Path(__file__).resolve().parents[1]
+    fixture_root = tmp_path / "fixture"
+
+    acceptance_runner._copy_fixture(repo_root, fixture_root)
+
+    expected = repo_root / "config" / "autocad_command_presets.json"
+    copied = fixture_root / "config" / "autocad_command_presets.json"
+    assert copied.read_bytes() == expected.read_bytes()
 
 
 def test_windows_acceptance_cleanup_terminates_supervisor_process_tree(monkeypatch):

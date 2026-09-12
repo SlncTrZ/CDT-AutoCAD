@@ -13,7 +13,12 @@ import pytest
 import uvicorn
 from fastmcp import Client
 
-from cdt_autocad.contract_identity import CONTRACT_VERSION, PROTOCOL_VERSION, PUBLIC_TOOL_COUNT, contract_hash
+from cdt_autocad.contract_identity import (
+    CONTRACT_VERSION,
+    PROTOCOL_VERSION,
+    PUBLIC_TOOL_COUNT,
+    contract_hash,
+)
 from cdt_autocad.hot_reload import ReloadSupervisor
 from cdt_autocad.runtime_identity import policy_fingerprint
 from cdt_autocad.supervisor import (

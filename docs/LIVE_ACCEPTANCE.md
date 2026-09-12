@@ -1,9 +1,9 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-11 21:35 +07:00
+> Updated: 2026-09-11 21:50 +07:00
 > Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Public promotion: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` — **final close gates PASS; selective commit/push is the publication step**
+> Public promotion: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` — **CLOSED/PUSHED at `0516fe3`**
 
 ## 0. Current production live gate
 
@@ -105,8 +105,8 @@ reports for the A2/A3.1 core gate, A3.2 advanced-dimension gate and A3.3 analysi
 does not obscure which acceptance boundary failed.
 
 On 2026-09-09, the final hidden `pythonw.exe` interactive run against full AutoCAD 2027 on Windows
-`.171` passed A2, A3.1, A3.2 and A3.3. A3 surfaces remain staged/capability-false until an explicit
-promotion decision; native verification does not itself publish new tools.
+`.171` passed A2, A3.1, A3.2 and A3.3. At that historical checkpoint A3 remained staged; those
+surfaces were later intentionally promoted in `0.4.0rc1 / autocad-generic-v1-rc1` after the separate contract/review gates closed.
 
 ## 5. A2 live evidence covered
 
@@ -144,7 +144,7 @@ The A3 live lane exercises a second disposable drawing and checks:
 - arbitrary normalized 3D view direction;
 - native window PNG capture.
 
-A3 methods remain staged/non-public until this lane passes on the primary certification target and the result is reviewed.
+This lane was the required live evidence before A3 promotion. The current `0.4.0rc1` contract has since published the reviewed A3 surface; this section records the original acceptance boundary.
 
 ## 7. A3.2 advanced-dimension live evidence covered
 
@@ -185,15 +185,7 @@ A2 may move from RC to CLOSED only when all of these are true:
 - runtime status reports release `2027` / COM version `26.0` for the primary run;
 - docs/help are updated with the verified result.
 
-A3.1 may be promoted to public tools/capabilities only after its live test passes and the capability contract/version is intentionally advanced.
-
-A3.2 may be promoted only when its separate native JUnit gate passes on the primary target and the
-provider extension contract intentionally adds the four new MCP tools. Until then,
-`autocad.dimensions.advanced` stays capability-false.
-
-A3.3 may be promoted only after its native measurement/extents/intersection gate passes and the
-provider extension contract intentionally adds the analysis tools. Until then,
-`autocad.analysis.measurement` and `autocad.analysis.intersections` stay capability-false.
+These A3 promotion rules were satisfied by the reviewed `0.4.0rc1 / autocad-generic-v1-rc1` publication. They remain the historical acceptance rationale: live evidence had to pass first, then the provider contract/version had to advance intentionally; native verification alone never published a tool.
 
 ## 10. Failure handling
 
@@ -211,7 +203,7 @@ The native architecture lane must ultimately prove, on real AutoCAD 2027, both n
 1. **Data Integrity / Rollback** — injected failures/timeout uncertainty cannot advance state; native abort or recovery must be followed by read-back proving the exact predecessor fingerprint.
 2. **Precise Identity / PID + Fingerprinting** — document/entity PID persistence, clone/remap behavior, duplicate detection, deterministic content fingerprints and `expected_parent_fp` state-drift blocking.
 
-The .NET bridge is not promoted merely because internal native gates pass. The accepted O1/N7 bridge already has bounded semantic extraction, PID/fingerprint parent guards, typed mutation, R0/R1/R2 recovery, deterministic validation/state-chain and COM parity for selected families, but public-backend promotion still requires later explicit migration/promotion gates. **MP-2 Python MCP hot reload is CLOSED / LIVE PASS**: stable supervisor/process/stable-URL, protocol/contract-hash promotion, process `20` success + `10` injected failure, and `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge acceptance all passed. Canonical evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`.
+The .NET bridge is not promoted merely because an internal native gate passes. Selected strong-integrity tools are now public in `0.4.0rc1`, while full replacement of the broader COM backend remains separately gated by parity/evidence. **MP-2 Python MCP hot reload is CLOSED / LIVE PASS**: stable supervisor/process/stable-URL, protocol/contract-hash promotion, process `20` success + `10` injected failure, and `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge acceptance all passed. Canonical evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`.
 
 AutoCAD 2027 installs Microsoft .NET 10 when needed; the bridge build/runtime target must follow the AutoCAD 2027 Managed .NET compatibility requirements and secure loading policy.
 

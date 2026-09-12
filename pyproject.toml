@@ -1,7 +1,19 @@
 [project]
 name = "cdt-autocad-provider"
 version = "0.4.0rc1"
-description = "CDT_Engineer AutoCAD MCP provider"
+description = "CDT-AutoCAD Generic CAD Execution Engine for AI agents"
+readme = "README.md"
+license = "LicenseRef-CDT-AutoCAD-Proprietary-1.0"
+authors = [{ name = "Trương Công Định (SlncTrZ)" }]
+keywords = ["autocad", "cad", "mcp", "automation", "ai-agents"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: Other/Proprietary License",
+  "Operating System :: Microsoft :: Windows :: Windows 11",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
 requires-python = ">=3.11"
 dependencies = [
   "fastmcp>=3.4.5,<4",
@@ -21,6 +33,11 @@ render = ["matplotlib>=3.8,<4"]
 [project.scripts]
 cdt-autocad = "cdt_autocad.server:main"
 cdt-autocad-supervisor = "cdt_autocad.supervisor:main"
+
+[project.urls]
+Repository = "https://github.com/SlncTrZ/CDT-AutoCAD"
+Documentation = "https://github.com/SlncTrZ/CDT-AutoCAD/tree/main/docs"
+Issues = "https://github.com/SlncTrZ/CDT-AutoCAD/issues"
 
 [dependency-groups]
 dev = [
@@ -51,3 +68,11 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Contract mixins intentionally provide fail-closed default implementations instead of abstract methods.
+"src/cdt_autocad/backends/base.py" = ["B024"]
+# These string enums are part of the existing serialized/public semantic contract.
+"src/cdt_autocad/semantic/models.py" = ["UP042"]
+# The standalone Windows demo bootstraps repo/src before importing the installed provider package.
+"scripts/run_marketing_integrity_demo.py" = ["E402"]

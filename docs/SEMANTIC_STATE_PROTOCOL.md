@@ -1,6 +1,6 @@
 # Semantic State Protocol — CDT-AutoCAD Target Contract
 
-> Updated: 2026-09-11 20:30 +07:00
+> Updated: 2026-09-11 21:50 +07:00
 > Status: CONTRACT BASELINE · N1–N7/O1 + G1/G2/G3 implemented/live-accepted for documented scopes · Feature-based Chunks Streaming live-accepted
 > Scope: source semantics, native extraction, PID, canonicalization, fingerprinting, diff, metadata, feature-local rollback and deterministic validation
 
@@ -27,7 +27,7 @@ As of the current checkpoint:
 - G3 provides one immutable predecessor checkpoint across yielded native chunks, independent final compact-state verification and exact R2 predecessor restoration for logical failure or unknown completion;
 - scale graduation is live-accepted at 100, 1,000, 5,000 and 10,000 entities, with beginning/middle/end failure injection and zero pending recovery;
 - Feature-based Chunks Streaming is the Production Domain orchestration model: one caller-defined feature owns one logical predecessor; failure restores only the current feature while prior committed features remain accepted;
-- the current public-promotion candidate is `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`, but final regression/review/commit remains open.
+- the public promotion `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` is CLOSED/PUSHED at commit `0516fe3`; selected G2/G3 strong-integrity tools and `feature_execute` are public while broader COM-to-native replacement remains separately gated.
 
 The protocol below remains both implemented contract and normative guardrail. Current status authority is `docs/CURRENT_CHECKPOINT.md`; historical N7 details remain in `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
 
@@ -522,10 +522,10 @@ The semantic protocol must be versioned independently of transport and native ad
 During migration:
 
 - COM/ezdxf may populate a subset of semantic fields for parity tests;
-- the staged .NET bridge provides N4 bounded native extraction and typed native mutation; N6 provides deterministic delta/state-chain validation and O1 extends the internal accepted mutation set to LINE/CIRCLE/ARC/simple-LWPOLYLINE without changing the public MCP surface;
+- the .NET bridge provides N4 bounded native extraction and typed native mutation; N6 provides deterministic delta/state-chain validation and O1 extends the accepted mutation set to LINE/CIRCLE/ARC/simple-LWPOLYLINE; selected later G2/G3 capabilities are public in `0.4.0rc1`, while unpromoted native families remain explicitly gated;
 - document fingerprint schema v1/v2 evidence remains historical; G2/G3 current parent-state binding uses schema v3, which retains the v2 exclusion of volatile `saved/DBMOD` and adds canonical schema-agnostic metadata to entity semantic state;
 - current native snapshots expose no relation/topology data, so N6 does not claim topology validation that is not present in authoritative extraction;
 - N7 post-commit recovery/R1/R2 is CLOSED / LIVE PASS for the bounded internal candidate, including activation-safe R2 after real AutoCAD restart;
-- Python MCP/provider hot reload is a mandatory prerequisite before deep N8/N9/N10 migration: one authoritative generation, deterministic in-flight drain/refusal, health-proven generation switch and fail-safe rollback to the previous healthy generation are required;
+- Python MCP/provider hot reload (MP-2) is CLOSED/LIVE PASS and remains a mandatory invariant for deeper N8/N9/N10 migration: one authoritative generation, deterministic in-flight drain/refusal, health-proven generation switch and fail-safe rollback to the previous healthy generation are required;
 - missing semantic fields must be reported as unsupported/unknown, never fabricated;
 - old and new adapters should be dual-run on disposable drawings until parity/integrity gates close.

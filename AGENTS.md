@@ -26,23 +26,24 @@ Forbidden unless explicitly assigned:
 ## Current checkpoint
 
 - Primary certification target: AutoCAD 2027 full, Windows x64, ActiveX COM `26.0` / `AutoCAD.Application.26`, Managed .NET `net10.0-windows`.
-- Current public-promotion candidate in the dirty working tree: provider `0.4.0rc1`, contract `autocad-generic-v1-rc1`, **86 MCP tools**, execution model `feature-based-chunks-streaming-v1`.
-- The promotion candidate is **not release-closed** until final Linux/Windows regressions, C# Release/x64 build, review, selective staging, commit and push pass on one reviewed tree.
+- Current public contract: provider `0.4.0rc1`, contract `autocad-generic-v1-rc1`, **86 MCP tools**, execution model `feature-based-chunks-streaming-v1`.
+- Operational use begins **2026-09-12** under this RC/preview identity; this is not a GA/stable-version declaration.
+- Public promotion is **release-closed and pushed** at commit `0516fe3`; final Linux/Windows regressions, C# Release/x64 build, review and surgical staging all passed before publication.
 - N0–N7 and O1 are CLOSED/LIVE PASS for their documented native scopes; MP-2 hot reload is CLOSED/LIVE PASS.
 - G1 Generic Batch Geometry, G2 Schema-Agnostic Metadata and G3 Chunked Logical Atomicity are CLOSED/LIVE PASS on real AutoCAD 2027.
 - Native bridge candidate: `0.8.1-g3`; document fingerprint schema v3; native micro-chunk max 32; graduated semantic capacity 12,288; logical feature/batch cap 10,000; one batch mutation per AutoCAD Idle tick.
 - Scale graduation 100 / 1,000 / 5,000 / 10,000 is LIVE PASS with beginning/middle/end failure injection, exact predecessor recovery, zero pending recovery and process-stability evidence.
 - Feature-based Chunks Streaming is the approved Production Domain execution model: the Domain Agent defines one meaningful feature; a failed current feature rolls back to its own predecessor without undoing earlier committed features. Default presentation pacing is 300 ms between completed features, not between native micro-chunks.
 - Domain semantics remain outside CDT-AutoCAD. `feature_id` is correlation metadata; the provider must not interpret road/manhole/kiosk/beam/pipe/TCVN or similar business meaning.
-- Canonical current-state authority: `docs/CURRENT_CHECKPOINT.md`; session continuation: `docs/SESSION_HANDOFF_2026-09-11_FEATURE_STREAMING_PRODUCTION.md`.
+- Canonical current-state authority: `docs/CURRENT_CHECKPOINT.md`; operational procedure: `docs/OPERATIONS_RUNBOOK.md`; release gate: `docs/RELEASE_CHECKLIST.md`. Historical session handoffs remain evidence of their original checkpoints and are not current-state instructions.
 
 ## Current delivery gates
 
 1. Do not reimplement or reopen G1/G2/G3/Feature Streaming without regression evidence; their documented live gates are already accepted.
 2. Preserve the two pillars: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting. Unknown or unverifiable completion remains fail-closed.
 3. Preserve native chunk bounds and Idle-yield responsiveness; logical/feature atomicity must not be implemented as one giant long-lived AutoCAD transaction.
-4. Finish the explicit public contract promotion only through `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` identity plus final regression/review evidence.
-5. Next session must run full Linux regression, Windows `.171` regression, C# Release/x64 build, compile/hygiene, `git diff --check` and code/security review before commit/push.
+4. The `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` public promotion is CLOSED at `0516fe3`; do not reopen it unless regression evidence proves a defect.
+5. Any future public contract/version change must again run full Linux regression, Windows `.171` regression, C# Release/x64 build, compile/hygiene, `git diff --check` and code/security review before commit/push.
 6. Stage surgically. Do not stage `.gitignore`, `_private/`, `_test_workspace/` or `specs/**` in the promotion commit unless explicitly authorized.
 7. Historical evidence/handoff files may legitimately mention 50 tools, fingerprint v2 or staged A3 because those values describe their original checkpoint; do not rewrite historical evidence to pretend it ran under the new contract.
 8. Any reference-driven/user-reviewed drawing must satisfy both Semantic State integrity and `docs/DRAWING_QUALITY_ACCEPTANCE.md`.

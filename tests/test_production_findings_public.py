@@ -14,7 +14,6 @@ from fastmcp import Client
 
 import cdt_autocad.backends.com_backend as cb
 from cdt_autocad.backends.com_backend import ComBackend
-from cdt_autocad.config import Settings
 from cdt_autocad.server import create_mcp
 
 

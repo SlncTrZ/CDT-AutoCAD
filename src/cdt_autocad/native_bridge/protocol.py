@@ -9,8 +9,8 @@ import math
 import re
 import struct
 from collections.abc import Mapping
-from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Any, BinaryIO
 from uuid import UUID
 

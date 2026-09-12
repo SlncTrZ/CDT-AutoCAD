@@ -6,12 +6,13 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from enum import Enum
 from pathlib import PurePath
-from typing import Any, Mapping
+from typing import Any
 from uuid import UUID
 
 

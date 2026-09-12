@@ -22,6 +22,8 @@ from typing import Any
 import httpx
 from fastmcp import Client
 
+from cdt_autocad.contract_identity import PUBLIC_TOOL_COUNT
+
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -32,7 +34,12 @@ def _free_port() -> int:
 def _copy_fixture(repo_root: Path, fixture_root: Path) -> None:
     shutil.copytree(repo_root / "src", fixture_root / "src")
     (fixture_root / "docs").mkdir(parents=True)
+    (fixture_root / "config").mkdir(parents=True)
     shutil.copy2(repo_root / "docs" / "TOOL_GUIDE.md", fixture_root / "docs" / "TOOL_GUIDE.md")
+    shutil.copy2(
+        repo_root / "config" / "autocad_command_presets.json",
+        fixture_root / "config" / "autocad_command_presets.json",
+    )
     shutil.copy2(repo_root / "pyproject.toml", fixture_root / "pyproject.toml")
     lock = "pylock.windows.toml" if sys.platform == "win32" else "pylock.linux.toml"
     shutil.copy2(repo_root / lock, fixture_root / lock)
@@ -181,16 +188,24 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         successful_builds: list[str] = []
         failure_generations: list[str] = []
         try:
-            initial = await _wait_status(
-                http,
-                url,
-                token,
-                lambda status: bool(status.get("accepting_requests")),
-                timeout=30.0,
-            )
+            try:
+                initial = await _wait_status(
+                    http,
+                    url,
+                    token,
+                    lambda status: bool(status.get("accepting_requests")),
+                    timeout=30.0,
+                )
+            except Exception as exc:
+                if process.poll() is not None:
+                    log_tail = supervisor_log.read_text(encoding="utf-8", errors="replace")[-4000:]
+                    raise RuntimeError(
+                        "supervisor exited before acceptance startup; log tail:\n" + log_tail
+                    ) from exc
+                raise
             status, tool_count = await _mcp_status(url, token)
-            if tool_count != 50:
-                raise AssertionError(f"expected 50 tools, got {tool_count}")
+            if tool_count != PUBLIC_TOOL_COUNT:
+                raise AssertionError(f"expected {PUBLIC_TOOL_COUNT} tools, got {tool_count}")
             if status.get("runtime_generation") != initial.get("active_generation"):
                 raise AssertionError("MCP generation does not match supervisor generation")
             generations.append(str(initial["active_generation"]))
@@ -212,7 +227,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                     http,
                     url,
                     token,
-                    lambda state: (
+                    lambda state, previous_successes=previous_successes, previous_generation=previous_generation: (
                         int(state.get("reload_successes") or 0) > previous_successes
                         and state.get("active_generation") != previous_generation
                         and bool(state.get("accepting_requests"))
@@ -220,7 +235,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                     timeout=30.0,
                 )
                 mcp, tools = await _mcp_status(url, token)
-                if tools != 50 or mcp.get("runtime_generation") != after.get("active_generation"):
+                if tools != PUBLIC_TOOL_COUNT or mcp.get("runtime_generation") != after.get("active_generation"):
                     raise AssertionError("stable MCP endpoint did not expose promoted generation")
                 generations.append(str(after["active_generation"]))
                 successful_builds.append(str(after["active_build_id"]))
@@ -245,13 +260,13 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                     http,
                     url,
                     token,
-                    lambda state: int(state.get("reload_failures") or 0) > previous_failures,
+                    lambda state, previous_failures=previous_failures: int(state.get("reload_failures") or 0) > previous_failures,
                     timeout=30.0,
                 )
                 if failed.get("active_generation") != previous_generation:
                     raise AssertionError("failed reload replaced the last healthy generation")
                 mcp, tools = await _mcp_status(url, token)
-                if tools != 50 or mcp.get("runtime_generation") != previous_generation:
+                if tools != PUBLIC_TOOL_COUNT or mcp.get("runtime_generation") != previous_generation:
                     raise AssertionError("last healthy generation did not remain serviceable")
                 failure_generations.append(previous_generation)
 
@@ -261,7 +276,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                     http,
                     url,
                     token,
-                    lambda state: (
+                    lambda state, prior_successes=prior_successes, previous_generation=previous_generation: (
                         int(state.get("reload_successes") or 0) > prior_successes
                         and state.get("active_generation") != previous_generation
                         and bool(state.get("accepting_requests"))
@@ -269,7 +284,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                     timeout=30.0,
                 )
                 mcp, tools = await _mcp_status(url, token)
-                if tools != 50 or mcp.get("runtime_generation") != recovered.get("active_generation"):
+                if tools != PUBLIC_TOOL_COUNT or mcp.get("runtime_generation") != recovered.get("active_generation"):
                     raise AssertionError("restored source did not promote a healthy generation")
                 generations.append(str(recovered["active_generation"]))
                 successful_builds.append(str(recovered["active_build_id"]))

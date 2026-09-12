@@ -1,6 +1,6 @@
 # Native Bridge + Semantic Integrity Acceptance
 
-> Updated: 2026-09-11 21:35 +07:00
+> Updated: 2026-09-11 21:50 +07:00
 > Current status: **N3–N7/O1 CLOSED · G1/G2/G3 CLOSED/LIVE PASS · 100/1k/5k/10k graduation PASS · Feature-based Chunks Streaming LIVE PASS · public promotion final close gates PASS**
 > Target: AutoCAD 2027 full / Windows x64 / Managed .NET
 > Current-state authority: `docs/CURRENT_CHECKPOINT.md`
@@ -36,11 +36,11 @@ Canonical evidence:
 - `docs/evidence/g3-scale-10000-2026-09-11.json`;
 - `docs/evidence/feature-stream-production-2026-09-11.json`.
 
-The public promotion is `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`. Final close gates on the reviewed promotion tree are PASS: Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**; Linux/Windows compileall and `git diff --check` PASS; focused code/security review found no blocking issue. Ruff is unavailable in both prepared regression environments and is explicitly recorded as a tooling gap. Historical statements below that say the public surface was 50 tools describe the checkpoint at which those older gates were executed.
+The public promotion is `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`, CLOSED/PUSHED at commit `0516fe3`. Final close gates on the reviewed promotion tree are PASS: Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**; Linux/Windows compileall and `git diff --check` PASS; focused code/security review found no blocking issue. Ruff is unavailable in both prepared regression environments and is explicitly recorded as a tooling gap. Historical statements below that say the public surface was 50 tools describe the checkpoint at which those older gates were executed.
 
 ## 1. Purpose
 
-This runbook defines the acceptance gates for the staged C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0, N4/NB1, bounded N5/NB4, N6 semantic state-chain/drift validation, O1 basic-shape mutation expansion and N7/NB5 post-commit recovery have live-passed for their declared scopes. Formal public migration gates remain open. It does not replace the existing COM live-acceptance lane; the two run side-by-side during migration.
+This runbook defines acceptance gates for the C# Managed .NET native bridge and the remaining Semantic State Loop migration. N3/NB0, N4/NB1, bounded N5/NB4, N6 semantic state-chain/drift validation, O1 basic-shape mutation expansion and N7/NB5 post-commit recovery have live-passed for their declared scopes. Selected G2/G3 strong-integrity tools are now public in `0.4.0rc1`; full migration/replacement of the broader COM lane remains separately gated. The two execution lanes continue side-by-side during migration.
 
 The upgrade is not accepted unless both core pillars are proven under fault injection:
 
@@ -333,11 +333,11 @@ Any of these blocks migration/promotion:
 
 ## 4. Promotion policy
 
-The architecture upgrade may become the authoritative live AutoCAD path only after NB0–NB10 evidence is reviewed and an explicit promotion decision is made.
+The first selected native public promotion is complete at `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` in commit `0516fe3`. The architecture upgrade may replace the broader COM lane as the authoritative live AutoCAD path only after the remaining NB0–NB10 parity/evidence is reviewed and an explicit replacement decision is made.
 
-Until then:
+Until full replacement:
 
-- current COM live backend remains supported;
-- public MCP contract remains unchanged;
-- .NET bridge capabilities are staged/internal;
+- the COM live backend remains supported for the broad product surface;
+- the public MCP contract includes only explicitly promoted native capabilities;
+- unpromoted .NET bridge families remain staged/internal;
 - documentation must distinguish planned, implemented, live-verified and promoted states.

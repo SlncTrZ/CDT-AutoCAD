@@ -8,8 +8,9 @@ import io
 import struct
 import sys
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from .protocol import MAX_FRAME_BYTES, BridgeProtocolError, decode_frame, encode_frame
 

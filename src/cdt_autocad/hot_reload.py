@@ -250,7 +250,7 @@ class ReloadSupervisor:
                     old_generation=old.generation_id,
                     new_generation=candidate.generation_id,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return await self._fail_reload(
                     old,
                     candidate,
