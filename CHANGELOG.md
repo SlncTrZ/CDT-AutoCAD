@@ -6,8 +6,14 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 
 ### Planned
 
-- Production-driven expansion of typed native CAD actions only where real Domain workflows require them.
-- Continued COM-to-native parity work under the existing Semantic State and recovery invariants.
+- Production-driven AutoCAD capability expansion only where a concrete CDT-Engineer/Domain workflow requires it and defines a verification invariant.
+- No standing COM-to-native parity program; existing COM/headless/native routes remain intentional according to their documented assurance scope.
+
+### Changed
+
+- Declared CDT-AutoCAD launch-ready for its Generic CAD Execution Engine mission; no known top-level AutoCAD blocker remains before CDT-Engineer work begins.
+- Standardized documentation authority so provider architecture, current status, live evidence, roadmap, technical debt and session notes no longer compete as sources of truth.
+- Added `docs/ARCHITECTURE.md` as the canonical provider-local architecture authority; `specs/**` remains a frozen upstream CDT-Engineer baseline.
 
 ### Maintenance checkpoint — 2026-09-12 (`31186f5`)
 

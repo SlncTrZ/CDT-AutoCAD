@@ -1,110 +1,89 @@
 # CDT-AutoCAD
 
-> Provider `0.4.0rc1` · Contract `autocad-generic-v1-rc1` · 86 public MCP tools · AutoCAD 2027 primary certification lane · RC/preview · Operational since 2026-09-12
+> Provider `0.4.0rc1` · Contract `autocad-generic-v1-rc1` · 86 public MCP tools · AutoCAD 2027 primary certification lane · **Launch-ready / Operational RC**
 
-CDT-AutoCAD is a generic CAD execution engine built for reliable automation of real AutoCAD drawings.
-It combines a FastMCP provider, a live Windows COM backend and an in-process C# Managed .NET bridge
-for persistent identity, semantic fingerprints, bounded native transactions and verified recovery.
+CDT-AutoCAD is a **Generic CAD Execution Engine** for reliable automation of real AutoCAD drawings.
 
-The product deliberately does **not** contain civil, mechanical, landscape or architectural business
-rules. Domain Agents decide what to draw and what standards apply; CDT-AutoCAD executes generic CAD
-actions and proves what happened.
+It combines a FastMCP provider, a Windows COM/ActiveX compatibility lane, an in-process C# Managed .NET bridge for strong-integrity operations, and an ezdxf headless lane. The provider executes generic CAD actions and returns structured evidence about resulting state.
 
-## Operational status
+It deliberately does **not** own engineering-domain rules. Civil, structural, mechanical, architectural and other domain systems decide what should be designed, calculated or checked; CDT-AutoCAD executes the required CAD operations.
 
-Operational use begins **2026-09-12** under the existing RC contract. Public contract promotion is `0516fe3`; current maintenance publication is `31186f5` with Managed .NET bridge candidate `0.8.2-mp7`. This is an operating baseline, not a GA/stable-version declaration and not an expansion of capability claims.
+## Current position
 
-Start with [`docs/README.md`](docs/README.md) for the documentation map and
-[`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md) for live operation. Security/support policy is in
-[`SECURITY.md`](SECURITY.md) and [`SUPPORT.md`](SUPPORT.md); notable changes are tracked in
-[`CHANGELOG.md`](CHANGELOG.md).
+As of 2026-09-12, CDT-AutoCAD is **launch-ready for its intended execution-engine mission**.
 
-## Production execution model
+There is no known top-level architecture or integrity blocker that must be closed before CDT-Engineer work begins. Future AutoCAD capability is added only when CDT-Engineer or another production domain identifies a concrete blocked workflow plus the postcondition and verification invariant required to prove success.
 
-Production Domains should use **Feature-based Chunks Streaming**.
+This is not a claim of full AutoCAD API parity, and the project is not pursuing parity as an independent roadmap.
 
-Instead of sending one enormous mutation or thousands of isolated LINE calls, submit one complete
-logical feature at a time:
+Canonical documentation:
+
+- architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- current public status: [`docs/CURRENT_CHECKPOINT.md`](docs/CURRENT_CHECKPOINT.md)
+- documentation map/governance: [`docs/README.md`](docs/README.md)
+- semantic integrity protocol: [`docs/SEMANTIC_STATE_PROTOCOL.md`](docs/SEMANTIC_STATE_PROTOCOL.md)
+- live acceptance: [`docs/LIVE_ACCEPTANCE.md`](docs/LIVE_ACCEPTANCE.md)
+- operations: [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md)
+- public tool contract: [`docs/TOOL_GUIDE.md`](docs/TOOL_GUIDE.md)
+
+This README is a product landing page and summary, not a competing architecture or current-state authority.
+
+## Public identity
 
 ```text
-Feature 01: centerline        -> commit
-300 ms presentation pause
-Feature 02: curb edge         -> commit
-300 ms presentation pause
-Feature 03: corner detail     -> fails -> rollback Feature 03 only
-Feature 01 + Feature 02 remain intact
-recompute Feature 03          -> retry
-Feature 04: block group       -> continue
+provider_version: 0.4.0rc1
+contract_version: autocad-generic-v1-rc1
+public MCP tools: 86
+execution_model: feature-based-chunks-streaming-v1
+native bridge candidate: 0.8.2-mp7
 ```
 
-The public entry point is `feature_execute`. One feature may contain multiple generic action families
-and up to 10,000 items. The native bridge keeps internal micro-chunks at 32 items and yields between
-AutoCAD Idle ticks. A failed feature is restored to its own predecessor fingerprint; previously
-accepted features are not rolled back.
+## Execution model
 
-Live AutoCAD 2027 acceptance proves exactly this behavior: Feature 1 committed, Feature 2 committed
-its first native micro-chunk then failed in micro-chunk 2 and rolled back only itself, and Feature 3
-continued successfully. The observed presentation pause was 300.295 ms for the configured 300 ms
-default.
+Production domains should use **Feature-based Chunks Streaming**.
+
+A higher-level system submits one meaningful feature at a time. CDT-AutoCAD may execute the feature through bounded native micro-chunks while preserving feature-level predecessor state and recovery.
+
+```text
+Feature 01 -> execute -> verify -> commit
+Feature 02 -> execute -> verify -> commit
+Feature 03 -> partial failure -> restore Feature 03 predecessor only
+Feature 01 + Feature 02 remain committed
+Feature 03 -> recompute/retry
+Feature 04 -> continue
+```
+
+The public orchestration entry point is `feature_execute`. The current logical feature/batch cap is 10,000 items; the native bridge keeps internal micro-chunks bounded to 32 items and yields through AutoCAD Idle processing rather than holding one giant long-lived transaction.
 
 ## What is included
 
 - FastMCP over stdio or authenticated Streamable HTTP.
 - `ezdxf` headless backend for DXF workflows.
-- Windows COM backend for live AutoCAD/DWG workflows.
-- C# Managed .NET bridge loaded inside `acad.exe`.
-- Persistent document/entity PIDs stored in DWG metadata.
-- Document fingerprint schema v3 with metadata participation.
-- Parent-fingerprint drift protection before native mutation.
-- R0 transaction abort, R1 compensation and R2 checkpoint restore.
-- Feature-local logical atomicity across many yielded native chunks.
-- Generic batch create, block insertion and entity transforms.
+- Windows COM/ActiveX backend for broad live AutoCAD/DWG compatibility.
+- C# Managed .NET bridge loaded inside `acad.exe` for strong-integrity scopes.
+- Persistent provider-owned document/entity PIDs for supported native scopes.
+- Versioned semantic/document fingerprints and expected-parent drift protection.
+- Bounded native transactions and feature-local logical recovery.
+- Generic batch create, block insertion and transforms.
 - Schema-agnostic bounded entity metadata.
-- Units, layer state, XREF lifecycle and dependency inspection.
-- Advanced dimensions and measurement/analysis tools.
-- Typed AutoCAD ACIS 3D primitives, extrude/sweep/revolve/boolean/transform/inspect on the live COM/ActiveX lane. These solid operations do **not** yet inherit the native PID/fingerprint/checkpoint exact-recovery loop.
-- SAT export with SHA-256 provenance.
+- Units, layers, XREF lifecycle/dependency inspection and document operations.
+- Dimensions, measurements, analysis and broad drafting utilities.
+- ACIS/3D compatibility operations on the live AutoCAD lane.
+- Bounded native `3DSOLID` semantic integrity for **planar translate only** through `solid-semantic-v2`, persisted read-back, stale-parent refusal, R0 abort and exact R2 predecessor restore.
+- SAT export with provenance.
 - Content-addressed accepted-artifact sealing.
 - Bounded view presets and visual styles for presentation workflows.
 
-The public MCP surface contains 86 tools. Runtime `help` is generated from
-[`docs/TOOL_GUIDE.md`](docs/TOOL_GUIDE.md), which is also the canonical contract guide hashed into
-provider identity.
+The 86-tool catalog is intentionally hybrid. Tool presence does not imply every route has native strong-integrity guarantees; unsupported or unverifiable behavior must refuse explicitly.
 
-## Architecture
+## Integrity model
 
-```text
-Domain Agent / MCP client
-        |
-        | Feature plan + generic CAD ActionSpecs
-        v
-Python MCP Provider / Semantic Core
-  - policy and orchestration
-  - feature-local transaction scope
-  - PID/fingerprint state chain
-  - recovery journal
-        |
-        | same-user / same-session typed Named Pipe IPC
-        v
-C# AutoCAD Managed .NET Bridge
-  - runs inside acad.exe
-  - short native transactions
-  - persistent PID + metadata storage
-  - semantic extraction + verification
-        |
-        v
-AutoCAD Document / Database / ACIS
-```
+Two principles are launch-critical:
 
-Two invariants are non-negotiable:
+1. **Data Integrity / Rollback** — strong-integrity mutation paths prove `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`; uncertain state blocks dependent work.
+2. **Precise Identity / PID + Fingerprinting** — strong-integrity state uses provider-owned persistent identity and versioned fingerprints instead of relying only on AutoCAD ObjectId/Handle.
 
-1. **Data Integrity / Rollback** — a native mutation ends as `COMMITTED_VERIFIED` or
-   `ROLLED_BACK_VERIFIED`; uncertain state blocks dependent work.
-2. **Precise Identity / PID + Fingerprinting** — ObjectId/Handle are not treated as sufficient
-   semantic identity; persistent PIDs and versioned fingerprints bind the state chain.
-
-Both invariants are enforced by the semantic-state protocol and the native integrity contract in
-[`docs/SEMANTIC_STATE_PROTOCOL.md`](docs/SEMANTIC_STATE_PROTOCOL.md).
+The canonical architecture is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); normative state/recovery behavior is in [`docs/SEMANTIC_STATE_PROTOCOL.md`](docs/SEMANTIC_STATE_PROTOCOL.md).
 
 ## Install
 
@@ -146,42 +125,23 @@ set CDT_AUTOCAD_COM_ATTACH_POLICY=attach_only
 cdt-autocad --transport stdio
 ```
 
-`attach_only` is the safe default: the provider refuses instead of silently launching another AutoCAD
-process.
+`attach_only` is the safe default: the provider refuses instead of silently launching another AutoCAD process.
 
-For HTTP transport, configure `CDT_AUTOCAD_AUTH_TOKEN`. Non-loopback binding additionally requires
-`CDT_AUTOCAD_ALLOW_REMOTE_HTTP=true`.
+For HTTP transport, configure `CDT_AUTOCAD_AUTH_TOKEN`. Non-loopback binding additionally requires `CDT_AUTOCAD_ALLOW_REMOTE_HTTP=true`.
 
 ## Recommended production workflow
 
 1. `system_status`
 2. `system_capabilities`
-3. `native_integrity_status`
+3. `native_integrity_status` when strong-integrity execution is required
 4. `document_open` or `document_new`
-5. `document_configure_units`
-6. set up layers/XREFs/blocks
-7. execute one logical feature with `feature_execute`
-8. inspect/query/measure the result
-9. wait the recommended 300 ms before the next visual feature when presentation pacing is wanted
-10. save and optionally `artifact_seal` the accepted drawing
+5. configure units/layers/references
+6. execute one logical feature with `feature_execute`
+7. inspect/query/measure resulting state
+8. continue only from verified state
+9. save and optionally `artifact_seal` the accepted drawing
 
-For raw infrastructure/testing, `batch_create_entities`, `batch_insert_blocks` and
-`batch_transform_entities` expose the underlying G3 logical-batch primitive directly.
-
-## Showcase defaults
-
-The bounded command-preset registry is in `config/autocad_command_presets.json`.
-
-Current presentation defaults:
-
-```text
-feature pacing      300 ms between completed features
-3D view             SE Isometric
-3D visual style     Shades of Gray
-```
-
-The delay belongs between logical features, not between every native micro-chunk. This keeps drawing
-formation visible without sacrificing throughput.
+For lower-level infrastructure/testing, `batch_create_entities`, `batch_insert_blocks` and `batch_transform_entities` expose the underlying logical-batch primitives directly.
 
 ## Runtime configuration
 
@@ -200,9 +160,9 @@ CDT_AUTOCAD_AUTH_TOKEN          required for HTTP transport
 CDT_AUTOCAD_ALLOW_REMOTE_HTTP   explicit opt-in for non-loopback HTTP
 ```
 
-## Verified native scale
+## Verified scale and current gates
 
-The current G3 lane has live AutoCAD 2027 graduation evidence at:
+Current accepted scale tiers on real AutoCAD 2027:
 
 | Tier | Result | Failure injection | Pending recovery |
 | ---: | --- | --- | ---: |
@@ -211,58 +171,47 @@ The current G3 lane has live AutoCAD 2027 graduation evidence at:
 | 5,000 | PASS | beginning / middle / end | 0 |
 | 10,000 | PASS | beginning / middle / end | 0 |
 
-At 10,000 entities the accepted run used 313 native chunks, preserved the same AutoCAD/bridge process,
-restored the exact predecessor at beginning/middle/end injected failures and finished with 10,000
-unique persistent entity PIDs. The bridge remains bounded at 32 entities per native micro-chunk.
+At current checkpoint `911ba09`:
 
-Machine-readable acceptance evidence worth retaining is compressed under ignored
-`artifacts/internal-evidence/` with its original file names; current distilled status lives in
-`_private/AUDIT.md`. It is not part of the published tree, including
-`g3-scale-10000-2026-09-11.json` and `feature-stream-production-2026-09-11.json`.
+- Linux full regression: **386 passed / 6 skipped**;
+- Windows `.171` full regression: **385 passed / 7 skipped**;
+- GitHub Headless CI exact-head: **4/4 matrix jobs PASS**;
+- Ruff and Python compile: **PASS**;
+- C# Release/x64: **0 errors / 3 inherited warning families**;
+- MP-G05 AutoCAD 2027 live commit/drift/R0/post-commit-fault/R2 gate: **PASS**.
 
-## 2D and 3D workflow notes
-
-For 2D/3D drawing production, build the drawing by meaningful layers/features instead of creating the
-whole model in one burst. This improves reviewability, recovery scope and presentation quality.
-
-For 3D showcase work use `view_set_preset("se_isometric")` and
-`view_set_visual_style("shades_of_gray")`. Screenshots are optional visual evidence; semantic state,
-PID/fingerprint readback and deterministic geometry/measurement checks remain the geometry oracle.
+See [`docs/CURRENT_CHECKPOINT.md`](docs/CURRENT_CHECKPOINT.md) and [`docs/LIVE_ACCEPTANCE.md`](docs/LIVE_ACCEPTANCE.md) for authoritative status/evidence scope.
 
 ## Security and reliability
 
-- no arbitrary shell, AutoLISP, macro or caller-supplied AutoCAD command surface;
-- file/XREF paths are contained to configured roots;
+- no arbitrary shell, AutoLISP, macro, caller-supplied C# or free-text AutoCAD command surface;
+- file/XREF paths are bounded to configured roots/policy;
 - native requests, metadata and semantic extraction are bounded;
-- native mutation is fenced by runtime document ID, document PID and expected parent fingerprint;
-- timeouts with unknown completion are not blindly retried;
+- strong-integrity mutation is fenced by runtime/document identity and predecessor state;
+- unknown completion is not blindly retried;
 - credentials are never returned by tools;
-- unsupported STEP/STL, ACIS edge fillet/chamfer/shell and other unproven capabilities fail explicitly.
+- unsupported/unproven capability fails explicitly rather than widening claims.
 
-Security reports and operational incident handling are defined in [`SECURITY.md`](SECURITY.md),
-[`SUPPORT.md`](SUPPORT.md), and [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md).
+Security reports and incident handling are defined in [`SECURITY.md`](SECURITY.md), [`SUPPORT.md`](SUPPORT.md) and [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md).
 
-## Marketing demo
+## Development direction
 
-The public-safe integrity showcase uses only repo-owned synthetic geometry and demonstrates real
-`feature_execute` commit → injected failure → exact feature-local rollback → continued execution on
-AutoCAD 2027. Recording setup, approved claims and the current RC limitations are documented in
-[`docs/MARKETING_DEMO_RUNBOOK.md`](docs/MARKETING_DEMO_RUNBOOK.md).
+There is no standing “finish the rest of AutoCAD” phase.
+
+Future work starts from a production need:
+
+```text
+engineering workflow
+-> blocked CAD step
+-> required capability
+-> expected postcondition
+-> verification invariant
+-> smallest safe implementation
+-> live acceptance when required
+```
+
+This keeps CDT-AutoCAD focused as infrastructure and prevents speculative over-engineering.
 
 ## License and ownership
 
 Copyright (c) 2026 **Trương Công Định (SlncTrZ)**. CDT-AutoCAD is proprietary source-available software under [`LICENSE`](LICENSE); public repository visibility does not grant an open-source license. Third-party dependency/API boundaries are documented in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and source provenance in [`SOURCE_PROVENANCE.md`](SOURCE_PROVENANCE.md).
-
-## Development verification
-
-Linux/headless regression:
-
-```text
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=.deps:src python3 -m pytest -q -p no:cacheprovider
-```
-
-The primary native certification lane is Windows x64 with full AutoCAD 2027. C# bridge changes must
-also build Release/x64 with zero errors before live acceptance.
-
-Current implementation status and release evidence are tracked in
-[`docs/CURRENT_CHECKPOINT.md`](docs/CURRENT_CHECKPOINT.md).

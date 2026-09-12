@@ -1,60 +1,108 @@
 # CDT-AutoCAD Documentation Index
 
-> Updated: 2026-09-12 17:30 +07:00
+> Updated: 2026-09-12
 
-This page is the map for the **published documentation set**: product-facing contracts and guides
-needed to use CDT-AutoCAD, including its provider contract, operation and quality rules.
+This page defines the documentation structure and authority boundaries for CDT-AutoCAD.
 
-## Publication boundary
+The governing rule is simple: **one concern, one source of truth**. Architecture, current status, roadmap and session notes must not compete with each other.
 
-Only product-facing contracts/guides are published here. Maintainer context is intentionally
-condensed into exactly five ignored control files: `_private/AUDIT.md`, `_private/DEVELOP_PLAN.md`,
-`_private/TECH_DEBT.md`, `_private/HANDOFF.md`, and `_private/NEXT_SESSION.md`. There is no private
-history/ADR/evidence tree. Published pages must remain usable without `_private/`; raw machine
-evidence worth retaining lives under ignored `artifacts/internal-evidence/`.
+## 1. Public documentation authority
 
-## Start here
+| Concern | Canonical authority | What it may contain |
+| --- | --- | --- |
+| Provider architecture | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Stable component boundaries, execution lanes, invariants, responsibility model |
+| Current public status | [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) | Current identity, launch state, verified gates, current capability boundaries |
+| Public tool contract | [`TOOL_GUIDE.md`](TOOL_GUIDE.md) | Tool names/schemas/help material; contract-hash material |
+| Semantic state/recovery | [`SEMANTIC_STATE_PROTOCOL.md`](SEMANTIC_STATE_PROTOCOL.md) | Normative state model, fingerprints, validation, rollback/recovery rules |
+| Live acceptance evidence | [`LIVE_ACCEPTANCE.md`](LIVE_ACCEPTANCE.md) | Accepted live gates, evidence scope and runtime measurements |
+| Operations | [`OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) | Start/stop/use/recovery/maintenance procedure |
+| Threat model | [`THREAT_MODEL.md`](THREAT_MODEL.md) | Threats, trust boundaries and mitigations |
+| Observability | [`OBSERVABILITY.md`](OBSERVABILITY.md) | Telemetry and diagnostic contracts |
+| Drawing quality | [`DRAWING_QUALITY_ACCEPTANCE.md`](DRAWING_QUALITY_ACCEPTANCE.md) | User-facing drawing acceptance criteria |
+| Drawing execution QA | [`DRAWING_EXECUTION_QA_WORKFLOW.md`](DRAWING_EXECUTION_QA_WORKFLOW.md) | Drawing build/review procedure |
+| Reproducible baseline | [`REPRODUCIBLE_BASELINE.md`](REPRODUCIBLE_BASELINE.md) | Reproduction/build baseline |
+| Upstream spec pin | [`SPEC_BASELINE.md`](SPEC_BASELINE.md) | Which CDT-Engineer control-plane snapshot this provider consumes |
+| Marketing demo | [`MARKETING_DEMO_RUNBOOK.md`](MARKETING_DEMO_RUNBOOK.md) | Public-safe demo procedure and approved claims |
 
-| Purpose | Current authority |
+### Important distinction: `docs/ARCHITECTURE.md` vs `specs/ARCHITECTURE.md`
+
+`docs/ARCHITECTURE.md` is the **current provider-local architecture source of truth**.
+
+`specs/ARCHITECTURE.md` is a **frozen upstream snapshot** copied from the pinned CDT-Engineer control-plane baseline. Files under `specs/` are read-only inputs for provider work and must not be treated as current CDT-AutoCAD implementation status.
+
+## 2. Maintainer/private authority
+
+Maintainer context is intentionally limited to exactly five ignored control files:
+
+| File | Sole responsibility |
 | --- | --- |
-| Current product/contract state | `CURRENT_CHECKPOINT.md` |
-| Public tool contract | `TOOL_GUIDE.md` |
-| Operations | `OPERATIONS_RUNBOOK.md` |
-| Semantic integrity protocol | `SEMANTIC_STATE_PROTOCOL.md` |
-| Live AutoCAD acceptance | `LIVE_ACCEPTANCE.md` |
-| Drawing quality | `DRAWING_QUALITY_ACCEPTANCE.md` |
-| Drawing execution QA | `DRAWING_EXECUTION_QA_WORKFLOW.md` |
-| Threat model | `THREAT_MODEL.md` |
-| Observability | `OBSERVABILITY.md` |
-| Reproducible baseline | `REPRODUCIBLE_BASELINE.md` |
-| Pinned spec baseline | `SPEC_BASELINE.md` |
-| Marketing demo | `MARKETING_DEMO_RUNBOOK.md` |
+| `_private/AUDIT.md` | Current internal audit/state verdict |
+| `_private/TECH_DEBT.md` | Known technical debt and explicit non-debt boundaries |
+| `_private/DEVELOP_PLAN.md` | **Only roadmap authority**: what may be worked on next and under which trigger |
+| `_private/HANDOFF.md` | What the latest work session completed |
+| `_private/NEXT_SESSION.md` | Where the next session should start |
 
-Pinned control-plane snapshots live in `../specs/` and are read-only for provider work.
+No additional TODO/roadmap/checkpoint/history tree belongs under `_private/`. Raw machine evidence worth retaining belongs under ignored `artifacts/internal-evidence/`.
 
-## Operational status
+Private files do not define public architecture or public contract behavior. Public docs must remain usable without them.
 
-Operational use begins **2026-09-12** under provider `0.4.0rc1`, contract `autocad-generic-v1-rc1`, and 86 public MCP tools. Public contract promotion is `0516fe3`; current maintenance publication is `31186f5` with native bridge candidate `0.8.2-mp7`. This remains an RC/preview operational baseline, not a GA/stable-version declaration.
+## 3. What each document must not do
 
-## Evidence
+To prevent source-of-truth drift:
 
-`LIVE_ACCEPTANCE.md` is the public evidence reference reported by `system_status` and
-`native_integrity_status`; it states the accepted live gates and their scope. The machine-readable
-acceptance artifacts behind those statements are retained under their original file names inside the
-ignored internal-evidence archive and are not part of the published tree. `_private/AUDIT.md` holds
-the current distilled verdict. Historical artifacts describe the exact versions/fixtures/scopes under
-which they were produced; do not rewrite them to match newer identities. `TOOL_GUIDE.md` is contract-hash material, so documentation cleanup must not modify it merely to refresh prose or timestamps.
+- `ARCHITECTURE.md` must not become a release diary or backlog.
+- `CURRENT_CHECKPOINT.md` must not design future architecture or schedule work.
+- `DEVELOP_PLAN.md` must not redefine current architecture or claim runtime evidence.
+- `AUDIT.md` must not become a roadmap.
+- `HANDOFF.md` and `NEXT_SESSION.md` are disposable continuity notes, not durable design authorities.
+- `LIVE_ACCEPTANCE.md` records evidence; it does not set product direction.
+- `CHANGELOG.md` records history; history never overrides current architecture/status docs.
+- `specs/**` remains pinned upstream input and is never silently edited to match local implementation.
 
-## Ownership and legal
+## 4. Current product position
 
-Repository-level legal and provenance files are at the project root:
+As of 2026-09-12, CDT-AutoCAD is **launch-ready / operational RC** for its intended role as a Generic CAD Execution Engine.
 
-- `LICENSE`
-- `COPYRIGHT.md`
-- `NOTICE`
-- `SOURCE_PROVENANCE.md`
-- `THIRD_PARTY_NOTICES.md`
+Current public identity remains:
+
+```text
+provider_version: 0.4.0rc1
+contract_version: autocad-generic-v1-rc1
+public_tools: 86
+execution_model: feature-based-chunks-streaming-v1
+native_bridge: 0.8.2-mp7
+```
+
+There is no known top-level blocker that requires further AutoCAD breadth before CDT-Engineer work begins. New AutoCAD capability is opened only from a concrete downstream engineering need plus a verification invariant. See [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) for the current measured state and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the stable boundary.
+
+## 5. Change routing
+
+When a change occurs, update only the authority that owns it:
+
+- architecture/boundary/invariant changed → `ARCHITECTURE.md`;
+- current version/capability/gate changed → `CURRENT_CHECKPOINT.md`;
+- semantic-state contract changed → `SEMANTIC_STATE_PROTOCOL.md`;
+- new accepted live evidence → `LIVE_ACCEPTANCE.md`;
+- operational procedure changed → `OPERATIONS_RUNBOOK.md`;
+- future work priority/trigger changed → `_private/DEVELOP_PLAN.md`;
+- debt opened/closed → `_private/TECH_DEBT.md`;
+- session ends → overwrite `_private/HANDOFF.md` and `_private/NEXT_SESSION.md`.
+
+If a change affects more than one concern, update each owning document, but do not copy whole sections between them.
+
+## 6. Publication boundary
+
+Repository-level public/legal/provenance files remain at the project root:
+
+- `README.md`
+- `CHANGELOG.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`
 - `SUPPORT.md`
-- `CHANGELOG.md`
+- `SOURCE_PROVENANCE.md`
+- `COPYRIGHT.md`
+- `THIRD_PARTY_NOTICES.md`
+- `LICENSE`
+- `NOTICE`
+
+`README.md` is a product landing page and summary only; it must link to the canonical authorities instead of becoming another architecture/status source of truth.

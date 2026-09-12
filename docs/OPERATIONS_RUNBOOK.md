@@ -3,7 +3,7 @@
 > Operational start: 2026-09-12
 > Updated: 2026-09-12 17:30 +07:00
 > Current product identity: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`
-> Current native bridge candidate: `0.8.2-mp7` · maintenance publication `31186f5`
+> Current native bridge candidate: `0.8.2-mp7` · current main checkpoint `911ba09`
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
 
 ## 1. Operating boundary
@@ -110,7 +110,7 @@ Preserve:
 - `system_status` / `native_integrity_status` snapshots;
 - exact provider, contract, bridge and AutoCAD versions.
 
-Reconcile through authoritative semantic read-back and the recovery procedures defined by `SEMANTIC_STATE_PROTOCOL.md` and the maintainer-internal native bridge acceptance record. Telemetry alone never proves commit or rollback.
+Reconcile through authoritative semantic read-back and the recovery procedures defined by `SEMANTIC_STATE_PROTOCOL.md`; use `LIVE_ACCEPTANCE.md` plus retained machine evidence for accepted scope/evidence context. Telemetry alone never proves commit or rollback.
 
 ## 7. Save and artifact policy
 
@@ -146,7 +146,7 @@ Linux/headless verification may use the Linux venv/lock or a clean CI environmen
 Before publishing a product change:
 
 - follow the maintainer-internal release checklist;
-- update `CHANGELOG.md` and `CURRENT_CHECKPOINT.md` when current truth changes;
+- update the owning authority when truth changes: `ARCHITECTURE.md` for architecture/boundary/invariants, `CURRENT_CHECKPOINT.md` for current runtime/release state, and `LIVE_ACCEPTANCE.md` for accepted evidence;
 - rerun the exact gates required by the changed scope;
 - perform live Windows/AutoCAD acceptance for any capability that requires AutoCAD;
 - update threat-model deltas for materially new risky authority;

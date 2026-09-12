@@ -3,7 +3,7 @@
 > Updated: 2026-09-12 17:30 +07:00
 > Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Public promotion: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` — **CLOSED/PUSHED at `0516fe3`** · current maintenance publication **`31186f5`**
+> Public identity: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` · current main checkpoint **`911ba09`** · historical promotion commit `0516fe3`
 
 ## 0. Current production live gate
 
@@ -202,14 +202,14 @@ These A3 promotion rules were satisfied by the reviewed `0.4.0rc1 / autocad-gene
 
 ## 11. Architecture migration acceptance
 
-The current COM lane remains the public/runtime migration baseline. The accepted target architecture is an in-process AutoCAD Managed .NET bridge plus the provider-level Semantic State Loop. N0–N7 and O1 have passed their bounded native gates; N7 two-phase post-commit recovery now includes activation-safe R2 restore after a real AutoCAD restart. Remaining parity and promotion gates are tracked in the maintainer-internal native bridge acceptance record; canonical N7 closure evidence is `n7-native-recovery-2026-09-11.json`.
+The current runtime is intentionally hybrid: COM/ActiveX remains the broad compatibility lane while selected Managed .NET families provide stronger PID/fingerprint/read-back/recovery guarantees. N0–N7 and O1 have passed their bounded native gates; N7 two-phase post-commit recovery includes activation-safe R2 restore after a real AutoCAD restart. Canonical N7 closure evidence is `n7-native-recovery-2026-09-11.json`.
 
-The native architecture lane must ultimately prove, on real AutoCAD 2027, both non-negotiable pillars:
+For every newly accepted strong-integrity family, live AutoCAD 2027 evidence must prove both non-negotiable pillars:
 
 1. **Data Integrity / Rollback** — injected failures/timeout uncertainty cannot advance state; native abort or recovery must be followed by read-back proving the exact predecessor fingerprint.
 2. **Precise Identity / PID + Fingerprinting** — document/entity PID persistence, clone/remap behavior, duplicate detection, deterministic content fingerprints and `expected_parent_fp` state-drift blocking.
 
-The .NET bridge is not promoted merely because an internal native gate passes. Selected strong-integrity tools are now public in `0.4.0rc1`, while full replacement of the broader COM backend remains separately gated by parity/evidence. **MP-2 Python MCP hot reload is CLOSED / LIVE PASS**: stable supervisor/process/stable-URL, protocol/contract-hash promotion and `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge acceptance all passed. Historical evidence remains `mp2-hot-reload-2026-09-11.json`; the current 86-tool/`0.8.2-mp7` identity was re-proven with one isolated Session-1 owner at **20 successful reloads + 10 injected startup failures**, zero pending recovery and verified task/process cleanup in `mp2-hot-reload-current-identity-2026-09-12-isolated.json`.
+The .NET bridge is not promoted merely because an internal native gate passes. Selected strong-integrity tools are public in `0.4.0rc1`; the broader COM lane may remain in place indefinitely where its bounded-integrity contract is sufficient. There is no standing requirement to replace it for parity. **MP-2 Python MCP hot reload is CLOSED / LIVE PASS**: stable supervisor/process/stable-URL, protocol/contract-hash promotion and `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge acceptance all passed. Historical evidence remains `mp2-hot-reload-2026-09-11.json`; the current 86-tool/`0.8.2-mp7` identity was re-proven with one isolated Session-1 owner at **20 successful reloads + 10 injected startup failures**, zero pending recovery and verified task/process cleanup in `mp2-hot-reload-current-identity-2026-09-12-isolated.json`.
 
 AutoCAD 2027 installs Microsoft .NET 10 when needed; the bridge build/runtime target must follow the AutoCAD 2027 Managed .NET compatibility requirements and secure loading policy.
 
@@ -229,4 +229,4 @@ Live AutoCAD 2027 Interactive Session 1 evidence on `.171` proves:
 - Batch R2: committed insertion of 2 block references restored from immutable checkpoint through activation-safe document replacement; `runtime_document_id` changed as expected, predecessor fingerprint and ModelSpace membership were exact, zero pending recoveries.
 - Final regressions on the G1 production tree: Linux `270 passed / 5 skipped`; Windows `.171` `269 passed / 6 skipped`; native Release build 0 errors with the existing Autodesk-reference MSB3277 warning families; Linux/Windows compileall and `git diff --check` pass.
 
-Canonical evidence: `g1-generic-cad-execution-2026-09-11.json`. Scale graduation beyond 1,000 entities remains open; 5,000/10,000 tiers are not claimed. Cross-chunk logical all-or-nothing semantics remains G3.
+Canonical evidence: `g1-generic-cad-execution-2026-09-11.json`. At that historical G1 checkpoint, scale graduation beyond 1,000 entities and cross-chunk logical all-or-nothing semantics had not yet closed; later G3/scale acceptance closed the 5,000/10,000 tiers and logical predecessor-recovery model. This sentence records evidence chronology rather than current project status.

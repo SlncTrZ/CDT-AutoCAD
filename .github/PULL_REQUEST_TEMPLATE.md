@@ -2,6 +2,7 @@
 
 - What changed?
 - Which backend/runtime/capability tuple is affected?
+- Which documentation authority owns the truth changed by this PR?
 
 ## Verification
 
@@ -22,5 +23,8 @@
 ## Contract / docs
 
 - [ ] Public tool/version/contract changes are intentional and fully gated
-- [ ] `CHANGELOG.md` / `CURRENT_CHECKPOINT.md` updated when current truth changes
+- [ ] `docs/ARCHITECTURE.md` updated only when architecture/boundary/invariants changed
+- [ ] `docs/CURRENT_CHECKPOINT.md` updated only when current public runtime/release truth changed
+- [ ] `docs/LIVE_ACCEPTANCE.md` updated only when accepted evidence changed
+- [ ] Roadmap/session notes were not copied into public architecture/status docs
 - [ ] Historical evidence was not rewritten to match a newer identity

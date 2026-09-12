@@ -260,21 +260,25 @@ Vision is reserved for:
 
 Screenshots may be captured at major visual gates or debugging points, but they are supplemental evidence. They do not replace native semantic state.
 
-## 15. Current migration rule
+## 15. Current execution-route rule
 
-The staged Managed .NET bridge has advanced beyond the original N3 read-only foundation. N4 native semantic extraction, N5 transactional LINE mutation/R0 rollback, N6 semantic validation/state-chain orchestration and O1 LINE/CIRCLE/ARC/simple-LWPOLYLINE typed mutations are live-verified for their bounded scopes. N7 two-phase post-commit recovery is under development but not accepted. During this migration phase:
+The runtime is intentionally hybrid rather than being in a mandatory COM-to-native migration phase.
 
-- keep COM/ezdxf as the supported drawing/runtime baseline;
-- use existing structured query/measurement APIs as much as possible;
-- use only the native capabilities explicitly marked accepted in `docs/CURRENT_CHECKPOINT.md`; working N7 recovery behavior is not an accepted drawing-workflow guarantee yet;
-- do not claim that current COM/native-identity checks equal the full target Semantic State Loop;
-- a drawing step may be labeled native `COMMITTED_VERIFIED`/`ROLLED_BACK_VERIFIED` only for an accepted bounded path whose snapshot/fingerprint/rollback gate has passed; post-commit R1/R2 recovery is not accepted until N7 closes;
-- COM timeout remains integrity-uncertain and requires read-back before retry;
-- old screenshot-heavy stress-test scripts are prototypes, not the target execution architecture.
+- use the strongest **accepted** route appropriate to the operation and required assurance;
+- Managed .NET native families may claim `COMMITTED_VERIFIED` / `ROLLED_BACK_VERIFIED` only inside the bounded scopes that have passed their semantic/fingerprint/recovery gates;
+- N7 post-commit R1/R2 recovery is CLOSED / LIVE PASS for its documented bounded native scope, including activation-safe R2 after real AutoCAD restart;
+- G1/G2/G3 and Feature-based Chunks Streaming are accepted for their documented generic native scopes;
+- bounded MP-G05 native `3DSOLID` integrity is accepted for planar translation only and does not imply Boolean/rotate/scale/topology parity;
+- COM/ActiveX remains a valid bounded-integrity compatibility lane where its documented postcondition controls are sufficient;
+- ezdxf remains a distinct headless route and must not be represented as live AutoCAD proof;
+- COM timeout or any unknown completion remains integrity-uncertain and requires reconciliation/read-back before retry;
+- never upgrade a weaker route's guarantee merely because another family has stronger native acceptance.
 
-## 16. Target native step runner
+The authoritative availability/boundary for current routes is `docs/CURRENT_CHECKPOINT.md`; architecture intent is `docs/ARCHITECTURE.md`.
 
-The accepted N4–N6 + O1 runner executes one ActionSpec at a time and returns structured evidence. N7 is extending the same loop with provisional in-transaction validation and checkpoint-backed recovery, but drawing workflows must continue to treat N7 as unavailable until its crash-safe R2 lifecycle passes acceptance. Conceptually:
+## 16. Strong-integrity native step runner
+
+For accepted native families, the step runner executes one ActionSpec at a time and returns structured evidence:
 
 ```text
 semantic_step(action_spec)
@@ -283,12 +287,12 @@ semantic_step(action_spec)
   -> provisional_snapshot
   -> validation
   -> commit/abort
-  -> post_commit_snapshot
+  -> independent post_commit_snapshot
   -> fingerprint/diff
-  -> state_chain_entry
+  -> state_chain_entry or verified recovery receipt
 ```
 
-It must never automatically execute the next action after a failed or unresolved step.
+It must never automatically execute the next action after a failed, drifted, uncertain or unresolved step. New native families may join this runner only after their own verification invariant and live acceptance close.
 
 ## 17. Final acceptance handoff
 

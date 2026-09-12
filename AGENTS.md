@@ -2,15 +2,48 @@
 
 ## Role
 
-This repository owns the AutoCAD MCP provider runtime only. `CDT_Engineer` is the architecture/spec/control repository and is read-only to provider agents unless the Architect explicitly assigns a contract change.
+This repository owns the AutoCAD MCP provider runtime only. `CDT_Engineer` owns engineering-domain architecture/spec/control and is read-only to provider agents unless the Architect explicitly assigns a cross-repo contract change.
 
-## Governing spec baseline
+## Documentation authority — read before work
 
-- Source repo: `SlncTrZ/CDT_Engineer`
-- Pinned commit: `643019c`
-- Read first (published): `docs/CURRENT_CHECKPOINT.md`, `docs/SPEC_BASELINE.md`, `docs/SEMANTIC_STATE_PROTOCOL.md`, `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`.
-- Read first (internal, untracked working record), in this order: `_private/AUDIT.md`, `_private/TECH_DEBT.md`, `_private/DEVELOP_PLAN.md`, `_private/HANDOFF.md`, `_private/NEXT_SESSION.md`. `_private/` must contain exactly these five control files; do not recreate history/evidence/ADR/roadmap subtrees there.
-- Do not edit files under `specs/`; they are pinned snapshots. Contract changes must be proposed in `CDT_Engineer` and synced here only after approval.
+Do not infer architecture or roadmap from whichever file is easiest to find. Each concern has one authority:
+
+| Concern | Authority |
+| --- | --- |
+| Public provider architecture | `docs/ARCHITECTURE.md` |
+| Public current runtime/release state | `docs/CURRENT_CHECKPOINT.md` |
+| Semantic state/recovery protocol | `docs/SEMANTIC_STATE_PROTOCOL.md` |
+| Live acceptance evidence | `docs/LIVE_ACCEPTANCE.md` |
+| Operations | `docs/OPERATIONS_RUNBOOK.md` |
+| Public tool contract | `docs/TOOL_GUIDE.md` |
+| Pinned upstream baseline | `docs/SPEC_BASELINE.md` + `specs/**` |
+| Internal current-state audit | `_private/AUDIT.md` |
+| Technical debt | `_private/TECH_DEBT.md` |
+| Roadmap | `_private/DEVELOP_PLAN.md` |
+| Latest session handoff | `_private/HANDOFF.md` |
+| Next-session start point | `_private/NEXT_SESSION.md` |
+
+`_private/` must contain exactly those five control files. Do not create additional TODO/roadmap/checkpoint/history/evidence trees there.
+
+`specs/**` are pinned read-only snapshots from CDT-Engineer, not current provider architecture. Do not edit them unless an explicit common-spec/pin update is assigned.
+
+## Current checkpoint
+
+- Status: **LAUNCH-READY / OPERATIONAL RC** for the Generic CAD Execution Engine mission.
+- Current main checkpoint: `911ba09` (`feat: close native solid integrity loop`).
+- Primary certification target: AutoCAD 2027 full, Windows x64, ActiveX COM `26.0` / `AutoCAD.Application.26`, Managed .NET `net10.0-windows`.
+- Public contract: provider `0.4.0rc1`, contract `autocad-generic-v1-rc1`, **86 MCP tools**, execution model `feature-based-chunks-streaming-v1`.
+- Native bridge candidate: `0.8.2-mp7`.
+- N0–N7/O1, MP-2, G1/G2/G3, scale 100/1k/5k/10k, Feature Streaming, Integrity P0, mixed-PID P1 and bounded MP-G05 planar-solid-translate scope are closed according to `docs/CURRENT_CHECKPOINT.md` / `docs/LIVE_ACCEPTANCE.md`.
+- No default AutoCAD expansion milestone is open. New capability work must be driven by a concrete CDT-Engineer/production workflow or regression evidence.
+
+## Product boundary
+
+CDT-AutoCAD is a **Generic CAD Execution Engine**, not an engineering domain.
+
+It executes typed generic CAD actions and proves resulting state. Standards, engineering rules, calculations, design intent, discipline-specific validation, review/approval and reports remain outside this provider.
+
+Do not add a capability merely because AutoCAD exposes an API for it. Follow the extension rule in `docs/ARCHITECTURE.md` and the trigger/intake rules in `_private/DEVELOP_PLAN.md`.
 
 ## Ownership boundary
 
@@ -21,67 +54,69 @@ Forbidden unless explicitly assigned:
 - `CDT-SketchUp/**`, `CDT-Blender/**`, `CDT-SolidWorks/**`;
 - provider business logic in `CDT_Engineer/**`;
 - creating `CDT-Provider-Kit` before Rule-of-Two evidence;
-- arbitrary AutoLISP/command/script execution surfaces;
+- arbitrary AutoLISP/command/script/caller-supplied C# execution surfaces;
 - claiming live AutoCAD verification from mocks/Linux.
 
-## Current checkpoint
+## Delivery gates
 
-- Primary certification target: AutoCAD 2027 full, Windows x64, ActiveX COM `26.0` / `AutoCAD.Application.26`, Managed .NET `net10.0-windows`.
-- Current public contract: provider `0.4.0rc1`, contract `autocad-generic-v1-rc1`, **86 MCP tools**, execution model `feature-based-chunks-streaming-v1`.
-- Operational use begins **2026-09-12** under this RC/preview identity; this is not a GA/stable-version declaration.
-- Public promotion is **release-closed and pushed** at commit `0516fe3`; current maintenance hardening is published at `31186f5` without changing the 86-tool public contract. Final Linux/Windows regressions, C# Release/x64 build, review and surgical staging passed for that maintenance candidate.
-- N0–N7 and O1 are CLOSED/LIVE PASS for their documented native scopes; MP-2 hot reload is CLOSED/LIVE PASS.
-- G1 Generic Batch Geometry, G2 Schema-Agnostic Metadata and G3 Chunked Logical Atomicity are CLOSED/LIVE PASS on real AutoCAD 2027.
-- Native bridge candidate: `0.8.2-mp7`; document fingerprint schema v3; native micro-chunk max 32; graduated semantic capacity 12,288; logical feature/batch cap 10,000; one batch mutation per AutoCAD Idle tick. Historical G1/G2/G3/scale/Feature Streaming evidence remains bound to the bridge identity recorded by each original run and is not rewritten.
-- Scale graduation 100 / 1,000 / 5,000 / 10,000 is LIVE PASS with beginning/middle/end failure injection, exact predecessor recovery, zero pending recovery and process-stability evidence.
-- Feature-based Chunks Streaming is the approved Production Domain execution model: the Domain Agent defines one meaningful feature; a failed current feature rolls back to its own predecessor without undoing earlier committed features. Default presentation pacing is 300 ms between completed features, not between native micro-chunks.
-- Domain semantics remain outside CDT-AutoCAD. `feature_id` is correlation metadata; the provider must not interpret road/manhole/kiosk/beam/pipe/TCVN or similar business meaning.
-- Public current-state authority: `docs/CURRENT_CHECKPOINT.md`; internal current-state authority: `_private/AUDIT.md`; operational procedure: `docs/OPERATIONS_RUNBOOK.md`; current work/development gates live in `_private/DEVELOP_PLAN.md` and `_private/NEXT_SESSION.md`.
-
-## Current delivery gates
-
-1. Do not reimplement or reopen G1/G2/G3/Feature Streaming without regression evidence; their documented live gates are already accepted.
-2. Preserve the two pillars: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting. Unknown or unverifiable completion remains fail-closed.
-3. Preserve native chunk bounds and Idle-yield responsiveness; logical/feature atomicity must not be implemented as one giant long-lived AutoCAD transaction.
-4. The `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` public promotion is CLOSED at `0516fe3`; do not reopen it unless regression evidence proves a defect.
-5. Any future public contract/version change must again run full Linux regression, Windows `.171` regression, C# Release/x64 build, compile/hygiene, `git diff --check` and code/security review before commit/push.
-6. Stage surgically. Do not stage `.gitignore`, `_private/`, `_test_workspace/` or `specs/**` in the promotion commit unless explicitly authorized.
-7. Historical machine evidence may legitimately mention 50 tools, fingerprint v2 or staged A3 because those values describe its original checkpoint; do not rewrite historical evidence to pretend it ran under the new contract. Raw evidence is kept outside `_private` under ignored `artifacts/internal-evidence/`.
-8. Any reference-driven/user-reviewed drawing must satisfy both Semantic State integrity and `docs/DRAWING_QUALITY_ACCEPTANCE.md`.
+1. Do not reopen closed lanes without regression evidence or a concrete Engineer requirement.
+2. Preserve the two launch-critical pillars defined in `docs/ARCHITECTURE.md`: Data Integrity/Rollback and Precise Identity/PID+Fingerprinting.
+3. Preserve native chunk bounds and Idle-yield responsiveness; never implement logical atomicity as one giant long-lived AutoCAD transaction.
+4. Unknown or unverifiable completion remains fail-closed.
+5. A live-dependent capability is not CLOSED until verified on real supported AutoCAD/Windows.
+6. Any material public contract/version change requires full Linux regression, Windows `.171` regression, relevant AutoCAD 2027 live acceptance, C# Release/x64 when native code changes, compile/hygiene, `git diff --check` and code/security review.
+7. Stage surgically. Do not stage `.gitignore`, `_private/`, `_test_workspace/`, `artifacts/` or `specs/**` unless explicitly required by the task.
+8. Historical evidence describes its original identity/scope. Never rewrite old evidence to make it appear to have run under a newer contract/runtime.
 
 ## Required workflow
 
 1. Follow the global SlncTrZ Agent Harness returned by `context.bootstrap`.
-2. Read existing code before edits; reuse first.
-3. TDD: failing test -> implementation -> pass -> regression.
-4. Validate before side effects; fail closed on unknown capability/state.
-5. Preserve the current COM STA/timeout integrity model during migration; all new architecture work must follow `_private/DEVELOP_PLAN.md` and the published Semantic State Protocol.
-6. Run focused tests, full regression, compile/hygiene and `git diff --check` before commit.
-7. Every code/deploy change must be logged through CyberBrain `kb.knowledge_store`.
-8. End each work session with episodic save (`memory_store`/`conversation_save`) followed by `dream_enqueue`.
-9. Commit/push only this repository; branch convention is `main` unless the task explicitly defines a feature branch.
+2. Read `docs/ARCHITECTURE.md` and `docs/CURRENT_CHECKPOINT.md` before architecture/capability work.
+3. For a new Engineer-driven capability, capture the intake defined in `_private/DEVELOP_PLAN.md` before implementation.
+4. Read existing code before edits; reuse first.
+5. TDD/fault injection where appropriate: failing test -> implementation -> pass -> regression.
+6. Validate before side effects; fail closed on unknown capability/state.
+7. Run focused tests, relevant/full regression, compile/hygiene and `git diff --check` before commit.
+8. C# changes require Release/x64 build and live verification appropriate to the behavior.
+9. Every code/deploy change must be logged through CyberBrain `kb.knowledge_store`.
+10. End each work session with episodic save (`memory_store`/`conversation_save`) followed by `dream_enqueue`.
+11. Commit/push only this repository; branch convention is `main` unless the task explicitly defines otherwise.
 
 ## Drawing-quality invariant
 
-Before generating or reconstructing a user-facing drawing, classify it into one or more profiles from `docs/DRAWING_QUALITY_ACCEPTANCE.md` (for example `ARCHITECTURE_FLOOR_PLAN`, `SITE_PLAN`, `PARK_PLAN`, `PLAZA_PLAN`, `LANDSCAPE_PLAN`, `MASTER_PLAN`, `PARKING_PLAN`, `ROAD_ACCESS_PLAN`, `ELEVATION`, `SECTION`, `DETAIL`, `REFERENCE_REPRODUCTION`).
+Before generating or reconstructing a user-facing drawing, classify it using `docs/DRAWING_QUALITY_ACCEPTANCE.md` and execute through `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`.
 
-For every semantically required technical condition, use the correct linetype role and lineweight hierarchy. In particular, hidden/overhead/underground geometry, centerlines/axes, cutting planes, boundaries/easements, existing/proposed/removal states and major/minor contours must not be collapsed into `Continuous` when their drawing profile requires a distinct convention. Missing a required dashed/hidden/center/chain/break/other semantic line is a drawing defect even when coordinates are correct.
+Required semantic linetype/lineweight roles must not be collapsed merely because geometry coordinates are correct. Hidden/overhead/underground geometry, centerlines/axes, cutting planes, boundaries/easements, existing/proposed/removal states and contour roles remain drawing semantics where the selected profile requires them.
 
-Drawing checkpoints progress through `TECHNICAL_PASS -> GEOMETRY_PASS -> DOMAIN_PASS -> VISUAL_PASS -> USER_ACCEPTED`. Only `USER_ACCEPTED` is a completed user-reviewed checkpoint. If the reviewer cannot access the actual screenshot/file, keep the state `PENDING_USER_VISUAL_ACCEPTANCE`.
+Drawing checkpoints progress through `TECHNICAL_PASS -> GEOMETRY_PASS -> DOMAIN_PASS -> VISUAL_PASS -> USER_ACCEPTED`. Only `USER_ACCEPTED` is a completed user-reviewed checkpoint. If the reviewer cannot access the actual screenshot/file, keep `PENDING_USER_VISUAL_ACCEPTANCE`.
 
-Execution must follow `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`: decompose work into small semantic steps and prefer structured state over screenshots. The invariant is native extraction -> PID/fingerprint -> semantic delta -> deterministic validation -> commit-or-verified-rollback. **N4–N7 plus O1 now provide this proof only for their documented bounded native scopes; do not project that evidence onto unsupported entity families, topology, whole-DWG extraction or public routing.** Screenshots are supplemental visual evidence, not the geometry oracle. Never run the next dependent step after failed, drifted, uncertain, or unverified state.
+Screenshots are supplemental evidence, not the geometry oracle. Do not run the next dependent step after failed, drifted, uncertain or unverified state.
 
-## Architecture-upgrade invariants
+## Integrity guardrails
 
-The target architecture is `Python MCP/Semantic Core -> local typed IPC -> C# AutoCAD Managed .NET Native Bridge -> AutoCAD Database`. The .NET bridge is not the MCP server and must never expose arbitrary code execution. Current COM/ezdxf remains the migration baseline until live native gates prove replacement parity.
+The canonical architecture/state-loop definitions live in `docs/ARCHITECTURE.md` and `docs/SEMANTIC_STATE_PROTOCOL.md`; this file does not redefine them.
 
-Two pillars are non-negotiable:
+Operationally enforce these consequences:
 
-1. **Data Integrity / Rollback:** every mutation must end as `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`; rollback itself must be proven by semantic read-back and predecessor fingerprint equality. `STATE_UNCERTAIN`, `ROLLBACK_FAILED`, `COMMIT_INTEGRITY_FAIL`, or timeout uncertainty block all later mutations.
-2. **Precise Identity / PID + Fingerprinting:** do not treat AutoCAD `ObjectId` or Handle as sufficient semantic identity. The target design requires provider-owned persistent document-lineage/entity PIDs plus versioned geometry/style/topology/instance/state fingerprints, clone/duplicate handling, runtime-document disambiguation, artifact fingerprinting for physical checkpoints, and `expected_parent_fp` drift protection.
+- a strong-integrity mutation must end `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`;
+- `STATE_UNCERTAIN`, `ROLLBACK_FAILED`, `COMMIT_INTEGRITY_FAIL` or equivalent uncertainty blocks later mutation;
+- AutoCAD ObjectId/Handle alone is not sufficient semantic identity for strong-integrity state;
+- provider PID/fingerprint and `expected_parent_fp` rules must be preserved for supported native scopes;
+- mixed unmanaged entities must remain explicit/fail-closed rather than silently adopted by read paths;
+- capability metadata and docs must distinguish implemented/runtime-available/live-verified/assurance scope rather than treating catalog presence as proof.
 
-The Semantic State Loop is mandatory for new engineering automation: `ActionSpec -> native execution -> semantic extraction -> canonicalize -> fingerprint/diff -> deterministic validation -> commit/verified rollback -> independent read-back -> state-chain log`.
+## Demand-driven extension rule
 
-## Native-verification rule
+When CDT-Engineer asks for a new capability, require at least:
 
-A capability requiring AutoCAD is not CLOSED until it passes against a real supported AutoCAD installation on Windows. Capability metadata and docs must distinguish implemented, runtime-available, staged and live-verified states.
+```text
+engineering_workflow
+blocked_step
+required_cad_capability
+expected_postcondition
+verification_invariant
+required_integrity_level
+live_acceptance_fixture
+```
+
+Implement the smallest reusable primitive that satisfies that requirement. Native Boolean recovery, arbitrary 3D transform parity, B-rep topology, shell/fillet/chamfer, whole-DWG exhaustive verification and similar breadth are optional until a real workflow needs them.

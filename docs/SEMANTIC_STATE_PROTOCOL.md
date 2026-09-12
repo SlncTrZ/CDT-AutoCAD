@@ -1,4 +1,4 @@
-# Semantic State Protocol — CDT-AutoCAD Target Contract
+# Semantic State Protocol — CDT-AutoCAD
 
 > Updated: 2026-09-12 17:30 +07:00
 > Status: CONTRACT BASELINE · N1–N7/O1 + G1/G2/G3 implemented/live-accepted for documented scopes · Feature-based Chunks Streaming live-accepted
@@ -27,7 +27,7 @@ As of the current checkpoint:
 - G3 provides one immutable predecessor checkpoint across yielded native chunks, independent final compact-state verification and exact R2 predecessor restoration for logical failure or unknown completion;
 - scale graduation is live-accepted at 100, 1,000, 5,000 and 10,000 entities, with beginning/middle/end failure injection and zero pending recovery;
 - Feature-based Chunks Streaming is the Production Domain orchestration model: one caller-defined feature owns one logical predecessor; failure restores only the current feature while prior committed features remain accepted;
-- the public promotion `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` is CLOSED/PUSHED at commit `0516fe3`; current maintenance publication is `31186f5` with bridge candidate `0.8.2-mp7`; selected strong-integrity tools and `feature_execute` are public while broader COM-to-native replacement remains separately gated;
+- the public identity remains `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`; current main checkpoint is `911ba09` with bridge candidate `0.8.2-mp7`; selected strong-integrity tools and `feature_execute` are public while the broader COM lane remains an intentional bounded-integrity compatibility route rather than an unfinished requirement to migrate everything native;
 - MP-G05 is closed for one deliberately bounded native `3DSOLID` mutation family: planar translation. Provider PID carriage is reused; `solid-semantic-v2` fingerprints combine centroid, volume, translation-faithful `Solid3d.GeometricExtents` and inertia terms; `expected_parent_fp` rejects stale state; successful commits require independent persisted read-back; and the existing immutable checkpoint chain provides verified R0 abort plus exact R2 predecessor restore after post-commit integrity failure. `topology_verified=false` remains explicit because this semantic signature is not a B-rep topology oracle, and no Boolean/rotate/scale parity is implied.
 
 The protocol below remains both implemented contract and normative guardrail. Current public status authority is `docs/CURRENT_CHECKPOINT.md`; the internal distilled state is `_private/AUDIT.md`, while raw historical machine evidence is retained only under ignored `artifacts/internal-evidence/`.
@@ -478,7 +478,7 @@ Verified steps form a tamper-evident semantic chain:
 
 Before the next step, current native state is read and compared with `post_state_fp`. A mismatch is `STATE_DRIFT`.
 
-N6 additionally records per-run append-only JSONL evidence for committed steps, verified rollback, drift, validation failure and uncertainty. Each append is flushed and `fsync`-ed. The current N6 implementation deliberately refuses to infer/resume execution from a pre-existing non-empty journal; explicit process-restart recovery remains future work.
+N6 additionally records per-run append-only JSONL evidence for committed steps, verified rollback, drift, validation failure and uncertainty. Each append is flushed and `fsync`-ed. The N6 journal deliberately refuses to infer/resume execution from a pre-existing non-empty journal; journal replay/resume is not part of the accepted N6 contract. Process-restart recovery is claimed only by later mechanisms/scopes that have their own documented acceptance evidence.
 
 ## 14. Major-gate semantic comparison
 
@@ -518,17 +518,19 @@ Vision remains valid for:
 - visual composition/aesthetic review;
 - final user-facing evidence.
 
-## 16. Versioning and migration
+## 16. Versioning and extension
 
-The semantic protocol must be versioned independently of transport and native adapter implementations.
+The semantic protocol is versioned independently of transport and native adapter implementations.
 
-During migration:
+Current rules:
 
-- COM/ezdxf may populate a subset of semantic fields for parity tests;
-- the .NET bridge provides N4 bounded native extraction and typed native mutation; N6 provides deterministic delta/state-chain validation and O1 extends the accepted mutation set to LINE/CIRCLE/ARC/simple-LWPOLYLINE; selected later G2/G3 capabilities are public in `0.4.0rc1`, while unpromoted native families remain explicitly gated;
-- document fingerprint schema v1/v2 evidence remains historical; G2/G3 current parent-state binding uses schema v3, which retains the v2 exclusion of volatile `saved/DBMOD` and adds canonical schema-agnostic metadata to entity semantic state;
-- current native snapshots expose no relation/topology data, so N6 does not claim topology validation that is not present in authoritative extraction;
-- N7 post-commit recovery/R1/R2 is CLOSED / LIVE PASS for the bounded internal candidate, including activation-safe R2 after real AutoCAD restart;
-- Python MCP/provider hot reload (MP-2) is CLOSED/LIVE PASS and remains a mandatory invariant for deeper N8/N9/N10 migration: one authoritative generation, deterministic in-flight drain/refusal, health-proven generation switch and fail-safe rollback to the previous healthy generation are required;
+- COM/ezdxf may populate only the semantic fields they can prove for their documented scopes;
+- the Managed .NET lane owns the strongest PID/fingerprint/read-back/recovery guarantees for the native families that have actually passed their gates;
+- document fingerprint schema v1/v2 evidence remains historical; current G2/G3 parent-state binding uses schema v3, which retains the v2 exclusion of volatile `saved/DBMOD` and adds canonical schema-agnostic metadata to entity semantic state;
+- current generic native snapshots do not imply authoritative relation/topology data where no family-specific extractor exists;
+- N7 post-commit recovery/R1/R2 is CLOSED / LIVE PASS for its bounded accepted scope, including activation-safe R2 after real AutoCAD restart;
+- MP-2 hot reload is CLOSED/LIVE PASS and its one-authoritative-generation, drain/fence and health-proven switch invariants remain mandatory for runtime replacement;
 - missing semantic fields must be reported as unsupported/unknown, never fabricated;
-- old and new adapters should be dual-run on disposable drawings until parity/integrity gates close.
+- any new native family must be introduced only from a concrete production requirement and must prove its own semantic/postcondition/recovery invariants before its assurance level is advertised.
+
+There is no standing architecture requirement to replace every COM route with native code. Extension follows the demand-driven rule in `docs/ARCHITECTURE.md`.
