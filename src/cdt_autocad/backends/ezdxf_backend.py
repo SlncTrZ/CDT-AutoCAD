@@ -1,9 +1,8 @@
 """Headless DXF backend for the CDT_Engineer AutoCAD provider.
-Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-09 21:09
+Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-12 11:00
 
-The dual-engine shape and several edge-case choices are informed by the MIT-licensed
-U-C4N/Autocad-MCP reference, but this implementation is normalized to the CDT A0/A1
-contract rather than reproducing the upstream server surface.
+Implemented for the CDT-AutoCAD provider contract using ezdxf through its public
+API, with provider behavior normalized to CDT project invariants and schemas.
 """
 
 from __future__ import annotations

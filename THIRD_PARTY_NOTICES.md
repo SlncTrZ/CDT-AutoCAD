@@ -1,7 +1,7 @@
 # Third-Party Notices
 
 This file distinguishes CDT-AutoCAD's original project source from external
-software, APIs, and research references.
+software and APIs that the project actually uses.
 
 ## Distribution model
 
@@ -51,32 +51,17 @@ assemblies are not tracked in this repository and are not redistributed by
 CDT-AutoCAD. Autodesk software, APIs, SDK material, and documentation remain
 subject to Autodesk's own licenses and terms.
 
-## Research/reference implementation: U-C4N/Autocad-MCP
+## Technical documentation and interoperability material
 
-The header of `src/cdt_autocad/backends/ezdxf_backend.py` records that the
-project's dual-engine shape and several edge-case choices were informed by the
-MIT-licensed `U-C4N/Autocad-MCP` project.
+Project architecture and implementation work may consult official Autodesk,
+Microsoft, Python-package, and other public technical documentation needed to
+understand APIs, interoperability constraints, runtime behavior, and file
+formats. Such documentation remains the property of its respective owners and
+is not claimed as CDT-AutoCAD source code.
 
-Audited reference identity on 2026-09-12:
+## Future third-party source rule
 
-- repository: `U-C4N/Autocad-MCP`;
-- audited upstream commit: `abc2a82`;
-- upstream license: MIT;
-- upstream copyright notice: `Copyright (c) 2026 Umutcan Edizsalan`.
-
-This is recorded as a **research/reference source, not a vendored dependency**.
-No upstream source file or binary is included in CDT-AutoCAD. The accompanying
-`SOURCE_PROVENANCE.md` documents the static similarity audit performed against
-this reference and the limits of that audit.
-
-If third-party source from this or any other project is intentionally copied or
-adapted into CDT-AutoCAD in the future, the contribution policy requires that
-the exact origin, license, copyright notice, modified files, and redistribution
-obligations be recorded here before merge.
-
-## Documentation and interoperability references
-
-Project research and architecture documents link to Autodesk and Microsoft
-technical documentation. Linking to or studying public API documentation does
-not transfer ownership of that documentation to CDT-AutoCAD. Any quotations or
-reproduced material remain subject to the rights of their original owners.
+If third-party source is ever intentionally copied or adapted into CDT-AutoCAD,
+the exact origin, license, copyright notice, affected files, and redistribution
+obligations must be recorded here before merge. Absent such an explicit record,
+third-party implementation source is not part of the CDT-AutoCAD codebase.

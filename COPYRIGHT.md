@@ -1,13 +1,13 @@
 # CDT-AutoCAD Copyright Notice
 
-Copyright (c) 2026 SlncTrZ. All rights reserved.
+Copyright (c) 2026 Trương Công Định (SlncTrZ). All rights reserved.
 
 ## Scope of the claim
 
-The copyright claim covers original CDT-AutoCAD material authored for this
-project, including the Python MCP provider and semantic core, the C# AutoCAD
-managed bridge, tests, scripts, project-specific configuration, and original
-project documentation.
+The copyright claim covers original CDT-AutoCAD material developed under the
+direction, review, and ownership of Trương Công Định (SlncTrZ), including the
+Python MCP provider and semantic core, the C# AutoCAD managed bridge, tests,
+scripts, project-specific configuration, and original project documentation.
 
 Files that explicitly identify a different copyright holder, third-party
 libraries installed through package managers, Autodesk products and SDK/API
@@ -38,5 +38,5 @@ opinion that may be required in a particular jurisdiction.
 
 CDT-AutoCAD is currently distributed under the proprietary terms in `LICENSE`.
 Public repository visibility does not by itself grant an open-source license.
-Third-party dependency and research-reference status is documented in
-`THIRD_PARTY_NOTICES.md` and `SOURCE_PROVENANCE.md`.
+Third-party dependency boundaries and source-provenance controls are documented
+in `THIRD_PARTY_NOTICES.md` and `SOURCE_PROVENANCE.md`.

@@ -60,6 +60,7 @@ and license audit before submission.
 - preserve repository tests and acceptance evidence;
 - use the project's normal review and verification gates before merge.
 
-The Git history is the canonical contributor record. Additional ownership or
-assignment terms, if required for a commercial contribution, must be agreed in
-writing with the copyright holder before merge.
+The Git history is the canonical contributor record. The CDT-AutoCAD copyright
+holder is Trương Công Định (SlncTrZ). Additional ownership or assignment terms,
+if required for a contribution, must be agreed in writing with the copyright
+holder before merge.
