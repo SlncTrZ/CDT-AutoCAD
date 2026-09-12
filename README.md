@@ -171,7 +171,7 @@ Current accepted scale tiers on real AutoCAD 2027:
 | 5,000 | PASS | beginning / middle / end | 0 |
 | 10,000 | PASS | beginning / middle / end | 0 |
 
-At current checkpoint `911ba09`:
+At current runtime/code checkpoint `911ba09`:
 
 - Linux full regression: **386 passed / 6 skipped**;
 - Windows `.171` full regression: **385 passed / 7 skipped**;

@@ -2,7 +2,7 @@
 
 > Updated: 2026-09-12
 > Status: **LAUNCH-READY / OPERATIONAL RC**
-> Current main checkpoint: `911ba09` (`feat: close native solid integrity loop`)
+> Current runtime/code checkpoint: `911ba09` (`feat: close native solid integrity loop`)
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
 
 This file is the canonical **public current-state authority**. It reports what is true now. It does not define architecture or future roadmap.
@@ -67,7 +67,7 @@ Normative behavior is defined in [`SEMANTIC_STATE_PROTOCOL.md`](SEMANTIC_STATE_P
 
 ## 5. Latest measured gates
 
-At current checkpoint `911ba09`:
+At current runtime/code checkpoint `911ba09`:
 
 - Linux full regression: **386 passed / 6 skipped**.
 - Windows `.171` full regression: **385 passed / 7 skipped**.

@@ -3,7 +3,7 @@
 > Updated: 2026-09-12 17:30 +07:00
 > Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Public identity: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` · current main checkpoint **`911ba09`** · historical promotion commit `0516fe3`
+> Public identity: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` · current runtime/code checkpoint **`911ba09`** · historical promotion commit `0516fe3`
 
 ## 0. Current production live gate
 

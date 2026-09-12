@@ -30,7 +30,7 @@ Do not infer architecture or roadmap from whichever file is easiest to find. Eac
 ## Current checkpoint
 
 - Status: **LAUNCH-READY / OPERATIONAL RC** for the Generic CAD Execution Engine mission.
-- Current main checkpoint: `911ba09` (`feat: close native solid integrity loop`).
+- Current runtime/code checkpoint: `911ba09` (`feat: close native solid integrity loop`).
 - Primary certification target: AutoCAD 2027 full, Windows x64, ActiveX COM `26.0` / `AutoCAD.Application.26`, Managed .NET `net10.0-windows`.
 - Public contract: provider `0.4.0rc1`, contract `autocad-generic-v1-rc1`, **86 MCP tools**, execution model `feature-based-chunks-streaming-v1`.
 - Native bridge candidate: `0.8.2-mp7`.

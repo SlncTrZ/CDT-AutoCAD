@@ -3,7 +3,7 @@
 > Operational start: 2026-09-12
 > Updated: 2026-09-12 17:30 +07:00
 > Current product identity: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`
-> Current native bridge candidate: `0.8.2-mp7` · current main checkpoint `911ba09`
+> Current native bridge candidate: `0.8.2-mp7` · current runtime/code checkpoint `911ba09`
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
 
 ## 1. Operating boundary
