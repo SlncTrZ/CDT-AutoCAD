@@ -22,7 +22,12 @@ from typing import Any
 import httpx
 from fastmcp import Client
 
-from cdt_autocad.contract_identity import PUBLIC_TOOL_COUNT
+from cdt_autocad.contract_identity import (
+    CONTRACT_VERSION,
+    PROTOCOL_VERSION,
+    PUBLIC_TOOL_COUNT,
+    contract_hash,
+)
 
 
 def _free_port() -> int:
@@ -108,6 +113,24 @@ async def _mcp_status(url: str, token: str) -> tuple[dict[str, Any], int]:
         return result.structured_content or {}, len(tools)
 
 
+def _assert_public_identity(status: dict[str, Any], tool_count: int) -> None:
+    if tool_count != PUBLIC_TOOL_COUNT:
+        raise AssertionError(f"expected {PUBLIC_TOOL_COUNT} tools, got {tool_count}")
+    if status.get("protocol_version") != PROTOCOL_VERSION:
+        raise AssertionError(
+            f"protocol mismatch: expected {PROTOCOL_VERSION!r}, got {status.get('protocol_version')!r}"
+        )
+    if status.get("contract_version") != CONTRACT_VERSION:
+        raise AssertionError(
+            f"contract mismatch: expected {CONTRACT_VERSION!r}, got {status.get('contract_version')!r}"
+        )
+    expected_hash = contract_hash()
+    if status.get("contract_hash") != expected_hash:
+        raise AssertionError(
+            f"contract hash mismatch: expected {expected_hash!r}, got {status.get('contract_hash')!r}"
+        )
+
+
 async def _run(args: argparse.Namespace) -> dict[str, Any]:
     repo_root = Path(args.repo_root).resolve()
     output = Path(args.output).resolve()
@@ -144,6 +167,18 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 "CDT_AUTOCAD_REQUIRE_NATIVE_BRIDGE": "1" if args.require_bridge else "0",
             }
         )
+        acceptance_document = None
+        acceptance_document_created = False
+        if args.backend == "com":
+            if sys.platform != "win32":
+                raise RuntimeError("COM hot-reload acceptance requires Windows")
+            import win32com.client
+
+            acad = win32com.client.GetActiveObject(args.com_progid)
+            if int(acad.Documents.Count) == 0:
+                acceptance_document = acad.Documents.Add()
+                acceptance_document_created = True
+
         command = [
             sys.executable,
             "-m",
@@ -187,6 +222,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         generations: list[str] = []
         successful_builds: list[str] = []
         failure_generations: list[str] = []
+        incidental_success_failures: list[dict[str, Any]] = []
         try:
             try:
                 initial = await _wait_status(
@@ -204,8 +240,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                     ) from exc
                 raise
             status, tool_count = await _mcp_status(url, token)
-            if tool_count != PUBLIC_TOOL_COUNT:
-                raise AssertionError(f"expected {PUBLIC_TOOL_COUNT} tools, got {tool_count}")
+            _assert_public_identity(status, tool_count)
             if status.get("runtime_generation") != initial.get("active_generation"):
                 raise AssertionError("MCP generation does not match supervisor generation")
             generations.append(str(initial["active_generation"]))
@@ -213,32 +248,68 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
 
             probe_file = fixture_root / "src" / "cdt_autocad" / "_hot_reload_probe.py"
             for cycle in range(1, args.success_cycles + 1):
-                before = await _wait_status(
-                    http,
-                    url,
-                    token,
-                    lambda state: bool(state.get("accepting_requests")),
-                    timeout=5.0,
-                )
-                previous_generation = str(before["active_generation"])
-                previous_successes = int(before["reload_successes"])
-                probe_file.write_text(f"PROBE = {cycle}\n", encoding="utf-8")
-                after = await _wait_status(
-                    http,
-                    url,
-                    token,
-                    lambda state, previous_successes=previous_successes, previous_generation=previous_generation: (
-                        int(state.get("reload_successes") or 0) > previous_successes
-                        and state.get("active_generation") != previous_generation
-                        and bool(state.get("accepting_requests"))
-                    ),
-                    timeout=30.0,
-                )
-                mcp, tools = await _mcp_status(url, token)
-                if tools != PUBLIC_TOOL_COUNT or mcp.get("runtime_generation") != after.get("active_generation"):
-                    raise AssertionError("stable MCP endpoint did not expose promoted generation")
-                generations.append(str(after["active_generation"]))
-                successful_builds.append(str(after["active_build_id"]))
+                promoted = False
+                for attempt in range(1, args.success_retries + 2):
+                    before = await _wait_status(
+                        http,
+                        url,
+                        token,
+                        lambda state: bool(state.get("accepting_requests")),
+                        timeout=5.0,
+                    )
+                    previous_generation = str(before["active_generation"])
+                    previous_successes = int(before["reload_successes"])
+                    previous_failures = int(before["reload_failures"])
+                    probe_file.write_text(
+                        f"PROBE = ({cycle}, {attempt})\n",
+                        encoding="utf-8",
+                    )
+                    outcome = await _wait_status(
+                        http,
+                        url,
+                        token,
+                        lambda state, previous_successes=previous_successes, previous_failures=previous_failures: (
+                            int(state.get("reload_successes") or 0) > previous_successes
+                            or int(state.get("reload_failures") or 0) > previous_failures
+                        ),
+                        timeout=30.0,
+                    )
+                    if (
+                        int(outcome.get("reload_successes") or 0) > previous_successes
+                        and outcome.get("active_generation") != previous_generation
+                        and bool(outcome.get("accepting_requests"))
+                    ):
+                        mcp, tools = await _mcp_status(url, token)
+                        _assert_public_identity(mcp, tools)
+                        if mcp.get("runtime_generation") != outcome.get("active_generation"):
+                            raise AssertionError("stable MCP endpoint did not expose promoted generation")
+                        generations.append(str(outcome["active_generation"]))
+                        successful_builds.append(str(outcome["active_build_id"]))
+                        promoted = True
+                        break
+
+                    if int(outcome.get("reload_failures") or 0) <= previous_failures:
+                        raise AssertionError("success-cycle reload changed state without success/failure accounting")
+                    if outcome.get("active_generation") != previous_generation:
+                        raise AssertionError("failed success-cycle candidate replaced the healthy generation")
+                    mcp, tools = await _mcp_status(url, token)
+                    _assert_public_identity(mcp, tools)
+                    if mcp.get("runtime_generation") != previous_generation:
+                        raise AssertionError("failed success-cycle candidate disrupted the stable MCP generation")
+                    incidental_success_failures.append(
+                        {
+                            "cycle": cycle,
+                            "attempt": attempt,
+                            "preserved_generation": previous_generation,
+                            "last_error_code": outcome.get("last_error_code"),
+                        }
+                    )
+                    if attempt > args.success_retries:
+                        raise AssertionError(
+                            f"success cycle {cycle} exceeded retry budget {args.success_retries}"
+                        )
+                if not promoted:
+                    raise AssertionError(f"success cycle {cycle} did not promote a generation")
 
             server_file = fixture_root / "src" / "cdt_autocad" / "server.py"
             valid_server = server_file.read_text(encoding="utf-8")
@@ -266,7 +337,8 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 if failed.get("active_generation") != previous_generation:
                     raise AssertionError("failed reload replaced the last healthy generation")
                 mcp, tools = await _mcp_status(url, token)
-                if tools != PUBLIC_TOOL_COUNT or mcp.get("runtime_generation") != previous_generation:
+                _assert_public_identity(mcp, tools)
+                if mcp.get("runtime_generation") != previous_generation:
                     raise AssertionError("last healthy generation did not remain serviceable")
                 failure_generations.append(previous_generation)
 
@@ -284,7 +356,8 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                     timeout=30.0,
                 )
                 mcp, tools = await _mcp_status(url, token)
-                if tools != PUBLIC_TOOL_COUNT or mcp.get("runtime_generation") != recovered.get("active_generation"):
+                _assert_public_identity(mcp, tools)
+                if mcp.get("runtime_generation") != recovered.get("active_generation"):
                     raise AssertionError("restored source did not promote a healthy generation")
                 generations.append(str(recovered["active_generation"]))
                 successful_builds.append(str(recovered["active_build_id"]))
@@ -297,6 +370,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 timeout=5.0,
             )
             mcp_final, final_tool_count = await _mcp_status(url, token)
+            _assert_public_identity(mcp_final, final_tool_count)
             summary = {
                 "schema_version": 1,
                 "status": "PASS",
@@ -312,14 +386,20 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 "mcp_runtime_generation": mcp_final.get("runtime_generation"),
                 "mcp_provider_build": (mcp_final.get("provider_build") or {}).get("id"),
                 "mcp_tool_count": final_tool_count,
+                "mcp_protocol_version": mcp_final.get("protocol_version"),
+                "mcp_contract_version": mcp_final.get("contract_version"),
+                "mcp_contract_hash": mcp_final.get("contract_hash"),
                 "pending_recovery_count": mcp_final.get("pending_recovery_count"),
                 "native_bridge": mcp_final.get("native_bridge"),
                 "generations_seen": generations,
                 "successful_builds_seen": successful_builds,
                 "failure_preserved_generations": failure_generations,
+                "incidental_success_failures": incidental_success_failures,
+                "success_retry_budget": args.success_retries,
                 "duration_seconds": round(time.perf_counter() - started, 3),
                 "public_url_stable": True,
                 "auth_token_redacted": True,
+                "autocad_bootstrap_document_created": acceptance_document_created,
             }
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -327,6 +407,15 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         finally:
             await http.aclose()
             _stop_supervisor_process(process)
+            if acceptance_document is not None:
+                try:
+                    acceptance_document.Close(False)
+                except Exception:
+                    pass
+            if not output.exists() and supervisor_log.exists():
+                preserved_log = output.with_suffix(output.suffix + ".supervisor.log")
+                preserved_log.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(supervisor_log, preserved_log)
             if process.returncode not in {0, -15, 1} and not output.exists():
                 raise RuntimeError(
                     "supervisor acceptance process failed; "
@@ -340,12 +429,13 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     parser.add_argument("--success-cycles", type=int, default=20)
     parser.add_argument("--failure-cycles", type=int, default=10)
+    parser.add_argument("--success-retries", type=int, default=3)
     parser.add_argument("--backend", choices=("ezdxf", "com"), default="ezdxf")
     parser.add_argument("--require-bridge", action="store_true")
     parser.add_argument("--com-progid", default="AutoCAD.Application.26")
     args = parser.parse_args()
-    if args.success_cycles < 0 or args.failure_cycles < 0:
-        raise SystemExit("cycle counts must be non-negative")
+    if args.success_cycles < 0 or args.failure_cycles < 0 or args.success_retries < 0:
+        raise SystemExit("cycle counts and success retry budget must be non-negative")
     summary = asyncio.run(_run(args))
     print(json.dumps(summary, sort_keys=True))
 

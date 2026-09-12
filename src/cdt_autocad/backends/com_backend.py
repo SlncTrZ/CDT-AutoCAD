@@ -1288,6 +1288,7 @@ class ComBackend(AutoCADBackend):
         rows = await self.xref_list()
         return {
             "ok": True,
+            "scope": "dwg_xrefs_only",
             "xrefs": rows,
             "resolved": sum(1 for row in rows if row.get("resolved")),
             "unresolved": sum(1 for row in rows if not row.get("resolved")),
@@ -1295,7 +1296,7 @@ class ComBackend(AutoCADBackend):
         }
 
     async def artifact_seal(self, destination_dir: str | None = None) -> dict[str, Any]:
-        def _save_and_resolve() -> tuple[Path, bool]:
+        def _save_and_resolve() -> tuple[Path, dict[str, Any]]:
             doc = self._doc()
             raw_path = str(_optional_com_property(doc, "FullName") or "")
             if not raw_path or not Path(raw_path).is_absolute():
@@ -1305,9 +1306,23 @@ class ComBackend(AutoCADBackend):
             saved = bool(_optional_com_property(doc, "Saved"))
             if not saved:
                 raise StateConflictError("AutoCAD still reports the document as dirty after Save")
-            return source, saved
+            units_raw: dict[str, int] | None = {}
+            for variable in ("INSUNITS", "MEASUREMENT", "LUNITS", "LUPREC"):
+                try:
+                    units_raw[variable] = int(
+                        _com_call_with_busy_retry(lambda variable=variable: doc.GetVariable(variable))
+                    )
+                except Exception:
+                    units_raw = None
+                    break
+            artifact_state = self._document_artifact_state(doc)
+            return source, {
+                "saved": artifact_state["saved"],
+                "dbmod": artifact_state["dbmod"],
+                "units_raw": units_raw,
+            }
 
-        source, _ = await self._run(_save_and_resolve)
+        source, document_state = await self._run(_save_and_resolve)
         destination = (
             resolve_allowed_directory(destination_dir, self.settings)
             if destination_dir is not None
@@ -1328,6 +1343,9 @@ class ComBackend(AutoCADBackend):
         sealed_hash = hashlib.sha256(sealed.read_bytes()).hexdigest()
         if sealed_hash != source_hash:
             raise StateConflictError("sealed artifact hash does not match saved source")
+        post_copy_source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        if post_copy_source_hash != source_hash:
+            raise StateConflictError("source changed while sealing; refusing a stale acceptance manifest")
         manifest = {
             "schema_version": 1,
             "status": "SEALED",
@@ -1335,7 +1353,10 @@ class ComBackend(AutoCADBackend):
             "sealed_path": str(sealed),
             "sha256": sealed_hash,
             "size": sealed.stat().st_size,
+            "source_sha256": post_copy_source_hash,
+            "source_size": source.stat().st_size,
             "source_mtime_ns": source.stat().st_mtime_ns,
+            "document_state": document_state,
         }
         manifest_path = sealed.with_suffix(sealed.suffix + ".manifest.json")
         manifest_path.write_text(
@@ -2097,30 +2118,35 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> list[BlockInfo]:
             doc = self._doc()
+            blocks = _com_get_attr(doc, "Blocks")
             filtered: list[BlockInfo] = []
-            for index in range(int(doc.Blocks.Count)):
-                block = doc.Blocks.Item(index)
-                name = str(block.Name)
+            for index in range(int(_com_get_attr(blocks, "Count"))):
+                block = _com_call_with_busy_retry(lambda index=index: blocks.Item(index))
+                name = str(_com_get_attr(block, "Name"))
                 if name.startswith("*"):
                     continue
                 dependent = "|" in name
-                is_xref = bool(block.IsXRef)
+                is_xref = bool(_com_get_attr(block, "IsXRef"))
                 if dependent and not include_xref_dependent:
                     continue
                 if is_xref and not include_xrefs:
                     continue
                 if wanted_filter and wanted_filter not in name.lower():
                     continue
-                origin = _xyz(block.Origin)
+                origin = _xyz(_com_get_attr(block, "Origin"))
+                block_count = int(_com_get_attr(block, "Count"))
                 attribute_count = 0
-                for item_index in range(int(block.Count)):
-                    if str(block.Item(item_index).ObjectName) == "AcDbAttributeDefinition":
+                for item_index in range(block_count):
+                    item = _com_call_with_busy_retry(
+                        lambda item_index=item_index: block.Item(item_index)
+                    )
+                    if str(_com_get_attr(item, "ObjectName")) == "AcDbAttributeDefinition":
                         attribute_count += 1
                 filtered.append(
                     BlockInfo(
                         name=name,
                         base_point=(origin[0], origin[1], origin[2]),
-                        entity_count=int(block.Count),
+                        entity_count=block_count,
                         attribute_count=attribute_count,
                         is_xref=is_xref,
                     )
@@ -2223,13 +2249,32 @@ class ComBackend(AutoCADBackend):
                     except (ValueError, FileNotFoundError):
                         contained = False
                         resolved = False
+                loaded: bool | None
+                load_state_verified = False
+                load_state_reason: str | None = None
+                try:
+                    loaded = not bool(_com_get_attr(block, "IsUnloaded"))
+                    load_state_verified = True
+                except AttributeError:
+                    loaded = None
+                    load_state_reason = "activex_is_unloaded_unavailable"
+                source_sha256 = None
+                source_size = None
+                if resolved and safe_path is not None:
+                    source_path = Path(safe_path)
+                    source_sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
+                    source_size = source_path.stat().st_size
                 rows.append(
                     {
                         "name": name,
                         "path": safe_path,
                         "contained": contained,
                         "resolved": resolved,
-                        "loaded": not bool(_optional_com_property(block, "IsUnloaded") or False),
+                        "loaded": loaded,
+                        "load_state_verified": load_state_verified,
+                        "load_state_reason": load_state_reason,
+                        "sha256": source_sha256,
+                        "size": source_size,
                     }
                 )
             return rows
@@ -2259,6 +2304,8 @@ class ComBackend(AutoCADBackend):
             raise ValueError("xref transform values must be finite")
         if float(scale_x) == 0 or float(scale_y) == 0 or float(scale_z) == 0:
             raise ValueError("xref scales must be non-zero")
+        source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
+        source_size = source.stat().st_size
 
         def _sync() -> dict[str, Any]:
             doc = self._doc()
@@ -2284,6 +2331,8 @@ class ComBackend(AutoCADBackend):
                 "overlay": bool(overlay),
                 "handle": str(reference.Handle),
                 "layer": str(reference.Layer),
+                "source_sha256": source_sha256,
+                "source_size": source_size,
             }
 
         return await self._run(_sync)
@@ -2298,30 +2347,99 @@ class ComBackend(AutoCADBackend):
             raise ValueError(f"block is not an xref: {name}")
         return block
 
+    @staticmethod
+    def _xref_is_unloaded(block: Any) -> bool:
+        try:
+            return bool(_com_get_attr(block, "IsUnloaded"))
+        except AttributeError as exc:
+            raise UnsupportedCapabilityError(
+                "autocad.references.xref.load_state",
+                "AutoCAD ActiveX 2027 does not expose verified XREF load-state read-back; "
+                "reload/unload is refused rather than returning an unverified success receipt.",
+            ) from exc
+
     async def xref_reload(self, name: str) -> dict[str, Any]:
         def _sync() -> dict[str, Any]:
             block = self._xref_block_by_name(name)
             raw_path = str(_optional_com_property(block, "Path") or "")
             resolve_autocad_document_path(raw_path, self.settings, must_exist=True)
+            before_unloaded = self._xref_is_unloaded(block)
+            canonical = str(_com_get_attr(block, "Name"))
+            if not before_unloaded:
+                return {
+                    "ok": True,
+                    "name": canonical,
+                    "state": "loaded",
+                    "state_verified": True,
+                    "changed": False,
+                }
             block.Reload()
-            return {"ok": True, "name": str(block.Name), "state": "loaded"}
+            after_unloaded = self._xref_is_unloaded(block)
+            if after_unloaded:
+                reason = f"XREF reload read-back mismatch for {canonical}: still unloaded"
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason)
+            return {
+                "ok": True,
+                "name": canonical,
+                "state": "loaded",
+                "state_verified": True,
+                "changed": True,
+            }
 
         return await self._run(_sync)
 
     async def xref_unload(self, name: str) -> dict[str, Any]:
         def _sync() -> dict[str, Any]:
             block = self._xref_block_by_name(name)
+            before_unloaded = self._xref_is_unloaded(block)
+            canonical = str(_com_get_attr(block, "Name"))
+            if before_unloaded:
+                return {
+                    "ok": True,
+                    "name": canonical,
+                    "state": "unloaded",
+                    "state_verified": True,
+                    "changed": False,
+                }
             block.Unload()
-            return {"ok": True, "name": str(block.Name), "state": "unloaded"}
+            after_unloaded = self._xref_is_unloaded(block)
+            if not after_unloaded:
+                reason = f"XREF unload read-back mismatch for {canonical}: still loaded"
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason)
+            return {
+                "ok": True,
+                "name": canonical,
+                "state": "unloaded",
+                "state_verified": True,
+                "changed": True,
+            }
 
         return await self._run(_sync)
 
     async def xref_detach(self, name: str) -> dict[str, Any]:
         def _sync() -> dict[str, Any]:
+            doc = self._doc()
             block = self._xref_block_by_name(name)
-            canonical = str(block.Name)
+            canonical = str(_com_get_attr(block, "Name"))
             block.Detach()
-            return {"ok": True, "name": canonical, "state": "detached"}
+            try:
+                remaining = self._find_name(_com_get_attr(doc, "Blocks"), canonical)
+            except Exception as exc:
+                reason = f"XREF detach read-back failed for {canonical}: {exc}"
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason) from exc
+            if remaining is not None:
+                reason = f"XREF detach read-back mismatch for {canonical}: definition still present"
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason)
+            return {
+                "ok": True,
+                "name": canonical,
+                "state": "detached",
+                "state_verified": True,
+            }
 
         return await self._run(_sync)
 
@@ -2363,11 +2481,11 @@ class ComBackend(AutoCADBackend):
 
     @staticmethod
     def _paper_viewports(layout: Any) -> list[Any]:
-        block = layout.Block
+        block = _com_get_attr(layout, "Block")
         viewports = []
-        for index in range(int(block.Count)):
-            entity = block.Item(index)
-            if str(entity.ObjectName) == "AcDbViewport":
+        for index in range(int(_com_get_attr(block, "Count"))):
+            entity = _com_call_with_busy_retry(lambda index=index: block.Item(index))
+            if str(_com_get_attr(entity, "ObjectName")) == "AcDbViewport":
                 viewports.append(_entity_property_view(entity))
         return viewports
 
@@ -2379,7 +2497,7 @@ class ComBackend(AutoCADBackend):
             entity = _entity_property_view(doc.HandleToObject(key))
         except Exception as exc:
             raise KeyError(f"viewport not found: {handle}") from exc
-        if str(entity.ObjectName) != "AcDbViewport":
+        if str(_com_get_attr(entity, "ObjectName")) != "AcDbViewport":
             raise ValueError(f"handle {key} is {_object_type(entity)}, not VIEWPORT")
 
         layout_name = None
@@ -2392,28 +2510,28 @@ class ComBackend(AutoCADBackend):
 
     @staticmethod
     def _viewport_row(viewport: Any, layout_name: str | None, created: bool) -> dict[str, Any]:
-        center = _xyz(viewport.Center)
-        target = _xyz(viewport.Target)
-        height = float(viewport.Height)
+        center = _xyz(_com_get_attr(viewport, "Center"))
+        target = _xyz(_com_get_attr(viewport, "Target"))
+        height = float(_com_get_attr(viewport, "Height"))
         try:
-            scale = float(viewport.CustomScale)
+            scale = float(_com_get_attr(viewport, "CustomScale"))
         except Exception:
             scale = None
         try:
-            locked = bool(viewport.DisplayLocked)
+            locked = bool(_com_get_attr(viewport, "DisplayLocked"))
         except Exception:
             locked = None
         return {
-            "handle": str(viewport.Handle),
+            "handle": str(_com_get_attr(viewport, "Handle")),
             "layout": layout_name,
             "center": center[:2],
-            "width": float(viewport.Width),
+            "width": float(_com_get_attr(viewport, "Width")),
             "height": height,
             "view_center": target[:2],
             "view_height": height / scale if scale else None,
             "scale": scale,
             "locked": locked,
-            "status": int(bool(viewport.ViewportOn)),
+            "status": int(bool(_com_get_attr(viewport, "ViewportOn"))),
             "is_main": None,
             "created_by_backend": created,
         }
@@ -2442,29 +2560,35 @@ class ComBackend(AutoCADBackend):
             if canonical.lower() == "model":
                 raise ValueError("viewports require a paper-space layout")
 
-            previous = str(doc.ActiveLayout.Name)
-            target_layout = doc.Layouts.Item(canonical)
+            layouts = _com_get_attr(doc, "Layouts")
+            active_layout = _com_get_attr(doc, "ActiveLayout")
+            previous = str(_com_get_attr(active_layout, "Name"))
+            target_layout = _com_call_with_busy_retry(lambda: layouts.Item(canonical))
             if previous != canonical:
-                doc.ActiveLayout = target_layout
+                _com_set_attr(doc, "ActiveLayout", target_layout)
             viewport = None
             try:
-                viewport = doc.PaperSpace.AddPViewport(
-                    _point(center_x, center_y), float(width), float(height)
+                paper_space = _com_get_attr(doc, "PaperSpace")
+                viewport = _com_call_with_busy_retry(
+                    lambda: paper_space.AddPViewport(
+                        _point(center_x, center_y), float(width), float(height)
+                    )
                 )
-                viewport.Display(True)
-                viewport.CustomScale = float(scale)
-                viewport.Target = _point(view_center_x, view_center_y)
+                _com_call_with_busy_retry(lambda: viewport.Display(True))
+                _com_set_attr(viewport, "CustomScale", float(scale))
+                _com_set_attr(viewport, "Target", _point(view_center_x, view_center_y))
                 return {"ok": True, **self._viewport_row(viewport, canonical, True)}
             except Exception:
                 if viewport is not None:
                     try:
-                        viewport.Delete()
+                        _com_call_with_busy_retry(lambda: viewport.Delete())
                     except Exception:
                         pass
                 raise
             finally:
                 if previous != canonical:
-                    doc.ActiveLayout = doc.Layouts.Item(previous)
+                    previous_layout = _com_call_with_busy_retry(lambda: layouts.Item(previous))
+                    _com_set_attr(doc, "ActiveLayout", previous_layout)
 
         result = await self._run(_sync)
         self._created_viewport_handles.add(str(result["handle"]).upper())
@@ -2516,14 +2640,14 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> dict[str, Any]:
             viewport, layout_name = self._resolve_viewport(self._doc(), handle)
-            viewport.CustomScale = float(scale)
-            actual = float(viewport.CustomScale)
+            _com_set_attr(viewport, "CustomScale", float(scale))
+            actual = float(_com_get_attr(viewport, "CustomScale"))
             return {
                 "ok": True,
-                "handle": str(viewport.Handle),
+                "handle": str(_com_get_attr(viewport, "Handle")),
                 "layout": layout_name,
                 "scale": actual,
-                "view_height": float(viewport.Height) / actual,
+                "view_height": float(_com_get_attr(viewport, "Height")) / actual,
             }
 
         return await self._run(_sync)
@@ -2531,12 +2655,12 @@ class ComBackend(AutoCADBackend):
     async def viewport_lock(self, handle: str, locked: bool = True) -> dict[str, Any]:
         def _sync() -> dict[str, Any]:
             viewport, layout_name = self._resolve_viewport(self._doc(), handle)
-            viewport.DisplayLocked = bool(locked)
+            _com_set_attr(viewport, "DisplayLocked", bool(locked))
             return {
                 "ok": True,
-                "handle": str(viewport.Handle),
+                "handle": str(_com_get_attr(viewport, "Handle")),
                 "layout": layout_name,
-                "locked": bool(viewport.DisplayLocked),
+                "locked": bool(_com_get_attr(viewport, "DisplayLocked")),
             }
 
         return await self._run(_sync)
@@ -2553,8 +2677,8 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> dict[str, Any]:
             viewport, layout_name = self._resolve_viewport(self._doc(), key)
-            actual = str(viewport.Handle).upper()
-            viewport.Delete()
+            actual = str(_com_get_attr(viewport, "Handle")).upper()
+            _com_call_with_busy_retry(lambda: viewport.Delete())
             return {
                 "ok": True,
                 "handle": actual,
@@ -2567,12 +2691,40 @@ class ComBackend(AutoCADBackend):
         self._created_viewport_handles.discard(key)
         return result
 
+    @staticmethod
+    def _document_artifact_state(doc: Any) -> dict[str, Any]:
+        saved_value = _optional_com_property(doc, "Saved")
+        try:
+            dbmod_value = int(_com_call_with_busy_retry(lambda: doc.GetVariable("DBMOD")))
+        except Exception:
+            dbmod_value = None
+        return {
+            "saved": bool(saved_value) if saved_value is not None else None,
+            "dbmod": dbmod_value,
+        }
+
+    @staticmethod
+    def _artifact_state_receipt(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "saved_before": before.get("saved"),
+            "saved_after": after.get("saved"),
+            "dbmod_before": before.get("dbmod"),
+            "dbmod_after": after.get("dbmod"),
+            "dirty_changed": before != after,
+        }
+
     async def view_zoom_extents(self) -> dict[str, Any]:
         def _sync() -> dict[str, Any]:
             app = self._app()
-            self._doc()
+            doc = self._doc()
+            before = self._document_artifact_state(doc)
             app.ZoomExtents()
-            return {"ok": True, "mode": "extents"}
+            after = self._document_artifact_state(doc)
+            return {
+                "ok": True,
+                "mode": "extents",
+                "artifact_state": self._artifact_state_receipt(before, after),
+            }
 
         return await self._run(_sync, may_mutate_document=False)
 
@@ -2586,13 +2738,16 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> dict[str, Any]:
             app = self._app()
-            self._doc()
+            doc = self._doc()
+            before = self._document_artifact_state(doc)
             app.ZoomWindow(_point(low_x, low_y), _point(high_x, high_y))
+            after = self._document_artifact_state(doc)
             return {
                 "ok": True,
                 "mode": "window",
                 "min": [low_x, low_y],
                 "max": [high_x, high_y],
+                "artifact_state": self._artifact_state_receipt(before, after),
             }
 
         return await self._run(_sync, may_mutate_document=False)
@@ -2606,7 +2761,8 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> bytes:
             app = self._app()
-            self._doc()
+            doc = self._doc()
+            before = self._document_artifact_state(doc)
             try:
                 hwnd = int(app.HWND)
             except Exception as exc:
@@ -2614,6 +2770,14 @@ class ComBackend(AutoCADBackend):
             png = _capture_window_png(hwnd)
             if not png.startswith(b"\x89PNG\r\n\x1a\n"):
                 raise RuntimeError("AutoCAD screenshot capture did not produce a PNG")
+            after = self._document_artifact_state(doc)
+            if before != after:
+                reason = (
+                    "screenshot changed document artifact state; "
+                    f"before={before}; after={after}"
+                )
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason)
             return png
 
         return await self._run(_sync, may_mutate_document=False)
@@ -2626,11 +2790,18 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> dict[str, Any]:
             doc = self._doc()
+            before = self._document_artifact_state(doc)
             viewport = doc.ActiveViewport
             viewport.Direction = _point(*direction)
             doc.ActiveViewport = viewport
             self._app().ZoomExtents()
-            return {"ok": True, "direction": direction, "normalized": True}
+            after = self._document_artifact_state(doc)
+            return {
+                "ok": True,
+                "direction": direction,
+                "normalized": True,
+                "artifact_state": self._artifact_state_receipt(before, after),
+            }
 
         return await self._run(_sync)
 
@@ -2644,48 +2815,112 @@ class ComBackend(AutoCADBackend):
         result = await self.view_set_direction(*direction)
         return {**result, "preset": normalized}
 
+    def _native_view_facade(self) -> Any:
+        from ..native_bridge.public_runtime import NativePublicFacade
+
+        return NativePublicFacade(self.settings)
+
     async def view_set_visual_style(self, style: str) -> dict[str, Any]:
         normalized = str(style).strip().lower()
         command = visual_style_command(normalized)
 
+        def _style_key(value: Any) -> str:
+            return re.sub(r"[^a-z0-9]+", "", str(value).casefold())
+
         def _sync() -> dict[str, Any]:
             doc = self._doc()
-            before_saved = bool(_optional_com_property(doc, "Saved"))
+            facade = self._native_view_facade()
+            before_style = facade.visual_style_get()
+            before_handle = str(before_style.get("visual_style_handle") or "")
+            before_name = str(before_style.get("visual_style_name") or "").strip()
+            if not before_handle or not before_name:
+                raise StateConflictError(
+                    "native bridge did not expose a complete predecessor visual-style state"
+                )
+            before_artifact = self._document_artifact_state(doc)
             try:
-                before_dbmod = int(doc.GetVariable("DBMOD"))
-            except Exception:
-                before_dbmod = None
-            doc.SendCommand(command)
-            deadline = time.monotonic() + min(10.0, float(self.settings.com_call_timeout_seconds))
-            while time.monotonic() < deadline:
-                try:
-                    if not str(doc.GetVariable("CMDNAMES") or "").strip():
+                doc.SendCommand(command)
+                deadline = time.monotonic() + min(
+                    10.0, float(self.settings.com_call_timeout_seconds)
+                )
+                while time.monotonic() < deadline:
+                    if not str(
+                        _com_call_with_busy_retry(lambda: doc.GetVariable("CMDNAMES")) or ""
+                    ).strip():
                         doc.Regen(1)
-                        try:
-                            after_dbmod = int(doc.GetVariable("DBMOD"))
-                        except Exception:
-                            after_dbmod = None
-                        after_saved = bool(_optional_com_property(doc, "Saved"))
+                        after_style = facade.visual_style_get()
+                        actual_name = str(after_style.get("visual_style_name") or "").strip()
+                        actual_handle = str(after_style.get("visual_style_handle") or "")
+                        if not actual_handle or _style_key(actual_name) != _style_key(normalized):
+                            raise StateConflictError(
+                                "visual-style read-back mismatch: "
+                                f"expected={normalized!r}; actual={actual_name!r}"
+                            )
+                        after_artifact = self._document_artifact_state(doc)
                         return {
                             "ok": True,
                             "visual_style": normalized,
+                            "visual_style_readback": actual_name,
+                            "visual_style_handle": actual_handle,
+                            "previous_visual_style": before_name,
+                            "previous_visual_style_handle": before_handle,
+                            "state_verified": True,
+                            "verification_route": "native-managed-bridge",
                             "command_idle_verified": True,
-                            "artifact_state": {
-                                "saved_before": before_saved,
-                                "saved_after": after_saved,
-                                "dbmod_before": before_dbmod,
-                                "dbmod_after": after_dbmod,
-                                "dirty_changed": (before_dbmod != after_dbmod or before_saved != after_saved),
-                            },
+                            "artifact_state": self._artifact_state_receipt(
+                                before_artifact, after_artifact
+                            ),
                         }
-                except Exception:
-                    pass
-                time.sleep(0.05)
-            raise BackendTimeoutError(
-                "AutoCAD did not return to idle after bounded visual-style command",
-                retryable=False,
-                completion_unknown=True,
-            )
+                    time.sleep(0.05)
+                raise BackendTimeoutError(
+                    "AutoCAD did not return to idle after bounded visual-style command",
+                    retryable=False,
+                    completion_unknown=True,
+                )
+            except Exception as mutation_error:
+                restore_errors: list[str] = []
+                current_style: dict[str, Any] | None = None
+                try:
+                    current_style = facade.visual_style_get()
+                except Exception as read_error:
+                    restore_errors.append(f"current-read: {read_error}")
+                if current_style is not None:
+                    current_handle = str(current_style.get("visual_style_handle") or "")
+                    if not current_handle:
+                        restore_errors.append("current-read: missing visual_style_handle")
+                    elif current_handle != before_handle:
+                        try:
+                            facade.visual_style_set(
+                                before_handle,
+                                expected_current_handle=current_handle,
+                            )
+                        except Exception as restore_error:
+                            restore_errors.append(f"set: {restore_error}")
+                try:
+                    restored_style = facade.visual_style_get()
+                    restored_handle = str(restored_style.get("visual_style_handle") or "")
+                    if restored_handle != before_handle:
+                        restore_errors.append(
+                            f"read-back: expected={before_handle!r}; actual={restored_handle!r}"
+                        )
+                except Exception as restore_read_error:
+                    restore_errors.append(f"read-back: {restore_read_error}")
+                try:
+                    restored_artifact = self._document_artifact_state(doc)
+                    if restored_artifact != before_artifact:
+                        restore_errors.append(
+                            f"artifact-state: expected={before_artifact}; actual={restored_artifact}"
+                        )
+                except Exception as artifact_error:
+                    restore_errors.append(f"artifact-state: {artifact_error}")
+                if restore_errors:
+                    reason = (
+                        "visual-style restore verification failed; "
+                        f"previous={before_name!r}; handle={before_handle}; errors={restore_errors}"
+                    )
+                    self._quarantine_integrity(reason)
+                    raise StateConflictError(reason) from mutation_error
+                raise
 
         return await self._run(_sync)
 
@@ -2713,6 +2948,40 @@ class ComBackend(AutoCADBackend):
 
         return await self._run(_sync)
 
+    def _finalize_created_solid(
+        self,
+        doc: Any,
+        solid: Any,
+        canonical_layer: str | None,
+    ) -> dict[str, Any]:
+        handle_value = _optional_com_property(solid, "Handle")
+        handle = str(handle_value) if handle_value is not None else None
+        try:
+            if canonical_layer is not None:
+                _com_set_attr(solid, "Layer", canonical_layer)
+            return self._solid_info(solid)
+        except Exception as creation_error:
+            cleanup_errors: list[str] = []
+            try:
+                solid.Delete()
+            except Exception as delete_error:
+                cleanup_errors.append(f"delete: {delete_error}")
+            if handle is not None and not cleanup_errors:
+                try:
+                    doc.HandleToObject(handle)
+                except Exception:
+                    pass
+                else:
+                    cleanup_errors.append("read-back: created solid still resolves after Delete")
+            if cleanup_errors:
+                reason = (
+                    "created solid cleanup verification failed; "
+                    f"handle={handle}; errors={cleanup_errors}"
+                )
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason) from creation_error
+            raise
+
     async def solid_box(
         self,
         cx: float,
@@ -2721,6 +2990,7 @@ class ComBackend(AutoCADBackend):
         length: float,
         width: float,
         height: float,
+        layer: str | None = None,
     ) -> dict[str, Any]:
         if length <= 0:
             raise ValueError("box length must be > 0")
@@ -2730,10 +3000,12 @@ class ComBackend(AutoCADBackend):
             raise ValueError("box height must be > 0")
 
         def _sync() -> dict[str, Any]:
-            solid = self._doc().ModelSpace.AddBox(
+            doc = self._doc()
+            canonical_layer = self._validate_layer(layer)
+            solid = doc.ModelSpace.AddBox(
                 _point(cx, cy, cz), float(length), float(width), float(height)
             )
-            return self._solid_info(solid)
+            return self._finalize_created_solid(doc, solid, canonical_layer)
 
         return await self._run(_sync)
 
@@ -2744,6 +3016,7 @@ class ComBackend(AutoCADBackend):
         cz: float,
         radius: float,
         height: float,
+        layer: str | None = None,
     ) -> dict[str, Any]:
         if radius <= 0:
             raise ValueError("cylinder radius must be > 0")
@@ -2751,10 +3024,12 @@ class ComBackend(AutoCADBackend):
             raise ValueError("cylinder height must be > 0")
 
         def _sync() -> dict[str, Any]:
-            solid = self._doc().ModelSpace.AddCylinder(
+            doc = self._doc()
+            canonical_layer = self._validate_layer(layer)
+            solid = doc.ModelSpace.AddCylinder(
                 _point(cx, cy, cz), float(radius), float(height)
             )
-            return self._solid_info(solid)
+            return self._finalize_created_solid(doc, solid, canonical_layer)
 
         return await self._run(_sync)
 
@@ -2764,13 +3039,16 @@ class ComBackend(AutoCADBackend):
         cy: float,
         cz: float,
         radius: float,
+        layer: str | None = None,
     ) -> dict[str, Any]:
         if radius <= 0:
             raise ValueError("sphere radius must be > 0")
 
         def _sync() -> dict[str, Any]:
-            solid = self._doc().ModelSpace.AddSphere(_point(cx, cy, cz), float(radius))
-            return self._solid_info(solid)
+            doc = self._doc()
+            canonical_layer = self._validate_layer(layer)
+            solid = doc.ModelSpace.AddSphere(_point(cx, cy, cz), float(radius))
+            return self._finalize_created_solid(doc, solid, canonical_layer)
 
         return await self._run(_sync)
 
@@ -2781,6 +3059,7 @@ class ComBackend(AutoCADBackend):
         cz: float,
         radius: float,
         height: float,
+        layer: str | None = None,
     ) -> dict[str, Any]:
         if radius <= 0:
             raise ValueError("cone radius must be > 0")
@@ -2788,10 +3067,12 @@ class ComBackend(AutoCADBackend):
             raise ValueError("cone height must be > 0")
 
         def _sync() -> dict[str, Any]:
-            solid = self._doc().ModelSpace.AddCone(
+            doc = self._doc()
+            canonical_layer = self._validate_layer(layer)
+            solid = doc.ModelSpace.AddCone(
                 _point(cx, cy, cz), float(radius), float(height)
             )
-            return self._solid_info(solid)
+            return self._finalize_created_solid(doc, solid, canonical_layer)
 
         return await self._run(_sync)
 
@@ -2802,6 +3083,7 @@ class ComBackend(AutoCADBackend):
         cz: float,
         torus_radius: float,
         tube_radius: float,
+        layer: str | None = None,
     ) -> dict[str, Any]:
         if torus_radius <= 0:
             raise ValueError("torus_radius must be > 0")
@@ -2809,10 +3091,12 @@ class ComBackend(AutoCADBackend):
             raise ValueError("tube_radius must be > 0")
 
         def _sync() -> dict[str, Any]:
-            solid = self._doc().ModelSpace.AddTorus(
+            doc = self._doc()
+            canonical_layer = self._validate_layer(layer)
+            solid = doc.ModelSpace.AddTorus(
                 _point(cx, cy, cz), float(torus_radius), float(tube_radius)
             )
-            return self._solid_info(solid)
+            return self._finalize_created_solid(doc, solid, canonical_layer)
 
         return await self._run(_sync)
 
@@ -2824,6 +3108,7 @@ class ComBackend(AutoCADBackend):
         length: float,
         width: float,
         height: float,
+        layer: str | None = None,
     ) -> dict[str, Any]:
         if length <= 0:
             raise ValueError("wedge length must be > 0")
@@ -2833,10 +3118,12 @@ class ComBackend(AutoCADBackend):
             raise ValueError("wedge height must be > 0")
 
         def _sync() -> dict[str, Any]:
-            solid = self._doc().ModelSpace.AddWedge(
+            doc = self._doc()
+            canonical_layer = self._validate_layer(layer)
+            solid = doc.ModelSpace.AddWedge(
                 _point(cx, cy, cz), float(length), float(width), float(height)
             )
-            return self._solid_info(solid)
+            return self._finalize_created_solid(doc, solid, canonical_layer)
 
         return await self._run(_sync)
 
@@ -2845,6 +3132,7 @@ class ComBackend(AutoCADBackend):
         profile_handle: str,
         height: float,
         taper_angle: float = 0.0,
+        layer: str | None = None,
     ) -> dict[str, Any]:
         if height == 0:
             raise ValueError("extrude height must be non-zero")
@@ -2853,13 +3141,14 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> dict[str, Any]:
             doc = self._doc()
+            canonical_layer = self._validate_layer(layer)
             region = self._region_from_profile(doc, profile_handle)
             failed = False
             try:
                 solid = doc.ModelSpace.AddExtrudedSolid(
                     region, float(height), math.radians(float(taper_angle))
                 )
-                return self._solid_info(solid)
+                return self._finalize_created_solid(doc, solid, canonical_layer)
             except Exception:
                 failed = True
                 raise
@@ -2872,7 +3161,12 @@ class ComBackend(AutoCADBackend):
 
         return await self._run(_sync)
 
-    async def solid_sweep(self, profile_handle: str, path_handle: str) -> dict[str, Any]:
+    async def solid_sweep(
+        self,
+        profile_handle: str,
+        path_handle: str,
+        layer: str | None = None,
+    ) -> dict[str, Any]:
         profile_key = str(profile_handle or "").strip().upper()
         path_key = str(path_handle or "").strip().upper()
         if not profile_key or not path_key:
@@ -2882,6 +3176,7 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> dict[str, Any]:
             doc = self._doc()
+            canonical_layer = self._validate_layer(layer)
             region = self._region_from_profile(doc, profile_key)
             failed = False
             try:
@@ -2904,7 +3199,7 @@ class ComBackend(AutoCADBackend):
                         "sweep path must be an Arc, Circle, Ellipse, Polyline or Spline"
                     )
                 solid = doc.ModelSpace.AddExtrudedSolidAlongPath(region, path)
-                return self._solid_info(solid)
+                return self._finalize_created_solid(doc, solid, canonical_layer)
             except Exception:
                 failed = True
                 raise
@@ -2927,6 +3222,7 @@ class ComBackend(AutoCADBackend):
         axis_y2: float,
         axis_z2: float,
         angle_deg: float = 360.0,
+        layer: str | None = None,
     ) -> dict[str, Any]:
         axis = (
             float(axis_x2) - float(axis_x1),
@@ -2940,6 +3236,7 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> dict[str, Any]:
             doc = self._doc()
+            canonical_layer = self._validate_layer(layer)
             region = self._region_from_profile(doc, profile_handle)
             failed = False
             try:
@@ -2949,7 +3246,7 @@ class ComBackend(AutoCADBackend):
                     _point(*axis),
                     math.radians(float(angle_deg)),
                 )
-                return self._solid_info(solid)
+                return self._finalize_created_solid(doc, solid, canonical_layer)
             except Exception:
                 failed = True
                 raise
@@ -2993,10 +3290,26 @@ class ComBackend(AutoCADBackend):
             doc = self._doc()
             target = self._solid_by_id(target_key)
             tool = self._solid_by_id(tool_key)
-            target.Boolean(operation_codes[normalized], tool)
-            result = self._solid_info(target)
             try:
-                doc.HandleToObject(tool_key)
+                target.Boolean(operation_codes[normalized], tool)
+            except Exception as boolean_error:
+                reason = (
+                    "Boolean completion is uncertain after destructive ACIS failure; "
+                    f"target={target_key}; tool={tool_key}; operation={canonical}"
+                )
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason) from boolean_error
+            try:
+                result = self._solid_info(target)
+            except Exception as inspect_error:
+                reason = (
+                    "Boolean post-mutation inspection failed; completion is uncertain; "
+                    f"target={target_key}; tool={tool_key}; operation={canonical}"
+                )
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason) from inspect_error
+            try:
+                _com_call_with_busy_retry(lambda: doc.HandleToObject(tool_key))
                 tool_exists_after = True
             except Exception:
                 tool_exists_after = False
@@ -3101,7 +3414,7 @@ class ComBackend(AutoCADBackend):
         def _sync() -> dict[str, Any]:
             solid = self._solid_by_id(handle)
             mirrored = solid.Mirror3D(_point(*p1), _point(*p2), _point(*p3))
-            if str(getattr(mirrored, "ObjectName", "")) != "AcDb3dSolid":
+            if _object_type(_entity_property_view(mirrored)) != "3DSOLID":
                 raise RuntimeError("Mirror3D did not return a 3DSOLID")
             result = self._solid_info(mirrored)
             result["source_handle"] = str(handle)
@@ -3170,14 +3483,21 @@ class ComBackend(AutoCADBackend):
             actual.replace(target)
             actual = target
         digest = hashlib.sha256(actual.read_bytes()).hexdigest()
-        return {
-            "ok": True,
+        manifest = {
+            "schema_version": 1,
+            "status": "EXPORTED",
             "format": "sat",
             "path": str(actual),
             "sha256": digest,
             "size": actual.stat().st_size,
             "solid_handles": keys,
         }
+        manifest_path = actual.with_suffix(actual.suffix + ".manifest.json")
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return {**manifest, "ok": True, "manifest_path": str(manifest_path)}
 
     async def transaction_begin(self) -> dict[str, Any]:
         if self._transaction_depth >= self.settings.transaction_depth:

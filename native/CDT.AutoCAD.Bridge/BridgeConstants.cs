@@ -6,7 +6,7 @@ namespace CDT.AutoCAD.Bridge;
 internal static class BridgeConstants
 {
     internal const string ProtocolVersion = "cdt-autocad-native-v1";
-    internal const string BridgeVersion = "0.8.1-g3";
+    internal const string BridgeVersion = "0.8.2-mp7";
     internal const int MaxFrameBytes = 65_536;
     internal const int MaxErrorMessageChars = 512;
     internal const int MaxPendingRequests = 32;

@@ -41,6 +41,7 @@ class FakeNativeClient:
         self.finalize_calls = []
         self.recovery_calls = []
         self.state_calls = []
+        self.visual_style_calls = []
 
     def health(self):
         return {
@@ -75,6 +76,41 @@ class FakeNativeClient:
 
     def document_snapshot(self, runtime_document_id, *, document_pid):
         raise AssertionError("public native facade must not require the bounded full semantic snapshot")
+
+    def viewport_visual_style_get(self, runtime_document_id, *, document_pid=None):
+        self.visual_style_calls.append(("get", runtime_document_id, document_pid))
+        return {
+            "runtime_document_id": runtime_document_id,
+            "document_pid": document_pid,
+            "visual_style_handle": "A1",
+            "visual_style_name": "2D Wireframe",
+        }
+
+    def viewport_visual_style_set(
+        self,
+        runtime_document_id,
+        *,
+        visual_style_handle,
+        expected_current_handle,
+        document_pid=None,
+    ):
+        self.visual_style_calls.append(
+            (
+                "set",
+                runtime_document_id,
+                document_pid,
+                visual_style_handle,
+                expected_current_handle,
+            )
+        )
+        return {
+            "runtime_document_id": runtime_document_id,
+            "document_pid": document_pid,
+            "previous_visual_style_handle": expected_current_handle,
+            "visual_style_handle": visual_style_handle,
+            "visual_style_name": "2D Wireframe",
+            "readback_verified": True,
+        }
 
     def begin_logical_batch(self, runtime_document_id, **kwargs):
         self.begin_calls.append((runtime_document_id, kwargs))
@@ -198,6 +234,38 @@ def test_native_status_binds_exactly_active_document(settings, tmp_path):
     assert status["active_document"]["runtime_document_id"] == RUNTIME
     assert status["active_document"]["document_pid"] == DOC
     assert status["active_document"]["document_fp"] == PRE
+
+
+def test_visual_style_facade_allows_runtime_bound_unsaved_document_and_guarded_restore(settings, tmp_path):
+    class UnsavedViewClient(FakeNativeClient):
+        def documents_list(self):
+            return [
+                {
+                    "runtime_document_id": RUNTIME,
+                    "document_pid": None,
+                    "name": "Drawing1.dwg",
+                    "file_name": "",
+                    "is_active": True,
+                }
+            ]
+
+    client = UnsavedViewClient()
+    facade = NativePublicFacade(
+        replace(settings, backend="com"),
+        client_factory=lambda: client,
+        journal_root=tmp_path,
+    )
+
+    observed = facade.visual_style_get()
+    restored = facade.visual_style_set("A1", expected_current_handle="B2")
+
+    assert observed["visual_style_name"] == "2D Wireframe"
+    assert restored["readback_verified"] is True
+    assert client.visual_style_calls == [
+        ("get", RUNTIME, None),
+        ("set", RUNTIME, None, "A1", "B2"),
+    ]
+    assert client.state_calls == []
 
 
 def test_public_batch_create_uses_g3_logical_checkpoint_and_durable_journal(settings, tmp_path):

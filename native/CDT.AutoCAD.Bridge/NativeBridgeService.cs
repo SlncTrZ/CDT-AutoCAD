@@ -2,6 +2,7 @@
 // Wing: code | Topic: native-bridge-n5 | Updated: 2026-09-10 14:08
 
 using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
 using AcApplication = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace CDT.AutoCAD.Bridge;
@@ -31,6 +32,8 @@ internal sealed class NativeBridgeService
             "bridge.document.identity" => DocumentIdentity(request),
             "bridge.document.snapshot" => DocumentSnapshot(request),
             "bridge.document.state" => DocumentState(request),
+            "viewport.visual_style.get" => ViewportVisualStyleGet(request),
+            "viewport.visual_style.set" => ViewportVisualStyleSet(request),
             "bridge.recovery.list" => _mutations.ListRecoveries(),
             "bridge.recovery.resolve" => RecoveryResolve(request),
             "bridge.recovery.finalize" => RecoveryFinalize(request),
@@ -101,6 +104,7 @@ internal sealed class NativeBridgeService
                 "bridge.document.identity",
                 "bridge.document.snapshot",
                 "bridge.document.state",
+                "viewport.visual_style.get",
                 "bridge.recovery.list",
                 "metadata.get",
                 "metadata.query",
@@ -108,6 +112,7 @@ internal sealed class NativeBridgeService
             mutation_operations = new[]
             {
                 "metadata.set",
+                "viewport.visual_style.set",
                 "entity.batch.create",
                 "entity.batch.insert_blocks",
                 "entity.batch.transform",
@@ -135,6 +140,126 @@ internal sealed class NativeBridgeService
             ?? throw new BridgeServiceException("INVALID_PARAMS", "document identity params are required");
         return _documents.Resolve(parameters.RuntimeDocumentId, parameters.DocumentPid);
     }
+
+    private object ViewportVisualStyleGet(BridgeRequest request)
+    {
+        DocumentIdentityParams parameters = request.DocumentIdentity
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "visual style document binding is required");
+        Document document = _documents.ResolveTransientDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        VisualStyleState state = ReadCurrentVisualStyle(document);
+        return new
+        {
+            runtime_document_id = parameters.RuntimeDocumentId.ToString("D"),
+            document_pid = DocumentPidReader.Read(document.Database),
+            visual_style_handle = state.Handle,
+            visual_style_name = state.Name,
+        };
+    }
+
+    private object ViewportVisualStyleSet(BridgeRequest request)
+    {
+        ViewportVisualStyleSetParams parameters = request.VisualStyleSet
+            ?? throw new BridgeServiceException("INVALID_PARAMS", "visual style set params are required");
+        Document document = _documents.ResolveTransientDocument(
+            parameters.RuntimeDocumentId,
+            parameters.DocumentPid
+        );
+        VisualStyleState before = ReadCurrentVisualStyle(document);
+        if (!string.Equals(before.Handle, parameters.ExpectedCurrentHandle, StringComparison.Ordinal))
+        {
+            throw new BridgeServiceException(
+                "VIEW_STATE_DRIFT",
+                "current visual style changed after the caller observation; restore is refused"
+            );
+        }
+        ObjectId targetId = ResolveVisualStyleHandle(document.Database, parameters.VisualStyleHandle);
+        using (ViewTableRecord view = document.Editor.GetCurrentView())
+        {
+            view.VisualStyleId = targetId;
+            document.Editor.SetCurrentView(view);
+        }
+        VisualStyleState after = ReadCurrentVisualStyle(document);
+        if (!string.Equals(after.Handle, parameters.VisualStyleHandle, StringComparison.Ordinal))
+        {
+            throw new BridgeServiceException(
+                "VISUAL_STYLE_READBACK_MISMATCH",
+                "current visual style does not match the requested typed restore handle"
+            );
+        }
+        return new
+        {
+            runtime_document_id = parameters.RuntimeDocumentId.ToString("D"),
+            document_pid = DocumentPidReader.Read(document.Database),
+            previous_visual_style_handle = before.Handle,
+            visual_style_handle = after.Handle,
+            visual_style_name = after.Name,
+            readback_verified = true,
+        };
+    }
+
+    private static VisualStyleState ReadCurrentVisualStyle(Document document)
+    {
+        using ViewTableRecord view = document.Editor.GetCurrentView();
+        ObjectId styleId = view.VisualStyleId;
+        if (styleId.IsNull || !styleId.IsValid)
+        {
+            throw new BridgeServiceException(
+                "VISUAL_STYLE_UNAVAILABLE",
+                "current viewport does not expose a valid managed visual style id"
+            );
+        }
+        string? name = FindVisualStyleName(document.Database, styleId);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new BridgeServiceException(
+                "VISUAL_STYLE_UNAVAILABLE",
+                "current viewport visual style is not present in the drawing visual-style dictionary"
+            );
+        }
+        return new VisualStyleState(styleId.Handle.ToString(), name);
+    }
+
+    private static ObjectId ResolveVisualStyleHandle(Database database, string handle)
+    {
+        using Transaction transaction = database.TransactionManager.StartOpenCloseTransaction();
+        DBDictionary styles = (DBDictionary)transaction.GetObject(
+            database.VisualStyleDictionaryId,
+            OpenMode.ForRead
+        );
+        foreach (DBDictionaryEntry entry in styles)
+        {
+            if (string.Equals(entry.Value.Handle.ToString(), handle, StringComparison.Ordinal))
+            {
+                return entry.Value;
+            }
+        }
+        throw new BridgeServiceException(
+            "VISUAL_STYLE_NOT_FOUND",
+            "requested visual-style handle is not present in the active drawing"
+        );
+    }
+
+    private static string? FindVisualStyleName(Database database, ObjectId styleId)
+    {
+        using Transaction transaction = database.TransactionManager.StartOpenCloseTransaction();
+        DBDictionary styles = (DBDictionary)transaction.GetObject(
+            database.VisualStyleDictionaryId,
+            OpenMode.ForRead
+        );
+        foreach (DBDictionaryEntry entry in styles)
+        {
+            if (entry.Value == styleId)
+            {
+                return entry.Key;
+            }
+        }
+        return null;
+    }
+
+    private sealed record VisualStyleState(string Handle, string Name);
 
     private object LogicalBegin(BridgeRequest request)
     {

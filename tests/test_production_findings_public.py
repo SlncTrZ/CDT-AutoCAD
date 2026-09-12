@@ -179,30 +179,152 @@ async def test_block_list_filters_xref_dependent_noise_and_pages(settings, monke
 async def test_view_visual_style_uses_only_allowlisted_bounded_command(settings, monkeypatch):
     sent: list[str] = []
 
+    class VisualFacade:
+        state = {"visual_style_handle": "A1", "visual_style_name": "2D Wireframe"}
+
+        def visual_style_get(self):
+            return dict(self.state)
+
+        def visual_style_set(self, *_args, **_kwargs):
+            raise AssertionError("success path must not restore predecessor style")
+
+    facade = VisualFacade()
+
     class Doc:
+        Saved = True
+        dbmod = 0
+
         def SendCommand(self, command):
             sent.append(command)
+            facade.state = {
+                "visual_style_handle": "B2",
+                "visual_style_name": "Shades of Gray",
+            }
 
         def GetVariable(self, name):
-            assert name == "CMDNAMES"
-            return ""
+            if name == "CMDNAMES":
+                return ""
+            if name == "DBMOD":
+                return self.dbmod
+            raise KeyError(name)
+
+        def Regen(self, _mode):
+            pass
+
+    doc = Doc()
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    monkeypatch.setattr(backend, "_native_view_facade", lambda: facade)
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+    _run_inline(monkeypatch, backend)
+
+    result = await backend.view_set_visual_style("shades_of_gray")
+    assert result["visual_style"] == "shades_of_gray"
+    assert result["visual_style_readback"] == "Shades of Gray"
+    assert result["visual_style_handle"] == "B2"
+    assert result["previous_visual_style"] == "2D Wireframe"
+    assert result["previous_visual_style_handle"] == "A1"
+    assert result["state_verified"] is True
+    assert result["verification_route"] == "native-managed-bridge"
+    assert result["command_idle_verified"] is True
+    assert result["artifact_state"]["dirty_changed"] is False
+    assert sent == ["_.VSCURRENT\n_Shadesofgray\n"]
+
+    with pytest.raises(ValueError, match="visual style"):
+        await backend.view_set_visual_style("$(arbitrary-command)")
+    assert len(sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_view_visual_style_mismatch_restores_previous_style(settings, monkeypatch):
+    class VisualFacade:
+        def __init__(self):
+            self.state = {"visual_style_handle": "A1", "visual_style_name": "2D Wireframe"}
+            self.restores = []
+
+        def visual_style_get(self):
+            return dict(self.state)
+
+        def visual_style_set(self, handle, *, expected_current_handle):
+            self.restores.append((handle, expected_current_handle))
+            assert expected_current_handle == self.state["visual_style_handle"]
+            self.state = {"visual_style_handle": handle, "visual_style_name": "2D Wireframe"}
+            return {**self.state, "readback_verified": True}
+
+    facade = VisualFacade()
+
+    class Doc:
+        Saved = True
+        dbmod = 0
+
+        def SendCommand(self, _command):
+            facade.state = {"visual_style_handle": "C3", "visual_style_name": "Realistic"}
+
+        def GetVariable(self, name):
+            if name == "CMDNAMES":
+                return ""
+            if name == "DBMOD":
+                return self.dbmod
+            raise KeyError(name)
+
+        def Regen(self, _mode):
+            pass
+
+    doc = Doc()
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    monkeypatch.setattr(backend, "_native_view_facade", lambda: facade)
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(Exception, match="visual-style read-back mismatch"):
+        await backend.view_set_visual_style("shades_of_gray")
+    assert facade.state == {"visual_style_handle": "A1", "visual_style_name": "2D Wireframe"}
+    assert facade.restores == [("A1", "C3")]
+    assert backend.status()["integrity_uncertain"] is False
+
+
+@pytest.mark.asyncio
+async def test_view_visual_style_restore_failure_quarantines_backend(settings, monkeypatch):
+    class VisualFacade:
+        def __init__(self):
+            self.state = {"visual_style_handle": "A1", "visual_style_name": "2D Wireframe"}
+
+        def visual_style_get(self):
+            return dict(self.state)
+
+        def visual_style_set(self, _handle, *, expected_current_handle):
+            assert expected_current_handle == "C3"
+            raise RuntimeError("restore failed")
+
+    facade = VisualFacade()
+
+    class Doc:
+        Saved = True
+        dbmod = 0
+
+        def SendCommand(self, _command):
+            facade.state = {"visual_style_handle": "C3", "visual_style_name": "Realistic"}
+
+        def GetVariable(self, name):
+            if name == "CMDNAMES":
+                return ""
+            if name == "DBMOD":
+                return self.dbmod
+            raise KeyError(name)
 
         def Regen(self, _mode):
             pass
 
     backend = ComBackend(replace(settings, backend="com"))
     monkeypatch.setattr(backend, "_doc", lambda: Doc())
+    monkeypatch.setattr(backend, "_native_view_facade", lambda: facade)
     monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
     _run_inline(monkeypatch, backend)
 
-    result = await backend.view_set_visual_style("shades_of_gray")
-    assert result["visual_style"] == "shades_of_gray"
-    assert result["command_idle_verified"] is True
-    assert sent == ["_.VSCURRENT\n_Shadesofgray\n"]
-
-    with pytest.raises(ValueError, match="visual style"):
-        await backend.view_set_visual_style("$(arbitrary-command)")
-    assert len(sent) == 1
+    with pytest.raises(Exception, match="visual-style restore verification failed"):
+        await backend.view_set_visual_style("shades_of_gray")
+    assert backend.status()["integrity_uncertain"] is True
 
 
 @pytest.mark.asyncio
@@ -247,6 +369,8 @@ async def test_xref_attach_validates_path_and_uses_overlay(settings, monkeypatch
     assert result["name"] == "REF_A"
     assert result["overlay"] is True
     assert Path(result["path"]) == source.resolve()
+    assert result["source_sha256"] == __import__("hashlib").sha256(b"dwg-placeholder").hexdigest()
+    assert result["source_size"] == len(b"dwg-placeholder")
     assert calls and calls[0][-1] is True
 
     outside = tmp_path.parent / "outside-source.dwg"

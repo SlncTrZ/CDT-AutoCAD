@@ -16,7 +16,7 @@ import cdt_autocad.backends.com_backend as cb
 from cdt_autocad.backends.com_backend import ComBackend
 from cdt_autocad.backends.ezdxf_backend import EzdxfBackend
 from cdt_autocad.command_presets import BOUNDED_COMMAND_PRESETS, VIEW_PRESETS, WORKFLOW_DEFAULTS
-from cdt_autocad.errors import BackendQuarantinedError, StateConflictError
+from cdt_autocad.errors import BackendQuarantinedError, StateConflictError, UnsupportedCapabilityError
 
 
 def _run_inline(monkeypatch, backend):
@@ -359,6 +359,162 @@ async def test_ezdxf_units_polyline_curves_and_layer_state_roundtrip(settings):
     assert measured["length"] > 20.0
 
 
+class _XrefCollection:
+    def __init__(self, items):
+        self.items = list(items)
+
+    @property
+    def Count(self):
+        return len(self.items)
+
+    def Item(self, index_or_name):
+        if isinstance(index_or_name, int):
+            return self.items[index_or_name]
+        wanted = str(index_or_name).casefold()
+        for item in self.items:
+            if str(item.Name).casefold() == wanted:
+                return item
+        raise KeyError(index_or_name)
+
+
+@pytest.mark.asyncio
+async def test_xref_list_does_not_fabricate_loaded_state_and_hashes_resolved_source(
+    settings, monkeypatch, tmp_path: Path
+):
+    source = tmp_path / "source.dwg"
+    source.write_bytes(b"xref-source")
+    block = SimpleNamespace(Name="REF_A", IsXRef=True, Path=str(source))
+    doc = SimpleNamespace(Blocks=_XrefCollection([block]))
+    backend = ComBackend(replace(settings, backend="com", allowed_paths=(tmp_path.resolve(),)))
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    _run_inline(monkeypatch, backend)
+
+    rows = await backend.xref_list()
+    assert rows == [
+        {
+            "name": "REF_A",
+            "path": str(source.resolve()),
+            "contained": True,
+            "resolved": True,
+            "loaded": None,
+            "load_state_verified": False,
+            "load_state_reason": "activex_is_unloaded_unavailable",
+            "sha256": hashlib.sha256(b"xref-source").hexdigest(),
+            "size": len(b"xref-source"),
+        }
+    ]
+    deps = await backend.document_dependencies()
+    assert deps["scope"] == "dwg_xrefs_only"
+    assert deps["complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_xref_reload_unload_refuse_before_mutation_when_state_readback_is_unavailable(
+    settings, monkeypatch, tmp_path: Path
+):
+    source = tmp_path / "source.dwg"
+    source.write_bytes(b"xref")
+    calls = []
+
+    class Block:
+        Name = "REF_A"
+        IsXRef = True
+        Path = str(source)
+
+        def Reload(self):
+            calls.append("reload")
+
+        def Unload(self):
+            calls.append("unload")
+
+    backend = ComBackend(replace(settings, backend="com", allowed_paths=(tmp_path.resolve(),)))
+    monkeypatch.setattr(backend, "_xref_block_by_name", lambda _name: Block())
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(UnsupportedCapabilityError, match="verified XREF load-state read-back"):
+        await backend.xref_reload("REF_A")
+    with pytest.raises(UnsupportedCapabilityError, match="verified XREF load-state read-back"):
+        await backend.xref_unload("REF_A")
+    assert calls == []
+    assert backend.status()["integrity_uncertain"] is False
+
+
+@pytest.mark.asyncio
+async def test_xref_reload_unload_verify_readback_and_quarantine_mismatch(settings, monkeypatch, tmp_path: Path):
+    source = tmp_path / "source.dwg"
+    source.write_bytes(b"xref")
+
+    class Block:
+        Name = "REF_A"
+        IsXRef = True
+        Path = str(source)
+        IsUnloaded = False
+
+        def Reload(self):
+            self.IsUnloaded = False
+
+        def Unload(self):
+            self.IsUnloaded = True
+
+    block = Block()
+    backend = ComBackend(replace(settings, backend="com", allowed_paths=(tmp_path.resolve(),)))
+    monkeypatch.setattr(backend, "_xref_block_by_name", lambda _name: block)
+    _run_inline(monkeypatch, backend)
+
+    unloaded = await backend.xref_unload("REF_A")
+    assert unloaded["state"] == "unloaded"
+    assert unloaded["state_verified"] is True
+    loaded = await backend.xref_reload("REF_A")
+    assert loaded["state"] == "loaded"
+    assert loaded["state_verified"] is True
+
+    class BrokenBlock(Block):
+        def Unload(self):
+            pass
+
+    broken = BrokenBlock()
+    monkeypatch.setattr(backend, "_xref_block_by_name", lambda _name: broken)
+    with pytest.raises(StateConflictError, match="XREF unload read-back mismatch"):
+        await backend.xref_unload("REF_A")
+    assert backend.status()["integrity_uncertain"] is True
+
+
+@pytest.mark.asyncio
+async def test_xref_detach_verifies_definition_absence_and_quarantines_mismatch(settings, monkeypatch):
+    class Block:
+        Name = "REF_A"
+        IsXRef = True
+
+        def __init__(self, collection, remove=True):
+            self.collection = collection
+            self.remove = remove
+
+        def Detach(self):
+            if self.remove:
+                self.collection.items.remove(self)
+
+    collection = _XrefCollection([])
+    block = Block(collection)
+    collection.items.append(block)
+    doc = SimpleNamespace(Blocks=collection)
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    _run_inline(monkeypatch, backend)
+
+    result = await backend.xref_detach("REF_A")
+    assert result["state"] == "detached"
+    assert result["state_verified"] is True
+
+    stuck = Block(collection, remove=False)
+    collection.items[:] = [stuck]
+    backend2 = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend2, "_doc", lambda: doc)
+    _run_inline(monkeypatch, backend2)
+    with pytest.raises(StateConflictError, match="XREF detach read-back mismatch"):
+        await backend2.xref_detach("REF_A")
+    assert backend2.status()["integrity_uncertain"] is True
+
+
 @pytest.mark.asyncio
 async def test_artifact_seal_copies_content_addressed_clean_saved_drawing(settings, monkeypatch, tmp_path: Path):
     drawing = tmp_path / "part.dwg"
@@ -371,6 +527,15 @@ async def test_artifact_seal_copies_content_addressed_clean_saved_drawing(settin
         def Save(self):
             self.Saved = True
 
+        def GetVariable(self, name):
+            return {
+                "DBMOD": 0,
+                "INSUNITS": 4,
+                "MEASUREMENT": 1,
+                "LUNITS": 2,
+                "LUPREC": 3,
+            }[name]
+
     backend = ComBackend(replace(settings, backend="com", allowed_paths=(tmp_path.resolve(),)))
     monkeypatch.setattr(backend, "_doc", lambda: Doc())
     _run_inline(monkeypatch, backend)
@@ -382,7 +547,40 @@ async def test_artifact_seal_copies_content_addressed_clean_saved_drawing(settin
     sealed_path = Path(sealed["sealed_path"])
     assert sealed_path.name == f"part.{digest[:16]}.dwg"
     assert sealed_path.read_bytes() == drawing.read_bytes()
-    assert Path(sealed["manifest_path"]).is_file()
+    manifest_path = Path(sealed["manifest_path"])
+    assert manifest_path.is_file()
+    manifest = __import__("json").loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["document_state"] == {
+        "saved": True,
+        "dbmod": 0,
+        "units_raw": {"INSUNITS": 4, "MEASUREMENT": 1, "LUNITS": 2, "LUPREC": 3},
+    }
+
+
+@pytest.mark.asyncio
+async def test_artifact_seal_refuses_if_source_drifts_during_copy(settings, monkeypatch, tmp_path: Path):
+    drawing = tmp_path / "race.dwg"
+    drawing.write_bytes(b"before")
+
+    class Doc:
+        FullName = str(drawing)
+        Saved = True
+
+        def Save(self):
+            self.Saved = True
+
+    def drifting_copy(source, destination):
+        Path(destination).write_bytes(Path(source).read_bytes())
+        drawing.write_bytes(b"after")
+
+    backend = ComBackend(replace(settings, backend="com", allowed_paths=(tmp_path.resolve(),)))
+    monkeypatch.setattr(backend, "_doc", lambda: Doc())
+    monkeypatch.setattr(cb.shutil, "copy2", drifting_copy)
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(StateConflictError, match="source changed while sealing"):
+        await backend.artifact_seal()
+    assert not list((tmp_path / ".cdt-accepted").glob("*.manifest.json"))
 
 
 @pytest.mark.asyncio
@@ -422,6 +620,12 @@ async def test_solid_export_is_sat_only_and_cleans_selection_set(settings, monke
     assert target.read_bytes() == b"sat-data"
     assert len(added) == 2
     assert deleted == [True]
+    manifest_path = Path(result["manifest_path"])
+    manifest = __import__("json").loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["status"] == "EXPORTED"
+    assert manifest["format"] == "sat"
+    assert manifest["sha256"] == result["sha256"]
+    assert manifest["solid_handles"] == ["A1", "B2"]
 
     with pytest.raises(Exception) as exc_info:
         await backend.solid_export(["A1"], str(tmp_path / "part.step"), "step")

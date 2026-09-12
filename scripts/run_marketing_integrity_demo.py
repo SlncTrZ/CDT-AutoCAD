@@ -30,7 +30,7 @@ from cdt_autocad.config import Settings
 from cdt_autocad.contract_identity import CONTRACT_VERSION, EXECUTION_MODEL, PUBLIC_TOOL_COUNT
 from cdt_autocad.server import create_mcp
 
-EXPECTED_BRIDGE_VERSION = "0.8.1-g3"
+EXPECTED_BRIDGE_VERSION = "0.8.2-mp7"
 EXPECTED_PROVIDER_VERSION = "0.4.0rc1"
 PRODUCT_PRESENTATION_DELAY_MS = 300
 DEFAULT_RECORDING_DELAY_MS = 900

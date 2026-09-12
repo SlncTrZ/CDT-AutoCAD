@@ -77,7 +77,7 @@ internal sealed class DocumentRegistry
         );
     }
 
-    internal Document ResolveDocument(Guid runtimeDocumentId, string? assertedDocumentPid)
+    internal Document ResolveTransientDocument(Guid runtimeDocumentId, string? assertedDocumentPid)
     {
         Refresh();
         Document? document = _byDocument
@@ -92,19 +92,26 @@ internal sealed class DocumentRegistry
             );
         }
         string? documentPid = DocumentPidReader.Read(document.Database);
-        if (string.IsNullOrWhiteSpace(documentPid))
-        {
-            throw new BridgeServiceException(
-                "DOCUMENT_PID_MISSING",
-                "native semantic operations require persistent document lineage PID metadata"
-            );
-        }
         if (assertedDocumentPid is not null
             && !string.Equals(assertedDocumentPid, documentPid, StringComparison.Ordinal))
         {
             throw new BridgeServiceException(
                 "DOCUMENT_BINDING_MISMATCH",
                 "document lineage assertion does not match the runtime document"
+            );
+        }
+        return document;
+    }
+
+    internal Document ResolveDocument(Guid runtimeDocumentId, string? assertedDocumentPid)
+    {
+        Document document = ResolveTransientDocument(runtimeDocumentId, assertedDocumentPid);
+        string? documentPid = DocumentPidReader.Read(document.Database);
+        if (string.IsNullOrWhiteSpace(documentPid))
+        {
+            throw new BridgeServiceException(
+                "DOCUMENT_PID_MISSING",
+                "native semantic operations require persistent document lineage PID metadata"
             );
         }
         return document;

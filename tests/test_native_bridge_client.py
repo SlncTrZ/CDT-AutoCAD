@@ -77,6 +77,54 @@ def test_document_identity_binds_runtime_id_and_optional_lineage_assertion():
     }
 
 
+def test_visual_style_client_uses_typed_runtime_binding_and_restore_guard():
+    responses = [
+        {
+            "runtime_document_id": RUNTIME_DOCUMENT_ID,
+            "document_pid": None,
+            "visual_style_handle": "A1",
+            "visual_style_name": "2D Wireframe",
+        },
+        {
+            "runtime_document_id": RUNTIME_DOCUMENT_ID,
+            "document_pid": None,
+            "previous_visual_style_handle": "B2",
+            "visual_style_handle": "A1",
+            "visual_style_name": "2D Wireframe",
+            "readback_verified": True,
+        },
+    ]
+    transport = FakeTransport(lambda req: success(req, responses[len(transport.requests) - 1]))
+    client = NativeBridgeClient(transport, request_id_factory=lambda: REQUEST_ID)
+
+    observed = client.viewport_visual_style_get(RUNTIME_DOCUMENT_ID)
+    assert observed["visual_style_handle"] == "A1"
+    restored = client.viewport_visual_style_set(
+        RUNTIME_DOCUMENT_ID,
+        visual_style_handle="A1",
+        expected_current_handle="B2",
+    )
+    assert restored["readback_verified"] is True
+    assert transport.requests == [
+        {
+            "protocol": NATIVE_PROTOCOL_VERSION,
+            "request_id": REQUEST_ID,
+            "operation": "viewport.visual_style.get",
+            "params": {"runtime_document_id": RUNTIME_DOCUMENT_ID},
+        },
+        {
+            "protocol": NATIVE_PROTOCOL_VERSION,
+            "request_id": REQUEST_ID,
+            "operation": "viewport.visual_style.set",
+            "params": {
+                "runtime_document_id": RUNTIME_DOCUMENT_ID,
+                "visual_style_handle": "A1",
+                "expected_current_handle": "B2",
+            },
+        },
+    ]
+
+
 def test_documents_list_uses_no_selector_and_returns_documents():
     docs = [{"runtime_document_id": RUNTIME_DOCUMENT_ID, "document_pid": None}]
     transport = FakeTransport(lambda req: success(req, {"documents": docs}))

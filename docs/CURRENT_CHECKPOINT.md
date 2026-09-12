@@ -1,6 +1,6 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-12 15:03 +07:00
+> Updated: 2026-09-12 17:05 +07:00
 > Status: **OPERATIONAL RC since 2026-09-12 · N0–N7 CLOSED · O1 CLOSED/LIVE PASS · MP-2 CLOSED/LIVE PASS · G1/G2/G3 CLOSED/LIVE PASS · 10,000-entity graduation PASS · Feature-based Chunks Streaming LIVE PASS · public promotion FINAL CLOSE GATES PASS**
 > Primary certification target: **AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`**
 > Architecture boundary: **CDT-AutoCAD is a Generic CAD Execution Engine. Domain standards, engineering rules, calculations and reports remain outside the provider.**
@@ -14,7 +14,7 @@ provider_version: 0.4.0rc1
 contract_version: autocad-generic-v1-rc1
 public MCP tools: 86
 execution_model: feature-based-chunks-streaming-v1
-native bridge line: 0.8.1-g3
+native bridge line: 0.8.2-mp7
 ```
 
 These identities have now passed the final public-promotion close gates on the reviewed promotion tree. Historical evidence files that mention `0.3.0rc1`, `autocad-a2-v1-rc1` or 50 tools remain valid for the older checkpoint they recorded and must not be rewritten as if those older runs used the new contract.
@@ -37,7 +37,7 @@ Public-contract promotion completed at `0516fe3`. That commit was surgically sta
 The native bridge currently advertises:
 
 - protocol `cdt-autocad-native-v1`;
-- bridge `0.8.1-g3`;
+- bridge `0.8.2-mp7` (the earlier G1/G2/G3/scale/Feature Streaming evidence remains historical `0.8.1-g3` evidence and is not rewritten);
 - document fingerprint schema **v3**;
 - maximum native batch chunk **32 entities**;
 - graduated semantic capacity **12,288 entities**;
@@ -106,7 +106,7 @@ Feature-stream live acceptance proves:
 
 10,000-entity graduation proves 313 bounded native chunks, 10,000 unique persistent entity PIDs, beginning/middle/end fault injection with exact predecessor recovery, zero pending recovery and stable AutoCAD/bridge process identity.
 
-The latest native C# candidate has built Release/x64 with **0 errors**. The three inherited Autodesk-reference `MSB3277` warning families remain documented rather than hidden.
+The current native C# candidate `0.8.2-mp7` has built Release/x64 with SDK `10.0.401` at **0 errors**. The three inherited Autodesk-reference `MSB3277` warning families remain documented rather than hidden. Fresh runtime provenance binds the Release/x64 candidate and the DLL actually loaded by AutoCAD to SHA-256 `4e31791d646d446a642855aec44686b7fcb5956ff28d4453b822787dde09cb0c` without retroactively rebinding older `0.8.1-g3` events.
 
 ## 5. Public contract promotion state
 
@@ -218,10 +218,24 @@ The project is an **operational RC**, not a claim that the target architecture i
 - full native semantic snapshots remain bounded; there is no stable paged whole-DWG semantic reader yet, and native `relations`/topology extraction is not currently an authoritative oracle;
 - native mutation parity is still bounded to the currently advertised families rather than TEXT/MTEXT/HATCH/DIMENSION/SPLINE/layout/viewport and all other public mutation families;
 - 3DSOLID/ACIS operations remain outside the full PID/fingerprint/checkpoint/state-chain loop; face/edge topology is explicitly unsupported by the current ActiveX verifier;
-- XREF lifecycle receipts, deep/nested source dependency completeness, post-seal drift/stale-evidence enforcement and broader artifact manifests still have follow-on work;
+- XREF lifecycle now refuses reload/unload when ActiveX cannot prove load-state read-back and verifies detach absence when available; deep/nested source dependency completeness, non-DWG dependency families, post-seal drift/stale-evidence enforcement and broader artifact lifecycle policy still have follow-on work;
 - a versioned generic validation-rules registry with unknown-ruleset refusal / explicit `NOT_EVALUATED` semantics is not yet implemented;
 - historical G1/G2/G3/scale/feature-stream events that did not record a runtime DLL hash are intentionally **not** retroactively rebound to today's DLL; fresh events use the new accepted-artifact control;
-- legacy one-shot interactive Scheduled Task harness lifecycle cleanup remains maintenance debt; current ad-hoc live runs use unique task names and delete the task in `finally`;
+- the canonical Session-1 acceptance wrapper now owns unique task names, per-run stdout/stderr/evidence and verified `finally` cleanup; older historical one-shot task scripts remain maintenance debt and the intentionally persistent marketing task remains a documented exception;
 - the internal generic-engine Definition of Done is still under architecture review; this checkpoint therefore does not claim GA/stable or 100% target-architecture completion.
 
 Downstream repositories should discover the live runtime with `system_status`, `system_capabilities` and, when native integrity is required, `native_integrity_status` rather than treating a cached source snapshot as runtime proof.
+
+### 9.3 Current `0.8.2-mp7` maintenance evidence
+
+The current maintenance candidate advances only the internal native bridge implementation identity; the provider remains `0.4.0rc1`, the public catalog remains **86 tools**, the contract remains `autocad-generic-v1-rc1`, and the execution model remains `feature-based-chunks-streaming-v1`.
+
+Fresh AutoCAD 2027 Session-1 evidence now adds:
+
+- **MP-G07 visual-style state:** typed Managed .NET `VisualStyleId` read-back and guarded handle-based restore; live `2dWireframe` handle `2F` → `Shades of Gray` handle `3A` → exact predecessor handle `2F`; `CMDNAMES=""` and `CMDACTIVE=0` after both transitions. The run also proved that visual-style change dirties the DWG (`DBMOD 0→17`), so failure recovery quarantines when artifact state cannot be restored exactly instead of claiming a clean rollback.
+- **MP-2/A-09 current identity:** one isolated Session-1 owner completed **20 successful reloads + 10 injected startup failures** against the current 86-tool contract, bridge `0.8.2-mp7`, stable endpoint and zero pending recovery; the task was deleted and no acceptance process remained.
+- **MP-G10 ACIS soak/adversarial:** 10-part and 100-part live tiers, ten repeated Boolean subtracts and a near-tangent subtract passed with bounded call latency, responsive UI pings and no retained working-set growth after disposable-document close. Destructive Boolean exception handling is additionally locked by fault-injection unit coverage and quarantines uncertain ACIS state.
+- **Viewport COM-busy hardening:** a live targeted run exposed `RPC_E_CALL_REJECTED` on `PViewport.Target`; viewport create/read/scale/lock/delete now use the shared bounded COM-busy retry primitives. The same targeted five-test live suite then passed **twice consecutively: 5/5 in 18.92 s and 5/5 in 18.18 s**.
+- **Final regressions after that fix:** Linux **365 passed / 6 skipped**; Windows `.171` **364 passed / 7 skipped**; C# Release/x64 **0 errors / 3 inherited warning families**; `compileall` and `git diff --check` pass. Ruff is unavailable in the current Linux prepared environment and is not reported as a false PASS.
+
+These results remove the previous evidence gaps for current-identity MP-2 process acceptance and the declared visual-style/ACIS-soak scopes. They do **not** move 3DSOLID into the native PID/fingerprint/checkpoint loop; MP-G05 therefore remains an explicit architecture gap.

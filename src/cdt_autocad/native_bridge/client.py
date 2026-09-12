@@ -33,6 +33,7 @@ from .protocol import (
     PolylineTargetParams,
     RecoveryFinalizeParams,
     RecoveryResolveParams,
+    ViewportVisualStyleSetParams,
 )
 from .semantic import parse_native_snapshot
 
@@ -80,6 +81,62 @@ class NativeBridgeClient:
                 "bridge.documents.list result.documents must be an array of objects",
             )
         return documents
+
+    def viewport_visual_style_get(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str | None = None,
+    ) -> dict[str, Any]:
+        params = DocumentIdentityParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                **({"document_pid": document_pid} if document_pid is not None else {}),
+            }
+        )
+        result = self._request("viewport.visual_style.get", params.to_dict())
+        handle = result.get("visual_style_handle")
+        name = result.get("visual_style_name")
+        if (
+            result.get("runtime_document_id") != runtime_document_id
+            or not isinstance(handle, str)
+            or not handle
+            or not isinstance(name, str)
+            or not name
+        ):
+            raise BridgeClientProtocolError(
+                "INVALID_RESPONSE",
+                "viewport.visual_style.get returned invalid typed visual-style state",
+            )
+        return result
+
+    def viewport_visual_style_set(
+        self,
+        runtime_document_id: str,
+        *,
+        visual_style_handle: str,
+        expected_current_handle: str,
+        document_pid: str | None = None,
+    ) -> dict[str, Any]:
+        params = ViewportVisualStyleSetParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                "visual_style_handle": visual_style_handle,
+                "expected_current_handle": expected_current_handle,
+                **({"document_pid": document_pid} if document_pid is not None else {}),
+            }
+        )
+        result = self._request("viewport.visual_style.set", params.to_dict())
+        if (
+            result.get("runtime_document_id") != runtime_document_id
+            or result.get("visual_style_handle") != visual_style_handle
+            or result.get("readback_verified") is not True
+        ):
+            raise BridgeClientProtocolError(
+                "INVALID_RESPONSE",
+                "viewport.visual_style.set returned invalid restore read-back",
+            )
+        return result
 
     def document_identity(
         self,

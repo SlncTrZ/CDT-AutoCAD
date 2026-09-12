@@ -14,7 +14,7 @@ import pytest
 import cdt_autocad.backends.com_backend as cb
 from cdt_autocad.backends.com_backend import ComBackend
 from cdt_autocad.backends.ezdxf_backend import EzdxfBackend
-from cdt_autocad.errors import UnsupportedCapabilityError
+from cdt_autocad.errors import StateConflictError, UnsupportedCapabilityError
 
 
 class _FakeRegion:
@@ -240,6 +240,83 @@ async def test_primitive_solid_creation_validates_and_returns_inspection(setting
 
 
 @pytest.mark.asyncio
+async def test_solid_primitive_layer_is_validated_before_create_and_assignment_failure_cleans_up(
+    settings, monkeypatch
+):
+    backend, doc = _backend(settings, monkeypatch)
+    validate_calls = []
+
+    def reject_layer(layer):
+        validate_calls.append(layer)
+        raise ValueError("layer does not exist: MISSING")
+
+    monkeypatch.setattr(backend, "_validate_layer", reject_layer)
+    with pytest.raises(ValueError, match="layer does not exist"):
+        await backend.solid_box(0, 0, 0, 10, 10, 10, layer="MISSING")
+    assert not doc.ModelSpace.calls
+
+    class FailingLayerSolid(_FakeSolid):
+        def __init__(self, handle):
+            self._layer = "0"
+            self.deleted = False
+            super().__init__(handle)
+
+        @property
+        def Layer(self):
+            return self._layer
+
+        @Layer.setter
+        def Layer(self, value):
+            if value == "TARGET":
+                raise RuntimeError("layer assignment failed")
+            self._layer = value
+
+        def Delete(self):
+            self.deleted = True
+
+    created = FailingLayerSolid("BAD1")
+    monkeypatch.setattr(backend, "_validate_layer", lambda _layer: "TARGET")
+    monkeypatch.setattr(doc.ModelSpace, "AddBox", lambda *_args: created)
+    with pytest.raises(RuntimeError, match="layer assignment failed"):
+        await backend.solid_box(0, 0, 0, 10, 10, 10, layer="TARGET")
+    assert created.deleted is True
+    assert backend.status()["integrity_uncertain"] is False
+
+
+@pytest.mark.asyncio
+async def test_solid_extrude_layer_assignment_failure_deletes_solid_and_region(settings, monkeypatch):
+    backend, doc = _backend(settings, monkeypatch)
+
+    class FailingLayerSolid(_FakeSolid):
+        def __init__(self, handle):
+            self._layer = "0"
+            self.deleted = False
+            super().__init__(handle)
+
+        @property
+        def Layer(self):
+            return self._layer
+
+        @Layer.setter
+        def Layer(self, value):
+            if value == "TARGET":
+                raise RuntimeError("layer assignment failed")
+            self._layer = value
+
+        def Delete(self):
+            self.deleted = True
+
+    created = FailingLayerSolid("BAD2")
+    monkeypatch.setattr(backend, "_validate_layer", lambda _layer: "TARGET")
+    monkeypatch.setattr(doc.ModelSpace, "AddExtrudedSolid", lambda *_args: created)
+
+    with pytest.raises(RuntimeError, match="layer assignment failed"):
+        await backend.solid_extrude("P1", 20, layer="TARGET")
+    assert created.deleted is True
+    assert doc.ModelSpace.last_region.deleted is True
+
+
+@pytest.mark.asyncio
 async def test_3d_polyline_supporting_path_creation(settings, monkeypatch):
     backend, doc = _backend(settings, monkeypatch)
 
@@ -314,6 +391,24 @@ async def test_boolean_validates_solid_types_and_operation_before_mutation(setti
         await backend.solid_boolean("S1", "S2", "xor")
     with pytest.raises(ValueError, match="3DSOLID"):
         await backend.solid_boolean("P1", "S2", "union")
+
+
+@pytest.mark.asyncio
+async def test_boolean_failure_quarantines_destructive_acis_state(settings, monkeypatch):
+    backend, doc = _backend(settings, monkeypatch)
+
+    class FaultSolid(_FakeSolid):
+        def Boolean(self, operation, tool):
+            self.boolean_calls.append((operation, tool.Handle))
+            self.Volume = 99.0
+            raise RuntimeError("injected boolean failure")
+
+    doc.objects["S1"] = FaultSolid("S1", volume=125.0)
+
+    with pytest.raises(StateConflictError, match="Boolean completion is uncertain"):
+        await backend.solid_boolean("S1", "S2", "subtract")
+    assert backend.status()["integrity_uncertain"] is True
+    assert doc.objects["S1"].Volume == pytest.approx(99.0)
 
 
 @pytest.mark.asyncio

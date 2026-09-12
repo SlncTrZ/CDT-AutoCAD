@@ -10,6 +10,13 @@ namespace CDT.AutoCAD.Bridge;
 
 internal sealed record DocumentIdentityParams(Guid RuntimeDocumentId, string? DocumentPid);
 
+internal sealed record ViewportVisualStyleSetParams(
+    Guid RuntimeDocumentId,
+    string? DocumentPid,
+    string VisualStyleHandle,
+    string ExpectedCurrentHandle
+);
+
 internal sealed record LogicalBeginParams(
     Guid RuntimeDocumentId,
     string DocumentPid,
@@ -149,7 +156,8 @@ internal sealed record BridgeRequest(
     MetadataGetParams? MetadataGet = null,
     MetadataSetParams? MetadataSet = null,
     MetadataQueryParams? MetadataQuery = null,
-    LogicalBeginParams? LogicalBegin = null
+    LogicalBeginParams? LogicalBegin = null,
+    ViewportVisualStyleSetParams? VisualStyleSet = null
 );
 
 internal sealed record BridgeResponse(
@@ -214,6 +222,8 @@ internal static class BridgeProtocol
         "bridge.document.identity",
         "bridge.document.snapshot",
         "bridge.document.state",
+        "viewport.visual_style.get",
+        "viewport.visual_style.set",
         "bridge.recovery.list",
         "bridge.recovery.resolve",
         "bridge.recovery.finalize",
@@ -250,6 +260,14 @@ internal static class BridgeProtocol
     {
         "runtime_document_id",
         "document_pid",
+    };
+
+    private static readonly HashSet<string> VisualStyleSetFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
+        "document_pid",
+        "visual_style_handle",
+        "expected_current_handle",
     };
 
     private static readonly HashSet<string> LogicalBeginFields = new(StringComparer.Ordinal)
@@ -500,6 +518,10 @@ internal static class BridgeProtocol
         "accepted_post_fp",
     };
 
+    private static readonly Regex ObjectHandleRegex = new(
+        "^[0-9A-F]+$",
+        RegexOptions.CultureInvariant | RegexOptions.NonBacktracking
+    );
     private static readonly Regex MetadataNamespaceRegex = new(
         "^[a-z][a-z0-9_-]{0,31}(?:\\.[a-z0-9][a-z0-9_-]{0,31}){1,7}$",
         RegexOptions.CultureInvariant | RegexOptions.NonBacktracking
@@ -592,6 +614,10 @@ internal static class BridgeProtocol
             }
 
             JsonElement parameters = RequireObject(root, "params", "INVALID_PARAMS", requestId);
+            if (string.Equals(operation, "viewport.visual_style.set", StringComparison.Ordinal))
+            {
+                return ParseVisualStyleSet(requestId, operation, parameters);
+            }
             if (string.Equals(operation, "bridge.logical.begin", StringComparison.Ordinal))
             {
                 return ParseLogicalBegin(requestId, operation, parameters);
@@ -634,7 +660,8 @@ internal static class BridgeProtocol
             }
             if (!string.Equals(operation, "bridge.document.identity", StringComparison.Ordinal)
                 && !string.Equals(operation, "bridge.document.snapshot", StringComparison.Ordinal)
-                && !string.Equals(operation, "bridge.document.state", StringComparison.Ordinal))
+                && !string.Equals(operation, "bridge.document.state", StringComparison.Ordinal)
+                && !string.Equals(operation, "viewport.visual_style.get", StringComparison.Ordinal))
             {
                 if (parameters.EnumerateObject().Any())
                 {
@@ -696,6 +723,79 @@ internal static class BridgeProtocol
                 null
             );
         }
+    }
+
+    private static BridgeRequest ParseVisualStyleSet(
+        Guid requestId,
+        string operation,
+        JsonElement parameters
+    )
+    {
+        HashSet<string> fields = EnumerateUniqueFieldNames(parameters, "INVALID_PARAMS", requestId);
+        if (fields.Any(name => !VisualStyleSetFields.Contains(name))
+            || !fields.Contains("runtime_document_id")
+            || !fields.Contains("visual_style_handle")
+            || !fields.Contains("expected_current_handle"))
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "visual style params must use the exact typed schema",
+                requestId
+            );
+        }
+        Guid runtimeDocumentId = RequireCanonicalGuid(
+            parameters,
+            "runtime_document_id",
+            "INVALID_RUNTIME_DOCUMENT_ID",
+            requestId
+        );
+        string? documentPid = null;
+        if (parameters.TryGetProperty("document_pid", out JsonElement pidElement))
+        {
+            if (pidElement.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(pidElement.GetString()))
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "document_pid must be a non-empty string",
+                    requestId
+                );
+            }
+            documentPid = pidElement.GetString();
+        }
+        string visualStyleHandle = RequireString(
+            parameters,
+            "visual_style_handle",
+            "INVALID_PARAMS",
+            requestId
+        );
+        string expectedCurrentHandle = RequireString(
+            parameters,
+            "expected_current_handle",
+            "INVALID_PARAMS",
+            requestId
+        );
+        if (!ObjectHandleRegex.IsMatch(visualStyleHandle)
+            || !ObjectHandleRegex.IsMatch(expectedCurrentHandle))
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "visual style handles must be uppercase hexadecimal AutoCAD handles",
+                requestId
+            );
+        }
+        return new BridgeRequest(
+            requestId,
+            operation,
+            null,
+            null,
+            VisualStyleSet: new ViewportVisualStyleSetParams(
+                runtimeDocumentId,
+                documentPid,
+                visualStyleHandle,
+                expectedCurrentHandle
+            )
+        );
     }
 
     private static BridgeRequest ParseLogicalBegin(

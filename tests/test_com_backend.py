@@ -1036,6 +1036,81 @@ async def test_staged_viewport_roundtrip_and_safe_delete(settings, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_viewport_create_retries_busy_display_scale_and_target_writes(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+    doc = _FakeDoc()
+    layout = doc.Layouts.Item("Layout1")
+
+    class BusyViewport:
+        ObjectName = "AcDbViewport"
+
+        def __init__(self):
+            self.Handle = "B1"
+            self.Center = (100.0, 75.0, 0.0)
+            self.Width = 80.0
+            self.Height = 40.0
+            self.DisplayLocked = False
+            self.ViewportOn = False
+            self._scale = 1.0
+            self._target = (0.0, 0.0, 0.0)
+            self.display_attempts = 0
+            self.scale_attempts = 0
+            self.target_attempts = 0
+
+        @property
+        def CustomScale(self):
+            return self._scale
+
+        @CustomScale.setter
+        def CustomScale(self, value):
+            self.scale_attempts += 1
+            if self.scale_attempts == 1:
+                raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy scale")
+            self._scale = float(value)
+
+        @property
+        def Target(self):
+            return self._target
+
+        @Target.setter
+        def Target(self, value):
+            self.target_attempts += 1
+            if self.target_attempts == 1:
+                raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy target")
+            self._target = tuple(value)
+
+        def Display(self, enabled):
+            self.display_attempts += 1
+            if self.display_attempts == 1:
+                raise RuntimeError(cb._RPC_E_SERVERCALL_RETRYLATER, "busy display")
+            self.ViewportOn = bool(enabled)
+
+        def Delete(self):
+            layout.Block.items.remove(self)
+
+    viewport = BusyViewport()
+
+    def add_viewport(_center, _width, _height):
+        layout.Block.items.append(viewport)
+        return viewport
+
+    doc.PaperSpace = SimpleNamespace(AddPViewport=add_viewport)
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    monkeypatch.setattr(cb, "_point", lambda x, y, z=0.0: (float(x), float(y), float(z)))
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+
+    created = await backend.viewport_create("Layout1", 100, 75, 80, 40, 10, 20, scale=0.5)
+
+    assert created["scale"] == pytest.approx(0.5)
+    assert created["view_center"] == [10.0, 20.0]
+    assert viewport.display_attempts == 2
+    assert viewport.scale_attempts == 2
+    assert viewport.target_attempts == 2
+    assert doc.ActiveLayout.Name == "Model"
+
+
+@pytest.mark.asyncio
 async def test_preexisting_viewport_delete_requires_explicit_force(settings, monkeypatch):
     backend = ComBackend(replace(settings, backend="com"))
     doc = _FakeDoc()
@@ -1082,6 +1157,60 @@ async def test_staged_live_view_zoom_and_screenshot(settings, monkeypatch):
     assert window["max"] == [10.0, 20.0]
     assert calls[-1] == ("window", (-5.0, 5.0, 0.0), (10.0, 20.0, 0.0))
     assert (await backend.view_screenshot()).startswith(b"\x89PNG")
+
+
+@pytest.mark.asyncio
+async def test_view_operations_report_artifact_state_and_screenshot_fails_closed_on_dirty_change(
+    settings, monkeypatch
+):
+    backend = ComBackend(replace(settings, backend="com"))
+
+    class Doc:
+        Saved = True
+        dbmod = 0
+        ActiveViewport = SimpleNamespace(Direction=None)
+
+        def GetVariable(self, name):
+            if name == "DBMOD":
+                return self.dbmod
+            raise KeyError(name)
+
+    doc = Doc()
+    app = SimpleNamespace(
+        HWND=123,
+        ZoomExtents=lambda: None,
+        ZoomWindow=lambda _low, _high: None,
+    )
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_app", lambda: app)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    monkeypatch.setattr(cb, "_point", lambda x, y, z=0.0: (float(x), float(y), float(z)))
+    monkeypatch.setattr(cb, "_PIL_OK", True)
+    monkeypatch.setattr(cb, "_capture_window_png", lambda _hwnd: b"\x89PNG\r\n\x1a\nmock")
+
+    for result in (
+        await backend.view_zoom_extents(),
+        await backend.view_zoom_window(0, 0, 10, 10),
+        await backend.view_set_direction(1, -1, 1),
+        await backend.view_set_preset("se_isometric"),
+    ):
+        assert result["artifact_state"] == {
+            "saved_before": True,
+            "saved_after": True,
+            "dbmod_before": 0,
+            "dbmod_after": 0,
+            "dirty_changed": False,
+        }
+
+    def dirty_capture(_hwnd):
+        doc.Saved = False
+        doc.dbmod = 1
+        return b"\x89PNG\r\n\x1a\nmock"
+
+    monkeypatch.setattr(cb, "_capture_window_png", dirty_capture)
+    with pytest.raises(StateConflictError, match="screenshot changed document artifact state"):
+        await backend.view_screenshot()
+    assert backend.status()["integrity_uncertain"] is True
 
 
 @pytest.mark.asyncio

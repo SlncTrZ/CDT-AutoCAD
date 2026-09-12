@@ -91,6 +91,8 @@ The product recommendation remains **300 ms between completed features**. The ma
 
 ## 4. Latest live smoke evidence
 
+The production runner now requires current bridge identity `0.8.2-mp7`. The table below intentionally remains the historical marketing smoke `20260911-220855-712350`; its `0.8.1-g3` row is evidence for that run and must not be rewritten retroactively.
+
 Live Session-1 run `20260911-220855-712350` passed on AutoCAD 2027:
 
 | Check | Result |

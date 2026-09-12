@@ -1303,10 +1303,7 @@ def create_mcp(
                 f"{normalized} parameters must contain exactly: " + ", ".join(fields)
             )
         values = [float(parameters[field]) for field in fields]
-        result = await method(*values)
-        if layer is not None:
-            await backend.object_set_properties(result["handle"], layer=layer)
-            result = await backend.solid_inspect(result["handle"])
+        result = await method(*values, layer=layer)
         return {**result, "primitive": normalized}
 
     @provider_tool(tags={"solid", "write"})
@@ -1316,11 +1313,12 @@ def create_mcp(
         taper_angle: float = 0.0,
         layer: str | None = None,
     ) -> dict[str, Any]:
-        result = await backend.solid_extrude(profile_object_id, height, taper_angle)
-        if layer is not None:
-            await backend.object_set_properties(result["handle"], layer=layer)
-            result = await backend.solid_inspect(result["handle"])
-        return result
+        return await backend.solid_extrude(
+            profile_object_id,
+            height,
+            taper_angle,
+            layer=layer,
+        )
 
     @provider_tool(tags={"solid", "write"})
     async def solid_sweep(
@@ -1328,11 +1326,11 @@ def create_mcp(
         path_object_id: str,
         layer: str | None = None,
     ) -> dict[str, Any]:
-        result = await backend.solid_sweep(profile_object_id, path_object_id)
-        if layer is not None:
-            await backend.object_set_properties(result["handle"], layer=layer)
-            result = await backend.solid_inspect(result["handle"])
-        return result
+        return await backend.solid_sweep(
+            profile_object_id,
+            path_object_id,
+            layer=layer,
+        )
 
     @provider_tool(tags={"solid", "write"})
     async def solid_revolve(
@@ -1346,15 +1344,17 @@ def create_mcp(
         angle_deg: float = 360.0,
         layer: str | None = None,
     ) -> dict[str, Any]:
-        result = await backend.solid_revolve(
+        return await backend.solid_revolve(
             profile_object_id,
-            axis_x1, axis_y1, axis_z1, axis_x2, axis_y2, axis_z2,
+            axis_x1,
+            axis_y1,
+            axis_z1,
+            axis_x2,
+            axis_y2,
+            axis_z2,
             angle_deg,
+            layer=layer,
         )
-        if layer is not None:
-            await backend.object_set_properties(result["handle"], layer=layer)
-            result = await backend.solid_inspect(result["handle"])
-        return result
 
     @provider_tool(tags={"solid", "write"})
     async def solid_boolean(

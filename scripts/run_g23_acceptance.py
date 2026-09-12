@@ -16,7 +16,7 @@ from typing import Any
 from cdt_autocad.native_bridge.client import NativeBridgeClient
 from cdt_autocad.native_bridge.transport_windows import NamedPipeTransport, pipe_name_for_session
 
-EXPECTED_BRIDGE_VERSION = "0.8.1-g3"
+EXPECTED_BRIDGE_VERSION = "0.8.2-mp7"
 EXPECTED_CHUNK_LIMIT = 32
 EXPECTED_SEMANTIC_LIMIT = 12_288
 METADATA_NAMESPACE = "customer.acceptance.v1"

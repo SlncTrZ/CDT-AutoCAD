@@ -153,6 +153,33 @@ class NativePublicFacade:
         )
         return self._logical_result(result, journal)
 
+    def visual_style_get(self) -> dict[str, Any]:
+        """Read transient current-viewport style without requiring persistent document PID metadata."""
+
+        client = self._client()
+        runtime_id, document_pid = self._active_view_document(client)
+        return client.viewport_visual_style_get(
+            runtime_id,
+            document_pid=document_pid,
+        )
+
+    def visual_style_set(
+        self,
+        visual_style_handle: str,
+        *,
+        expected_current_handle: str,
+    ) -> dict[str, Any]:
+        """Restore a typed visual style only when the observed current style has not drifted."""
+
+        client = self._client()
+        runtime_id, document_pid = self._active_view_document(client)
+        return client.viewport_visual_style_set(
+            runtime_id,
+            document_pid=document_pid,
+            visual_style_handle=visual_style_handle,
+            expected_current_handle=expected_current_handle,
+        )
+
     def metadata_get(self, semantic_pid: str, namespace: str) -> dict[str, Any]:
         client = self._client()
         active = self._active_document(client)
@@ -386,6 +413,23 @@ class NativePublicFacade:
         if not kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(session_id)):
             raise StateConflictError("unable to resolve the MCP worker Windows session")
         return int(session_id.value)
+
+    @staticmethod
+    def _active_view_document(client: NativeBridgeClient) -> tuple[str, str | None]:
+        documents = client.documents_list()
+        active_rows = [row for row in documents if row.get("is_active") is True]
+        if len(active_rows) != 1:
+            raise StateConflictError(
+                "visual-style operations require exactly one bridge-reported active AutoCAD document"
+            )
+        row = active_rows[0]
+        runtime_id = row.get("runtime_document_id")
+        document_pid = row.get("document_pid")
+        if not isinstance(runtime_id, str) or not runtime_id:
+            raise StateConflictError("active native AutoCAD view has no runtime document binding")
+        if document_pid is not None and (not isinstance(document_pid, str) or not document_pid):
+            raise StateConflictError("active native AutoCAD view has invalid document PID metadata")
+        return runtime_id, document_pid
 
     @staticmethod
     def _active_document(client: NativeBridgeClient) -> ActiveNativeDocument:

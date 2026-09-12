@@ -34,6 +34,7 @@ _READ_ONLY_OPERATIONS = frozenset(
         "bridge.document.identity",
         "bridge.document.snapshot",
         "bridge.document.state",
+        "viewport.visual_style.get",
         "bridge.recovery.list",
         "metadata.get",
         "metadata.query",
@@ -57,6 +58,7 @@ _MUTATION_OPERATIONS = frozenset(
         "entity.update.lwpolyline",
         "entity.delete.lwpolyline",
         "metadata.set",
+        "viewport.visual_style.set",
     }
 )
 _RECOVERY_OPERATIONS = frozenset(
@@ -69,6 +71,14 @@ _RECOVERY_OPERATIONS = frozenset(
 _ALLOWED_OPERATIONS = _READ_ONLY_OPERATIONS | _MUTATION_OPERATIONS | _RECOVERY_OPERATIONS
 _REQUEST_FIELDS = frozenset({"protocol", "request_id", "operation", "params"})
 _DOCUMENT_IDENTITY_FIELDS = frozenset({"runtime_document_id", "document_pid"})
+_VISUAL_STYLE_SET_FIELDS = frozenset(
+    {
+        "runtime_document_id",
+        "document_pid",
+        "visual_style_handle",
+        "expected_current_handle",
+    }
+)
 _MUTATION_BINDING_FIELDS = frozenset(
     {"runtime_document_id", "document_pid", "expected_parent_fp", "fault_stage"}
 )
@@ -76,6 +86,7 @@ _FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ERROR_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _CHECKPOINT_ID_RE = re.compile(r"^cp:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 _ENTITY_PID_RE = re.compile(r"^pid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+_OBJECT_HANDLE_RE = re.compile(r"^[0-9A-F]+$")
 _METADATA_NAMESPACE_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}(?:\.[a-z0-9][a-z0-9_-]{0,31}){1,7}$")
 _METADATA_PATH_RE = re.compile(r"^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){0,7}$")
 _RESERVED_METADATA_PREFIXES = ("slnctrz.", "cdt.", "provider.")
@@ -151,6 +162,57 @@ class DocumentIdentityParams:
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {"runtime_document_id": self.runtime_document_id}
+        if self.document_pid is not None:
+            result["document_pid"] = self.document_pid
+        return result
+
+
+@dataclass(frozen=True)
+class ViewportVisualStyleSetParams:
+    """Transient current-viewport visual-style restore guarded by exact predecessor state."""
+
+    runtime_document_id: str
+    document_pid: str | None
+    visual_style_handle: str
+    expected_current_handle: str
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> ViewportVisualStyleSetParams:
+        if set(value) - _VISUAL_STYLE_SET_FIELDS:
+            raise BridgeProtocolError("INVALID_PARAMS", "visual style params contain unknown fields")
+        if not {"runtime_document_id", "visual_style_handle", "expected_current_handle"}.issubset(value):
+            raise BridgeProtocolError("INVALID_PARAMS", "visual style params are incomplete")
+        identity = DocumentIdentityParams.from_dict(
+            {
+                "runtime_document_id": value.get("runtime_document_id"),
+                **({"document_pid": value.get("document_pid")} if "document_pid" in value else {}),
+            }
+        )
+        style_handle = value.get("visual_style_handle")
+        current_handle = value.get("expected_current_handle")
+        if not isinstance(style_handle, str) or _OBJECT_HANDLE_RE.fullmatch(style_handle) is None:
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                "visual_style_handle must be an uppercase hexadecimal AutoCAD handle",
+            )
+        if not isinstance(current_handle, str) or _OBJECT_HANDLE_RE.fullmatch(current_handle) is None:
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                "expected_current_handle must be an uppercase hexadecimal AutoCAD handle",
+            )
+        return cls(
+            identity.runtime_document_id,
+            identity.document_pid,
+            style_handle,
+            current_handle,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_document_id": self.runtime_document_id,
+            "visual_style_handle": self.visual_style_handle,
+            "expected_current_handle": self.expected_current_handle,
+        }
         if self.document_pid is not None:
             result["document_pid"] = self.document_pid
         return result
@@ -1331,6 +1393,7 @@ class BridgeRequest:
         | PolylineTargetParams
         | RecoveryResolveParams
         | RecoveryFinalizeParams
+        | ViewportVisualStyleSetParams
         | Mapping[str, Any]
     )
 
@@ -1358,7 +1421,12 @@ class BridgeRequest:
             code="INVALID_PARAMS",
             field_name="params",
         )
-        if operation in {"bridge.document.identity", "bridge.document.snapshot", "bridge.document.state"}:
+        if operation in {
+            "bridge.document.identity",
+            "bridge.document.snapshot",
+            "bridge.document.state",
+            "viewport.visual_style.get",
+        }:
             params: (
                 DocumentIdentityParams
                 | BatchCreateParams
@@ -1376,6 +1444,8 @@ class BridgeRequest:
                 | RecoveryFinalizeParams
                 | Mapping[str, Any]
             ) = DocumentIdentityParams.from_dict(raw_params)
+        elif operation == "viewport.visual_style.set":
+            params = ViewportVisualStyleSetParams.from_dict(raw_params)
         elif operation == "bridge.logical.begin":
             params = LogicalBeginParams.from_dict(raw_params)
         elif operation == "metadata.get":

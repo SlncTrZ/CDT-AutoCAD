@@ -111,6 +111,65 @@ def test_document_identity_requires_runtime_document_id_not_pid_only():
     assert request.params.document_pid == "doc:expected-lineage"
 
 
+def test_visual_style_protocol_uses_runtime_binding_and_strict_restore_handles():
+    get_request = BridgeRequest.from_dict(
+        request_payload(
+            "viewport.visual_style.get",
+            {
+                "runtime_document_id": RUNTIME_DOCUMENT_ID,
+                "document_pid": "doc:lineage",
+            },
+        )
+    )
+    assert get_request.operation == "viewport.visual_style.get"
+    assert isinstance(get_request.params, DocumentIdentityParams)
+
+    set_request = BridgeRequest.from_dict(
+        request_payload(
+            "viewport.visual_style.set",
+            {
+                "runtime_document_id": RUNTIME_DOCUMENT_ID,
+                "document_pid": "doc:lineage",
+                "visual_style_handle": "1A2B",
+                "expected_current_handle": "3C4D",
+            },
+        )
+    )
+    assert set_request.operation == "viewport.visual_style.set"
+    assert set_request.params.to_dict() == {
+        "runtime_document_id": RUNTIME_DOCUMENT_ID,
+        "document_pid": "doc:lineage",
+        "visual_style_handle": "1A2B",
+        "expected_current_handle": "3C4D",
+    }
+
+    for bad_handle in ("", "0x1A", "1a", "GG", " 1A "):
+        with pytest.raises(BridgeProtocolError, match="INVALID_PARAMS"):
+            BridgeRequest.from_dict(
+                request_payload(
+                    "viewport.visual_style.set",
+                    {
+                        "runtime_document_id": RUNTIME_DOCUMENT_ID,
+                        "visual_style_handle": bad_handle,
+                        "expected_current_handle": "3C4D",
+                    },
+                )
+            )
+
+    with pytest.raises(BridgeProtocolError, match="INVALID_PARAMS"):
+        BridgeRequest.from_dict(
+            request_payload(
+                "viewport.visual_style.set",
+                {
+                    "runtime_document_id": RUNTIME_DOCUMENT_ID,
+                    "visual_style_handle": "1A2B",
+                    "expected_current_handle": "3C4D",
+                    "extra": True,
+                },
+            )
+        )
+
+
 def test_health_and_document_list_reject_parameters():
     for operation in ("bridge.health", "bridge.documents.list"):
         with pytest.raises(BridgeProtocolError, match="INVALID_PARAMS"):

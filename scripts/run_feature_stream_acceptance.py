@@ -17,7 +17,7 @@ from cdt_autocad.native_bridge.client import NativeBridgeClient
 from cdt_autocad.native_bridge.feature_stream import FeatureStreamExecutor
 from cdt_autocad.native_bridge.transport_windows import NamedPipeTransport, pipe_name_for_session
 
-EXPECTED_BRIDGE_VERSION = "0.8.1-g3"
+EXPECTED_BRIDGE_VERSION = "0.8.2-mp7"
 CORRELATION_ID = "feature-stream-live-2026-09-11"
 
 
