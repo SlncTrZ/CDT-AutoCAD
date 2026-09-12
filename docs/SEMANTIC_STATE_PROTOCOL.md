@@ -30,7 +30,7 @@ As of the current checkpoint:
 - the public promotion `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` is CLOSED/PUSHED at commit `0516fe3`; current maintenance publication is `31186f5` with bridge candidate `0.8.2-mp7`; selected strong-integrity tools and `feature_execute` are public while broader COM-to-native replacement remains separately gated;
 - 3DSOLID/ACIS operations are still outside the native PID/fingerprint/checkpoint exact-recovery loop. Current ACIS soak/fault evidence strengthens the COM solid lane but does not satisfy that native semantic-state invariant.
 
-The protocol below remains both implemented contract and normative guardrail. Current status authority is `docs/CURRENT_CHECKPOINT.md`; historical N7 details are retained in the maintainer-internal acceptance record and are not part of the published documentation set.
+The protocol below remains both implemented contract and normative guardrail. Current public status authority is `docs/CURRENT_CHECKPOINT.md`; the internal distilled state is `_private/AUDIT.md`, while raw historical machine evidence is retained only under ignored `artifacts/internal-evidence/`.
 
 ## 2. Core protocol objects
 

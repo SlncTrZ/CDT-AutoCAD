@@ -126,7 +126,7 @@ For important drawing steps:
 
 `.runtime/`, local `artifacts/`, `_private/` and `_test_workspace/` are intentionally local/ignored operational areas. They are not publication targets by default.
 
-Canonical reviewed acceptance evidence is retained in the ignored maintainer workspace (`_private/evidence/`) and must never be swept into a public/product commit. Structured diagnostics are operational evidence, not recovery authority; see `OBSERVABILITY.md`.
+Canonical reviewed machine evidence is retained outside `_private` under ignored `artifacts/internal-evidence/`; the durable internal verdict/state is distilled into `_private/AUDIT.md` and `_private/HANDOFF.md`. Raw evidence must never be swept into a public/product commit. Structured diagnostics are operational evidence, not recovery authority; see `OBSERVABILITY.md`.
 
 ## 9. Verification environment
 

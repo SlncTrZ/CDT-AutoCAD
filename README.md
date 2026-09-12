@@ -215,8 +215,9 @@ At 10,000 entities the accepted run used 313 native chunks, preserved the same A
 restored the exact predecessor at beginning/middle/end injected failures and finished with 10,000
 unique persistent entity PIDs. The bridge remains bounded at 32 entities per native micro-chunk.
 
-Machine-readable acceptance evidence is retained with the internal acceptance record under its
-original file names and is not part of the published tree, including
+Machine-readable acceptance evidence worth retaining is compressed under ignored
+`artifacts/internal-evidence/` with its original file names; current distilled status lives in
+`_private/AUDIT.md`. It is not part of the published tree, including
 `g3-scale-10000-2026-09-11.json` and `feature-stream-production-2026-09-11.json`.
 
 ## 2D and 3D workflow notes

@@ -9,7 +9,7 @@ This repository owns the AutoCAD MCP provider runtime only. `CDT_Engineer` is th
 - Source repo: `SlncTrZ/CDT_Engineer`
 - Pinned commit: `643019c`
 - Read first (published): `docs/CURRENT_CHECKPOINT.md`, `docs/SPEC_BASELINE.md`, `docs/SEMANTIC_STATE_PROTOCOL.md`, `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`.
-- Read first (internal, untracked working record): `_private/README.md`, `_private/development/roadmap/ROADMAP.md`, `_private/development/architecture/ARCHITECTURE_UPGRADE_PLAN.md`, `_private/development/adr/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`, `_private/development/acceptance/NATIVE_BRIDGE_ACCEPTANCE.md`.
+- Read first (internal, untracked working record), in this order: `_private/AUDIT.md`, `_private/TECH_DEBT.md`, `_private/DEVELOP_PLAN.md`, `_private/HANDOFF.md`, `_private/NEXT_SESSION.md`. `_private/` must contain exactly these five control files; do not recreate history/evidence/ADR/roadmap subtrees there.
 - Do not edit files under `specs/`; they are pinned snapshots. Contract changes must be proposed in `CDT_Engineer` and synced here only after approval.
 
 ## Ownership boundary
@@ -36,7 +36,7 @@ Forbidden unless explicitly assigned:
 - Scale graduation 100 / 1,000 / 5,000 / 10,000 is LIVE PASS with beginning/middle/end failure injection, exact predecessor recovery, zero pending recovery and process-stability evidence.
 - Feature-based Chunks Streaming is the approved Production Domain execution model: the Domain Agent defines one meaningful feature; a failed current feature rolls back to its own predecessor without undoing earlier committed features. Default presentation pacing is 300 ms between completed features, not between native micro-chunks.
 - Domain semantics remain outside CDT-AutoCAD. `feature_id` is correlation metadata; the provider must not interpret road/manhole/kiosk/beam/pipe/TCVN or similar business meaning.
-- Canonical current-state authority: `docs/CURRENT_CHECKPOINT.md`; operational procedure: `docs/OPERATIONS_RUNBOOK.md`; release gate: the maintainer-internal release checklist under `_private/development/release/`. Historical session handoffs remain evidence of their original checkpoints and are not current-state instructions.
+- Public current-state authority: `docs/CURRENT_CHECKPOINT.md`; internal current-state authority: `_private/AUDIT.md`; operational procedure: `docs/OPERATIONS_RUNBOOK.md`; current work/development gates live in `_private/DEVELOP_PLAN.md` and `_private/NEXT_SESSION.md`.
 
 ## Current delivery gates
 
@@ -46,7 +46,7 @@ Forbidden unless explicitly assigned:
 4. The `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` public promotion is CLOSED at `0516fe3`; do not reopen it unless regression evidence proves a defect.
 5. Any future public contract/version change must again run full Linux regression, Windows `.171` regression, C# Release/x64 build, compile/hygiene, `git diff --check` and code/security review before commit/push.
 6. Stage surgically. Do not stage `.gitignore`, `_private/`, `_test_workspace/` or `specs/**` in the promotion commit unless explicitly authorized.
-7. Historical evidence/handoff files may legitimately mention 50 tools, fingerprint v2 or staged A3 because those values describe their original checkpoint; do not rewrite historical evidence to pretend it ran under the new contract.
+7. Historical machine evidence may legitimately mention 50 tools, fingerprint v2 or staged A3 because those values describe its original checkpoint; do not rewrite historical evidence to pretend it ran under the new contract. Raw evidence is kept outside `_private` under ignored `artifacts/internal-evidence/`.
 8. Any reference-driven/user-reviewed drawing must satisfy both Semantic State integrity and `docs/DRAWING_QUALITY_ACCEPTANCE.md`.
 
 ## Required workflow
@@ -55,7 +55,7 @@ Forbidden unless explicitly assigned:
 2. Read existing code before edits; reuse first.
 3. TDD: failing test -> implementation -> pass -> regression.
 4. Validate before side effects; fail closed on unknown capability/state.
-5. Preserve the current COM STA/timeout integrity model during migration; all new architecture work must target the Native .NET Bridge + Semantic State Loop defined by ADR-001 and the Semantic State Protocol.
+5. Preserve the current COM STA/timeout integrity model during migration; all new architecture work must follow `_private/DEVELOP_PLAN.md` and the published Semantic State Protocol.
 6. Run focused tests, full regression, compile/hygiene and `git diff --check` before commit.
 7. Every code/deploy change must be logged through CyberBrain `kb.knowledge_store`.
 8. End each work session with episodic save (`memory_store`/`conversation_save`) followed by `dream_enqueue`.

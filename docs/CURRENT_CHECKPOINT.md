@@ -165,11 +165,11 @@ The cleanup also fixed the standalone MP-2 acceptance fixture so it copies the b
 
 Operational use begins **2026-09-12** under the existing `0.4.0rc1` RC/preview contract. This does not declare GA/stable status and does not expand capability claims beyond accepted evidence.
 
-Repository hygiene now intentionally keeps `_private/`, `_test_workspace/`, local `artifacts/`, runtime/cache/build output and local secret files untracked. `_private/` contains benchmark/planning material and must not be swept into public/product commits. `specs/**` remains a pinned snapshot and is not to be edited.
+Repository hygiene intentionally keeps `_private/`, `_test_workspace/`, local `artifacts/`, runtime/cache/build output and local secret files untracked. `_private/` is intentionally reduced to exactly five current control files (`AUDIT`, `DEVELOP_PLAN`, `TECH_DEBT`, `HANDOFF`, `NEXT_SESSION`) and must not be swept into public/product commits. `specs/**` remains a pinned snapshot and is not to be edited.
 
-Internal research, development, roadmap, ADR, handoff and acceptance-evidence material in this repository now lives only under `_private/`; the published `docs/` set is limited to product-facing contracts and guides, and must stay usable without `_private/`. `_private/README.md` records the internal layout plus the old-to-new path mapping for material that moved out of `docs/`.
+Internal working context is deliberately condensed into the five `_private/*.md` control files; there is no private history/ADR/evidence subtree. Canonical raw machine evidence that remains worth retaining is compressed under ignored `artifacts/internal-evidence/`. The published `docs/` set remains limited to product-facing contracts/guides and must stay usable without `_private/`.
 
-Use `docs/README.md` as the documentation map and `docs/OPERATIONS_RUNBOOK.md` for live operation. Release-gate execution and historical pre-close session handoffs are maintainer-internal and are not part of the published documentation set.
+Use `docs/README.md` as the documentation map and `docs/OPERATIONS_RUNBOOK.md` for live operation. Current internal status/debt/plan/session continuity lives only in the five `_private/*.md` control files and is not part of the published documentation set.
 
 ## 9. Current maintenance hardening and architecture frontier — 2026-09-12
 

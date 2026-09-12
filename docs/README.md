@@ -7,11 +7,11 @@ needed to use CDT-AutoCAD, including its provider contract, operation and qualit
 
 ## Publication boundary
 
-Only product-facing contracts/guides are published here. Research, development, roadmap, ADR,
-session-handoff, internal acceptance/evidence and other internal-direction material is
-maintainer-internal under the ignored `_private/` workspace and is **not** part of the published
-tree. Published pages must remain usable without `_private/`. `_private/README.md` records the
-internal layout, including the old-to-new path mapping for material that moved out of `docs/`.
+Only product-facing contracts/guides are published here. Maintainer context is intentionally
+condensed into exactly five ignored control files: `_private/AUDIT.md`, `_private/DEVELOP_PLAN.md`,
+`_private/TECH_DEBT.md`, `_private/HANDOFF.md`, and `_private/NEXT_SESSION.md`. There is no private
+history/ADR/evidence tree. Published pages must remain usable without `_private/`; raw machine
+evidence worth retaining lives under ignored `artifacts/internal-evidence/`.
 
 ## Start here
 
@@ -40,10 +40,10 @@ Operational use begins **2026-09-12** under provider `0.4.0rc1`, contract `autoc
 
 `LIVE_ACCEPTANCE.md` is the public evidence reference reported by `system_status` and
 `native_integrity_status`; it states the accepted live gates and their scope. The machine-readable
-acceptance artifacts behind those statements are retained with the internal acceptance record under
-their original file names and are not part of the published tree. Those artifacts describe the exact
-versions, fixtures and scopes under which they were produced; do not rewrite old evidence to match
-newer identities. `TOOL_GUIDE.md` is contract-hash material, so documentation cleanup must not modify it merely to refresh prose or timestamps.
+acceptance artifacts behind those statements are retained under their original file names inside the
+ignored internal-evidence archive and are not part of the published tree. `_private/AUDIT.md` holds
+the current distilled verdict. Historical artifacts describe the exact versions/fixtures/scopes under
+which they were produced; do not rewrite them to match newer identities. `TOOL_GUIDE.md` is contract-hash material, so documentation cleanup must not modify it merely to refresh prose or timestamps.
 
 ## Ownership and legal
 
