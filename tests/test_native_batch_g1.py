@@ -282,31 +282,33 @@ def test_g1_batch_transform_contract_rejects_unbounded_or_domain_schema():
             BridgeRequest.from_dict(payload("entity.batch.transform", params))
 
 
-def test_g1_batch_transform_fault_stage_is_precommit_only():
-    valid = BridgeRequest.from_dict(
-        payload(
-            "entity.batch.transform",
-            binding(
-                semantic_pids=[PID_A],
-                transform={"kind": "translate", "delta": [1, 0, 0]},
-                fault_stage="after_apply_before_commit",
-            ),
-        )
-    )
-    assert isinstance(valid.params, BatchTransformParams)
-    assert valid.params.fault_stage == "after_apply_before_commit"
-
-    with pytest.raises(BridgeProtocolError, match="INVALID_PARAMS"):
-        BridgeRequest.from_dict(
+def test_g1_batch_transform_fault_stage_allows_precommit_and_stray_postcommit_only():
+    for fault_stage in ("after_apply_before_commit", "after_commit_add_stray"):
+        valid = BridgeRequest.from_dict(
             payload(
                 "entity.batch.transform",
                 binding(
                     semantic_pids=[PID_A],
                     transform={"kind": "translate", "delta": [1, 0, 0]},
-                    fault_stage="after_commit_corrupt_target",
+                    fault_stage=fault_stage,
                 ),
             )
         )
+        assert isinstance(valid.params, BatchTransformParams)
+        assert valid.params.fault_stage == fault_stage
+
+    for invalid_stage in ("after_commit_corrupt_target", "eval:anything"):
+        with pytest.raises(BridgeProtocolError, match="INVALID_PARAMS"):
+            BridgeRequest.from_dict(
+                payload(
+                    "entity.batch.transform",
+                    binding(
+                        semantic_pids=[PID_A],
+                        transform={"kind": "translate", "delta": [1, 0, 0]},
+                        fault_stage=invalid_stage,
+                    ),
+                )
+            )
 
 
 def test_g1_client_emits_one_strict_batch_transform_chunk_request():

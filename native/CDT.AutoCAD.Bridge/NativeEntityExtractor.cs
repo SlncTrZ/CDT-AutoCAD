@@ -180,13 +180,13 @@ internal static class NativeEntityExtractor
                 Solid3dMassProperties mass = solid.MassProperties;
                 geometry = new Dictionary<string, object?>
                 {
-                    ["solid_fingerprint_schema_version"] = 1,
+                    ["solid_fingerprint_schema_version"] = 2,
                     ["centroid"] = SemanticValue.Point(mass.Centroid),
                     ["volume"] = mass.Volume,
-                    ["mass_extents"] = new Dictionary<string, object?>
+                    ["geometric_extents"] = new Dictionary<string, object?>
                     {
-                        ["min"] = SemanticValue.Point(mass.Extents.MinPoint),
-                        ["max"] = SemanticValue.Point(mass.Extents.MaxPoint),
+                        ["min"] = SemanticValue.Point(solid.GeometricExtents.MinPoint),
+                        ["max"] = SemanticValue.Point(solid.GeometricExtents.MaxPoint),
                     },
                     ["moments_of_inertia"] = SemanticValue.Vector(mass.MomentsOfIntertia),
                     ["products_of_inertia"] = SemanticValue.Vector(mass.ProductsOfIntertia),
@@ -194,7 +194,7 @@ internal static class NativeEntityExtractor
                     ["radii_of_gyration"] = SemanticValue.Vector(mass.RadiiOfGyration),
                 };
                 metrics["volume"] = mass.Volume;
-                metrics["verification_scope"] = "mass-properties-v1";
+                metrics["verification_scope"] = "solid-semantic-v2";
                 metrics["topology_verified"] = false;
                 break;
 

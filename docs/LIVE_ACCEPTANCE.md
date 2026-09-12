@@ -1,7 +1,7 @@
 # AutoCAD Live Acceptance Runbook
 
 > Updated: 2026-09-12 17:30 +07:00
-> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming
+> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
 > Public promotion: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` — **CLOSED/PUSHED at `0516fe3`** · current maintenance publication **`31186f5`**
 
@@ -19,6 +19,7 @@ Current live native requirements already measured PASS on `.171` AutoCAD 2027 Se
 - 10,000 entities = 313 native chunks, 10,000 unique persistent PIDs, zero pending recovery, stable AutoCAD/bridge process identity;
 - Feature-based Chunks Streaming: Feature 1 commit, Feature 2 failure at native chunk 1 restores only Feature 2 predecessor, Feature 1 remains exact, Feature 3 continues successfully;
 - feature presentation pacing recommendation 300 ms; live measured pause 300.295 ms;
+- MP-G05 bounded native `3DSOLID` translation: persistent PID + `solid-semantic-v2`, stale-parent `STATE_DRIFT` refusal, `COMMITTED_VERIFIED`, exact R0 abort, post-commit integrity-failure detection and exact R2 predecessor restore; rotate/scale/Boolean/topology are not implied;
 - no arbitrary C#/AutoLISP/shell/macro/free-text command surface.
 
 Canonical current evidence (machine-readable artifacts retained with the internal acceptance record
@@ -37,7 +38,7 @@ mp-g10-acis-soak-live-2026-09-12.json
 bridge-0.8.2-mp7-runtime-binding-2026-09-12.json
 ```
 
-Final close-gate result on the original promotion tree remains: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**. The later `0.8.2-mp7` maintenance candidate has independently passed Linux **365 / 6 skipped**, Windows `.171` **364 / 7 skipped**, two consecutive targeted live runs at **5/5**, current-identity MP-2 **20 success + 10 injected failure**, visual-style round-trip/restore and ACIS 10/100-part adversarial soak. Ruff is unavailable in the current prepared Linux environment and is recorded as a tooling gap rather than a false PASS. Older sections below retain historical wording such as “50 tools” where that wording records the state of an earlier acceptance run.
+Final close-gate result on the original promotion tree remains: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**. The current maintenance tree has now independently passed Linux **386 / 6 skipped**, Windows `.171` **385 / 7 skipped**, Ruff + compile, C# Release/x64 **0 errors / 3 inherited warning families**, current-identity MP-2 **20 success + 10 injected failure**, visual-style round-trip/restore, ACIS 10/100-part adversarial soak and the bounded MP-G05 native solid translation/recovery gate. Older sections below retain historical wording such as “50 tools” where that wording records the state of an earlier acceptance run.
 
 ## 1. Certification policy
 

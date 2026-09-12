@@ -896,10 +896,10 @@ class BatchTransformParams:
     def from_dict(cls, value: Mapping[str, Any]) -> BatchTransformParams:
         allowed = _MUTATION_BINDING_FIELDS | {"semantic_pids", "transform", "logical_transaction"}
         runtime_id, document_pid, parent_fp, fault_stage = _mutation_binding(value, allowed)
-        if fault_stage is not None and fault_stage != "after_apply_before_commit":
+        if fault_stage not in (None, "after_apply_before_commit", "after_commit_add_stray"):
             raise BridgeProtocolError(
                 "INVALID_PARAMS",
-                "batch transform only enables the pre-commit fault stage",
+                "batch transform enables only bounded pre-commit abort or post-commit stray fault stages",
             )
         raw_pids = value.get("semantic_pids")
         if not isinstance(raw_pids, list | tuple) or not 1 <= len(raw_pids) <= MAX_BATCH_CHUNK_ENTITIES:

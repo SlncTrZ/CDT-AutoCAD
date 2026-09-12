@@ -1032,7 +1032,7 @@ internal sealed class NativeMutationService
                     Dictionary<string, object?> predecessor = FindEntity(before, pid);
                     ObjectId objectId = targets[pid];
                     Entity target = (Entity)transaction.GetObject(objectId, OpenMode.ForWrite, false);
-                    EnsureBatchTransformTarget(target, predecessor);
+                    EnsureBatchTransformTarget(target, predecessor, parameters.Transform);
                     target.TransformBy(transform);
                     affectedObjectIds.Add(objectId);
                     predecessorEntities.Add(predecessor);
@@ -1125,6 +1125,13 @@ internal sealed class NativeMutationService
                     affectedObjectIds.ToArray(),
                     predecessorEntities.ToArray()
                 );
+            }
+
+            if (string.Equals(parameters.FaultStage, "after_commit_add_stray", StringComparison.Ordinal))
+            {
+                using Transaction faultTransaction = document.Database.TransactionManager.StartTransaction();
+                AddStrayEntity(document.Database, faultTransaction);
+                faultTransaction.Commit();
             }
 
             Dictionary<string, object?> persisted = _semantic.Extract(
@@ -1864,7 +1871,8 @@ internal sealed class NativeMutationService
 
     private static void EnsureBatchTransformTarget(
         Entity target,
-        Dictionary<string, object?> predecessor
+        Dictionary<string, object?> predecessor,
+        BatchTransformSpec transform
     )
     {
         string type = Convert.ToString(predecessor["entity_type"]) ?? string.Empty;
@@ -1893,10 +1901,19 @@ internal sealed class NativeMutationService
             case Polyline polyline when type == "LWPOLYLINE":
                 EnsureSimplePolyline(polyline);
                 return;
+            case Solid3d when type == "3DSOLID":
+                if (transform.Kind != "translate")
+                {
+                    throw new BridgeServiceException(
+                        "UNSUPPORTED_TARGET_GEOMETRY",
+                        "3DSOLID batch transform currently supports translate only"
+                    );
+                }
+                return;
             default:
                 throw new BridgeServiceException(
                     "UNSUPPORTED_TARGET_GEOMETRY",
-                    "batch transform supports only LINE/CIRCLE/ARC/simple-LWPOLYLINE targets"
+                    "batch transform supports only LINE/CIRCLE/ARC/simple-LWPOLYLINE/3DSOLID-translate targets"
                 );
         }
     }

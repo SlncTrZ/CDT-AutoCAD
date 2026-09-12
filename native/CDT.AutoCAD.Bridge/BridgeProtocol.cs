@@ -1471,11 +1471,12 @@ internal static class BridgeProtocol
             faultStage = faultElement.ValueKind == JsonValueKind.String
                 ? faultElement.GetString()
                 : null;
-            if (!string.Equals(faultStage, "after_apply_before_commit", StringComparison.Ordinal))
+            if (!string.Equals(faultStage, "after_apply_before_commit", StringComparison.Ordinal)
+                && !string.Equals(faultStage, "after_commit_add_stray", StringComparison.Ordinal))
             {
                 throw new BridgeProtocolException(
                     "INVALID_PARAMS",
-                    "batch transform only enables the pre-commit fault stage",
+                    "batch transform enables only bounded pre-commit abort or post-commit stray fault stages",
                     requestId
                 );
             }

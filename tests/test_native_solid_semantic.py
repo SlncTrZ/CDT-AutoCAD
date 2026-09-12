@@ -1,4 +1,4 @@
-"""MP-G05 native 3DSOLID read semantics — PID + deterministic mass-signature fingerprint.
+"""MP-G05 native 3DSOLID integrity semantics — PID, fingerprint, translate, recovery.
 Wing: code | Topic: native-solid-semantic | Updated: 2026-09-12
 """
 
@@ -20,10 +20,10 @@ def _solid_state(*, centroid: tuple[float, float, float]) -> EntitySemanticState
         entity_type="3DSOLID",
         layer="0",
         geometry={
-            "solid_fingerprint_schema_version": 1,
+            "solid_fingerprint_schema_version": 2,
             "centroid": [cx, cy, cz],
             "volume": 480.0,
-            "mass_extents": {
+            "geometric_extents": {
                 "min": [cx - 5.0, cy - 4.0, cz - 3.0],
                 "max": [cx + 5.0, cy + 4.0, cz + 3.0],
             },
@@ -38,13 +38,13 @@ def _solid_state(*, centroid: tuple[float, float, float]) -> EntitySemanticState
         },
         metrics={
             "volume": 480.0,
-            "verification_scope": "mass-properties-v1",
+            "verification_scope": "solid-semantic-v2",
             "topology_verified": False,
         },
     )
 
 
-def test_native_extractor_declares_versioned_3dsolid_mass_signature_without_topology_claim():
+def test_native_extractor_declares_versioned_3dsolid_signature_without_topology_claim():
     source = (ROOT / "native/CDT.AutoCAD.Bridge/NativeEntityExtractor.cs").read_text(
         encoding="utf-8"
     )
@@ -55,17 +55,18 @@ def test_native_extractor_declares_versioned_3dsolid_mass_signature_without_topo
         '"solid_fingerprint_schema_version"',
         "mass.Centroid",
         "mass.Volume",
-        "mass.Extents.MinPoint",
-        "mass.Extents.MaxPoint",
+        "solid.GeometricExtents.MinPoint",
+        "solid.GeometricExtents.MaxPoint",
         "mass.MomentsOfIntertia",
         "mass.ProductsOfIntertia",
         "mass.PrincipalMoments",
         "mass.RadiiOfGyration",
-        'metrics["verification_scope"] = "mass-properties-v1"',
+        'metrics["verification_scope"] = "solid-semantic-v2"',
         'metrics["topology_verified"] = false',
     )
     for marker in required:
         assert marker in source
+    assert "mass.Extents" not in source
 
 
 def test_solid_geometry_fingerprint_is_deterministic_and_translation_sensitive():
@@ -76,3 +77,19 @@ def test_solid_geometry_fingerprint_is_deterministic_and_translation_sensitive()
     baseline_fp = fingerprint_geometry(baseline)
     assert fingerprint_geometry(identical) == baseline_fp
     assert fingerprint_geometry(moved) != baseline_fp
+
+
+def test_native_batch_transform_enables_3dsolid_translate_without_claiming_other_solid_transforms():
+    service = (ROOT / "native/CDT.AutoCAD.Bridge/NativeMutationService.cs").read_text(
+        encoding="utf-8"
+    )
+    validator = (ROOT / "native/CDT.AutoCAD.Bridge/NativeMutationValidator.cs").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'case Solid3d when type == "3DSOLID"' in service
+    assert 'transform.Kind != "translate"' in service
+    assert "3DSOLID batch transform currently supports translate only" in service
+    assert 'case "3DSOLID":' in validator
+    assert "SolidMatchesTranslation" in validator
+    assert 'string.Equals(parameters.FaultStage, "after_commit_add_stray"' in service

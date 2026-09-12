@@ -467,9 +467,42 @@ internal static class NativeMutationValidator
                     .ToArray();
                 return points.All(point => point.Length == 2)
                     && SamePolyline(afterGeometry, points, closed);
+            case "3DSOLID":
+                return SolidMatchesTranslation(beforeGeometry, afterGeometry, transform);
             default:
                 return false;
         }
+    }
+
+    private static bool SolidMatchesTranslation(
+        Dictionary<string, object?> before,
+        Dictionary<string, object?> after,
+        BatchTransformSpec transform
+    )
+    {
+        if (transform.Kind != "translate"
+            || !Equals(before["solid_fingerprint_schema_version"], after["solid_fingerprint_schema_version"])
+            || before["centroid"] is not double[] beforeCentroid
+            || after["centroid"] is not double[] afterCentroid
+            || !Same3(afterCentroid, TransformPoint3(beforeCentroid, transform))
+            || !Number(before["volume"], out double beforeVolume)
+            || !Number(after["volume"], out double afterVolume)
+            || !Nearly(beforeVolume, afterVolume)
+            || before["geometric_extents"] is not Dictionary<string, object?> beforeExtents
+            || after["geometric_extents"] is not Dictionary<string, object?> afterExtents
+            || beforeExtents["min"] is not double[] beforeMin
+            || beforeExtents["max"] is not double[] beforeMax
+            || afterExtents["min"] is not double[] afterMin
+            || afterExtents["max"] is not double[] afterMax
+            || !Same3(afterMin, TransformPoint3(beforeMin, transform))
+            || !Same3(afterMax, TransformPoint3(beforeMax, transform))
+            || before["principal_moments"] is not double[] beforePrincipal
+            || after["principal_moments"] is not double[] afterPrincipal
+            || !Same3(beforePrincipal, afterPrincipal))
+        {
+            return false;
+        }
+        return true;
     }
 
     private static double[] TransformPoint3(double[] point, BatchTransformSpec transform)
