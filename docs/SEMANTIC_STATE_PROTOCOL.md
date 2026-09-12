@@ -1,6 +1,6 @@
 # Semantic State Protocol — CDT-AutoCAD Target Contract
 
-> Updated: 2026-09-11 21:50 +07:00
+> Updated: 2026-09-12 17:30 +07:00
 > Status: CONTRACT BASELINE · N1–N7/O1 + G1/G2/G3 implemented/live-accepted for documented scopes · Feature-based Chunks Streaming live-accepted
 > Scope: source semantics, native extraction, PID, canonicalization, fingerprinting, diff, metadata, feature-local rollback and deterministic validation
 
@@ -27,7 +27,8 @@ As of the current checkpoint:
 - G3 provides one immutable predecessor checkpoint across yielded native chunks, independent final compact-state verification and exact R2 predecessor restoration for logical failure or unknown completion;
 - scale graduation is live-accepted at 100, 1,000, 5,000 and 10,000 entities, with beginning/middle/end failure injection and zero pending recovery;
 - Feature-based Chunks Streaming is the Production Domain orchestration model: one caller-defined feature owns one logical predecessor; failure restores only the current feature while prior committed features remain accepted;
-- the public promotion `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` is CLOSED/PUSHED at commit `0516fe3`; selected G2/G3 strong-integrity tools and `feature_execute` are public while broader COM-to-native replacement remains separately gated.
+- the public promotion `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` is CLOSED/PUSHED at commit `0516fe3`; current maintenance publication is `31186f5` with bridge candidate `0.8.2-mp7`; selected strong-integrity tools and `feature_execute` are public while broader COM-to-native replacement remains separately gated;
+- 3DSOLID/ACIS operations are still outside the native PID/fingerprint/checkpoint exact-recovery loop. Current ACIS soak/fault evidence strengthens the COM solid lane but does not satisfy that native semantic-state invariant.
 
 The protocol below remains both implemented contract and normative guardrail. Current status authority is `docs/CURRENT_CHECKPOINT.md`; historical N7 details are retained in the maintainer-internal acceptance record and are not part of the published documentation set.
 

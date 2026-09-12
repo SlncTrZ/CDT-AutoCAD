@@ -1,8 +1,8 @@
 # Drawing Quality Acceptance Standard
 
-> Updated: 2026-09-10 +07:00
+> Updated: 2026-09-12 +07:00
 > Scope: CDT-AutoCAD reference-driven drafting, architectural/site/landscape/technical drawings
-> Status: Project acceptance invariant · N4–N6 + O1 semantic enforcement accepted for bounded native families · N7 recovery pending
+> Status: Project acceptance invariant · N4–N7 + O1/G1/G2/G3 semantic integrity accepted for documented bounded native families · Feature-based Chunks Streaming live-accepted · broad COM-only families retain their explicitly weaker guarantees
 
 ## 1. Purpose
 
@@ -41,7 +41,7 @@ Before any drawing-quality stage can advance, the underlying engineering step mu
 - **Data Integrity / Rollback:** current state is either `COMMITTED_VERIFIED` or a failed attempt has returned to `ROLLED_BACK_VERIFIED`; uncertain/failed rollback blocks acceptance.
 - **Precise Identity / PID + Fingerprinting:** affected objects/state are identified by managed PID/content fingerprints, predecessor drift is checked, and unexpected/duplicate mutations are rejected.
 
-A visually correct screenshot cannot override failed semantic integrity.
+A visually correct screenshot cannot override failed semantic integrity. Native PID/fingerprint/checkpoint guarantees apply only to the promoted strong-integrity families; a COM-only operation must not be represented as having the same proof unless independent evidence actually establishes it.
 
 ## 3. Core invariants for all drawing types
 

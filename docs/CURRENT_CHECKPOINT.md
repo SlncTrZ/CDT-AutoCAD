@@ -1,9 +1,10 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-12 17:05 +07:00
+> Updated: 2026-09-12 17:30 +07:00
 > Status: **OPERATIONAL RC since 2026-09-12 · N0–N7 CLOSED · O1 CLOSED/LIVE PASS · MP-2 CLOSED/LIVE PASS · G1/G2/G3 CLOSED/LIVE PASS · 10,000-entity graduation PASS · Feature-based Chunks Streaming LIVE PASS · public promotion FINAL CLOSE GATES PASS**
 > Primary certification target: **AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`**
 > Architecture boundary: **CDT-AutoCAD is a Generic CAD Execution Engine. Domain standards, engineering rules, calculations and reports remain outside the provider.**
+> Current maintenance publication: **`31186f5`** · bridge candidate **`0.8.2-mp7`** · public contract identity unchanged.
 
 ## 1. What is authoritative now
 
@@ -19,7 +20,7 @@ native bridge line: 0.8.2-mp7
 
 These identities have now passed the final public-promotion close gates on the reviewed promotion tree. Historical evidence files that mention `0.3.0rc1`, `autocad-a2-v1-rc1` or 50 tools remain valid for the older checkpoint they recorded and must not be rewritten as if those older runs used the new contract.
 
-Public-contract promotion completed at `0516fe3`. That commit was surgically staged and excluded unrelated local/private workspace state; later legal, provenance and operational-maintenance commits do not change the promotion evidence or contract identity. Historical evidence/handoffs remain unchanged where they describe older contract identities.
+Public-contract promotion completed at `0516fe3`. The later maintenance close was published at `31186f5`; it hardens visual-style state, ACIS/live acceptance, current-identity MP-2 provenance, Session-1 lifecycle and COM-busy viewport handling without changing the 86-tool public contract. Historical evidence remains unchanged where it describes older contract identities.
 
 ## 2. Closed native architecture program
 

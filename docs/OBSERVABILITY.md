@@ -1,6 +1,6 @@
 # Observability Contract — CDT-AutoCAD
 
-> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-10 +07:00
+> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-12 +07:00
 > Scope: structured diagnostic events and correlation semantics; not a monitoring-platform requirement.
 
 ## 1. Decision
@@ -63,7 +63,7 @@ request_id
 
 Each layer must propagate the existing correlation identity and enrich only fields it owns. No layer should create a second unrelated request identifier merely because execution crossed process or IPC boundaries.
 
-MP0-T00 acceptance proves correlation across a real FastMCP tool request and nested provider execution. Native IPC/document/recovery enrichment is a later slice because those current N7 files are intentionally not modified by MP0-T00 while N7 is dirty.
+MP0-T00 acceptance proves correlation across a real FastMCP tool request and nested provider execution. N7/MP-2 have since closed, but this observability contract still treats native/document/recovery fields as nullable unless the emitting layer owns an authoritative value; later runtime maturity must not retroactively fabricate fields in older MP0 evidence.
 
 ## 5. Journal and telemetry are different failure domains
 

@@ -2,6 +2,7 @@
 
 > Pinned: 2026-09-09
 > Architecture source: `SlncTrZ/CDT_Engineer@643019c`
+> Provider-local operational overlay reviewed: 2026-09-12 · current public identity `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`
 
 This provider repository implements AutoCAD runtime behavior against a pinned snapshot of the CDT control-plane specifications.
 
@@ -28,12 +29,12 @@ The local roadmap/plan mirror of `docs/PLAN_AUTOCAD.md` is maintainer-internal a
 - Source subtree: `CDT_Engineer/servers/autocad/**`.
 - Source checkpoint: `CDT_Engineer@643019c`.
 - History-preserving subtree split head: `11adadb`.
-- Expected provider identity: `0.3.0rc1 / autocad-a2-v1-rc1`.
+- Historical extraction identity at the pinned split: `0.3.0rc1 / autocad-a2-v1-rc1`. This is not the current provider identity.
 - Expected pre-extraction generic regression: `54 passed, 2 skipped`.
 
 ## Local architecture overlay
 
-The pinned common specifications remain authoritative for the currently published provider contract. CDT-AutoCAD also has a provider-local architecture overlay; N0–N7 and O1 are closed/live-verified for their bounded native scopes. The overlay's published parts are:
+The pinned common specifications remain the frozen common-control input; provider-local extensions have since advanced under explicit local contracts without rewriting the pinned snapshots. CDT-AutoCAD also has a provider-local architecture overlay; N0–N7 and O1 are closed/live-verified for their bounded native scopes. The overlay's published parts are:
 
 - `docs/CURRENT_CHECKPOINT.md`;
 - `docs/SEMANTIC_STATE_PROTOCOL.md`;

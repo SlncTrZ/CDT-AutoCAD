@@ -1,5 +1,7 @@
 # CDT-AutoCAD Documentation Index
 
+> Updated: 2026-09-12 17:30 +07:00
+
 This page is the map for the **published documentation set**: product-facing contracts and guides
 needed to use CDT-AutoCAD, including its provider contract, operation and quality rules.
 
@@ -32,7 +34,7 @@ Pinned control-plane snapshots live in `../specs/` and are read-only for provide
 
 ## Operational status
 
-Operational use begins **2026-09-12** under provider `0.4.0rc1`, contract `autocad-generic-v1-rc1`, and 86 public MCP tools. This is an RC/preview operational baseline, not a GA/stable-version declaration.
+Operational use begins **2026-09-12** under provider `0.4.0rc1`, contract `autocad-generic-v1-rc1`, and 86 public MCP tools. Public contract promotion is `0516fe3`; current maintenance publication is `31186f5` with native bridge candidate `0.8.2-mp7`. This remains an RC/preview operational baseline, not a GA/stable-version declaration.
 
 ## Evidence
 
@@ -41,7 +43,7 @@ Operational use begins **2026-09-12** under provider `0.4.0rc1`, contract `autoc
 acceptance artifacts behind those statements are retained with the internal acceptance record under
 their original file names and are not part of the published tree. Those artifacts describe the exact
 versions, fixtures and scopes under which they were produced; do not rewrite old evidence to match
-newer identities.
+newer identities. `TOOL_GUIDE.md` is contract-hash material, so documentation cleanup must not modify it merely to refresh prose or timestamps.
 
 ## Ownership and legal
 

@@ -1,9 +1,10 @@
 # Marketing Demo Runbook — CDT-AutoCAD
 
-> Updated: 2026-09-11 22:10 +07:00
+> Updated: 2026-09-12 17:30 +07:00
 > Product identity: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`
 > Positioning: **RC/preview — Generic CAD Execution Engine for AI agents**
 > Primary demo target: AutoCAD 2027 full / Windows x64 / Interactive Session 1
+> Current runner bridge identity: `0.8.2-mp7`; the evidence table in §4 intentionally preserves the older bridge identity of the recorded historical demo run.
 
 ## 1. Purpose
 

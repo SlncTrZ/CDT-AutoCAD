@@ -1,7 +1,9 @@
 # Operations Runbook — CDT-AutoCAD
 
 > Operational start: 2026-09-12
+> Updated: 2026-09-12 17:30 +07:00
 > Current product identity: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`
+> Current native bridge candidate: `0.8.2-mp7` · maintenance publication `31186f5`
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
 
 ## 1. Operating boundary
@@ -15,7 +17,7 @@ The provider owns generic CAD execution, persistent identity, semantic state, bo
 Before starting a production/live session:
 
 1. AutoCAD 2027 is already running in the intended interactive Windows user/session.
-2. The required Managed .NET bridge is loaded and reports ready.
+2. The required Managed .NET bridge is loaded, reports ready and matches the bridge identity expected by the workflow; current maintenance baseline is `0.8.2-mp7`.
 3. `CDT_AUTOCAD_BACKEND=com`.
 4. `CDT_AUTOCAD_COM_PROGID=AutoCAD.Application.26`.
 5. `CDT_AUTOCAD_COM_ATTACH_POLICY=attach_only` unless an explicitly reviewed workflow requires otherwise.

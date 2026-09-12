@@ -1,6 +1,6 @@
 # Reproducible Baseline — CDT-AutoCAD
 
-> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-11 +07:00
+> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-12 +07:00
 > Canonical resolver workflow: **`cdt_autocad.dependency_lock` + pip 26.1.2 `pip lock` → LF-normalized PEP 751 platform lock → install from that lock**.
 
 ## 1. Decision
@@ -65,7 +65,9 @@ A locked-install acceptance run must report the interpreter/platform and verify 
 
 ## 5. Runtime/build provenance manifest
 
-`src/cdt_autocad/provenance.py` generates a JSON manifest that binds:
+`src/cdt_autocad/provenance.py` generates a JSON manifest that binds. The current `0.8.2-mp7` maintenance acceptance additionally proves that the Release/x64 candidate hash equals the bridge DLL observed loaded in AutoCAD Session 1; historical runs lacking a runtime DLL hash are intentionally not rebound retroactively.
+
+The manifest binds:
 
 - Git HEAD and whether the working tree is dirty;
 - SHA-256 of the tracked binary diff;

@@ -12,8 +12,7 @@ actions and proves what happened.
 
 ## Operational status
 
-Operational use begins **2026-09-12** under the existing RC contract. This is an operating baseline,
-not a GA/stable-version declaration and not an expansion of capability claims.
+Operational use begins **2026-09-12** under the existing RC contract. Public contract promotion is `0516fe3`; current maintenance publication is `31186f5` with Managed .NET bridge candidate `0.8.2-mp7`. This is an operating baseline, not a GA/stable-version declaration and not an expansion of capability claims.
 
 Start with [`docs/README.md`](docs/README.md) for the documentation map and
 [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md) for live operation. Security/support policy is in
@@ -63,7 +62,7 @@ default.
 - Schema-agnostic bounded entity metadata.
 - Units, layer state, XREF lifecycle and dependency inspection.
 - Advanced dimensions and measurement/analysis tools.
-- Native ACIS 3D primitives, extrude/sweep/revolve/boolean/transform/inspect.
+- Typed AutoCAD ACIS 3D primitives, extrude/sweep/revolve/boolean/transform/inspect on the live COM/ActiveX lane. These solid operations do **not** yet inherit the native PID/fingerprint/checkpoint exact-recovery loop.
 - SAT export with SHA-256 provenance.
 - Content-addressed accepted-artifact sealing.
 - Bounded view presets and visual styles for presentation workflows.

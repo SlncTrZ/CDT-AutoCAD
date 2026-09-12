@@ -29,7 +29,7 @@ Forbidden unless explicitly assigned:
 - Primary certification target: AutoCAD 2027 full, Windows x64, ActiveX COM `26.0` / `AutoCAD.Application.26`, Managed .NET `net10.0-windows`.
 - Current public contract: provider `0.4.0rc1`, contract `autocad-generic-v1-rc1`, **86 MCP tools**, execution model `feature-based-chunks-streaming-v1`.
 - Operational use begins **2026-09-12** under this RC/preview identity; this is not a GA/stable-version declaration.
-- Public promotion is **release-closed and pushed** at commit `0516fe3`; final Linux/Windows regressions, C# Release/x64 build, review and surgical staging all passed before publication.
+- Public promotion is **release-closed and pushed** at commit `0516fe3`; current maintenance hardening is published at `31186f5` without changing the 86-tool public contract. Final Linux/Windows regressions, C# Release/x64 build, review and surgical staging passed for that maintenance candidate.
 - N0–N7 and O1 are CLOSED/LIVE PASS for their documented native scopes; MP-2 hot reload is CLOSED/LIVE PASS.
 - G1 Generic Batch Geometry, G2 Schema-Agnostic Metadata and G3 Chunked Logical Atomicity are CLOSED/LIVE PASS on real AutoCAD 2027.
 - Native bridge candidate: `0.8.2-mp7`; document fingerprint schema v3; native micro-chunk max 32; graduated semantic capacity 12,288; logical feature/batch cap 10,000; one batch mutation per AutoCAD Idle tick. Historical G1/G2/G3/scale/Feature Streaming evidence remains bound to the bridge identity recorded by each original run and is not rewritten.

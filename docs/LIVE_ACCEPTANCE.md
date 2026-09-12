@@ -1,9 +1,9 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-12 17:05 +07:00
+> Updated: 2026-09-12 17:30 +07:00
 > Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Public promotion: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` — **CLOSED/PUSHED at `0516fe3`**
+> Public promotion: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` — **CLOSED/PUSHED at `0516fe3`** · current maintenance publication **`31186f5`**
 
 ## 0. Current production live gate
 

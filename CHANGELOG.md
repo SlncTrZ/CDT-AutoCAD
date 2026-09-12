@@ -9,6 +9,17 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 - Production-driven expansion of typed native CAD actions only where real Domain workflows require them.
 - Continued COM-to-native parity work under the existing Semantic State and recovery invariants.
 
+### Maintenance checkpoint — 2026-09-12 (`31186f5`)
+
+- Native bridge maintenance candidate advanced to `0.8.2-mp7` without changing provider `0.4.0rc1`, contract `autocad-generic-v1-rc1` or the 86-tool public catalog.
+- Added typed Managed .NET visual-style state read/restore with exact handle read-back and drift guard.
+- Added canonical Session-1 acceptance lifecycle wrapper and current-identity MP-2 `20 success + 10 injected failure` rerun.
+- Added 10/100-part ACIS soak/adversarial acceptance and destructive Boolean uncertainty quarantine coverage.
+- Hardened XREF/source/artifact/solid provenance and cleanup paths covered by the maintenance test set.
+- Fixed a live `RPC_E_CALL_REJECTED` viewport regression by routing viewport create/read/scale/lock/delete through the shared bounded COM-busy primitives.
+- Final maintenance gates: Linux **365 passed / 6 skipped**, Windows `.171` **364 passed / 7 skipped**, targeted live suite **5/5 twice consecutively**, C# Release/x64 **0 errors / 3 inherited warning families**. Ruff was unavailable in the prepared Linux environment and is not claimed as PASS.
+
+
 ## [0.4.0rc1] - 2026-09-12
 
 ### Operational baseline

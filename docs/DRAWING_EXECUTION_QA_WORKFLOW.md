@@ -1,8 +1,8 @@
 # Drawing Execution & QA Workflow
 
-> Updated: 2026-09-10 +07:00
+> Updated: 2026-09-12 +07:00
 > Scope: all CDT-AutoCAD user-facing drawing/reconstruction workflows
-> Status: Project execution invariant; N0–N6 + O1 native semantic foundation accepted, N7 recovery in progress/not closed
+> Status: Project execution invariant; N0–N7 + O1 + G1/G2/G3/Feature Streaming accepted for their documented bounded native scopes. Broad COM-only families do not inherit native PID/fingerprint/recovery guarantees.
 
 ## 1. Purpose
 
@@ -26,7 +26,7 @@ Each small semantic step follows:
 ```text
 VERIFY CURRENT PARENT STATE
   -> DEFINE ActionSpec + expected effects + validation rules
-  -> EXECUTE ONE SMALL NATIVE MUTATION
+  -> EXECUTE ONE SMALL TYPED MUTATION THROUGH THE STRONGEST VERIFIED ROUTE FOR THAT FAMILY
   -> EXTRACT PROVISIONAL SEMANTIC STATE
   -> DETERMINISTIC VALIDATION
        FAIL -> ABORT / ROLLBACK -> READ BACK -> VERIFY PARENT FP
@@ -38,7 +38,7 @@ VERIFY CURRENT PARENT STATE
   -> PASS ? NEXT STEP : STOP
 ```
 
-The next step must include and verify the previous step's `post_state_fp` as `expected_parent_fp`.
+For native strong-integrity families, the next dependent step must include and verify the previous step's `post_state_fp` as `expected_parent_fp`. For families still on the COM lane, do not fabricate this guarantee; use the available typed read-back/checkpoint controls and classify the lower integrity scope explicitly.
 
 ## 4. Atomic step definition
 
