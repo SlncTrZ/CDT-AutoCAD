@@ -1,0 +1,61 @@
+CDT-AutoCAD Proprietary Source-Available License v1.0
+License reference: LicenseRef-CDT-AutoCAD-Proprietary-1.0
+Copyright (c) 2026 SlncTrZ. All rights reserved.
+
+1. Ownership
+
+CDT-AutoCAD, including its original source code, native bridge code, tests,
+scripts, project documentation, and project-specific configuration, is
+copyrighted material owned by SlncTrZ except where a file or accompanying
+notice explicitly identifies third-party material.
+
+Public availability of this repository does not place the Software in the
+public domain and does not make it open source.
+
+2. No General License Grant
+
+Except for rights that cannot legally be restricted, rights expressly granted
+by the repository hosting platform for viewing the public repository, or rights
+granted in a separate written agreement by the copyright holder, no permission
+is granted to use, copy, reproduce, modify, prepare derivative works from,
+publish, distribute, sublicense, sell, lease, or otherwise exploit the Software
+or any substantial portion of it.
+
+3. Evaluation and Contributions
+
+You may inspect the public source for evaluation, security review,
+interoperability review, and the preparation of a proposed contribution to the
+official CDT-AutoCAD project, provided that all copyright and provenance
+notices are preserved. This limited permission does not grant a right to
+redistribute the Software or a derivative product.
+
+4. Third-Party Components and Interfaces
+
+Third-party libraries, tools, APIs, SDKs, product names, and documentation are
+not relicensed by this License. They remain subject to their respective owners'
+licenses and terms. See THIRD_PARTY_NOTICES.md and SOURCE_PROVENANCE.md.
+
+In particular, Autodesk AutoCAD and Autodesk managed assemblies are separate
+third-party products. No Autodesk binary is licensed or redistributed by this
+License.
+
+5. Trademarks
+
+This License grants no trademark rights. Product names and trademarks belonging
+to third parties remain the property of their respective owners.
+
+6. Warranty Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR
+A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. TO THE MAXIMUM EXTENT
+PERMITTED BY LAW, THE COPYRIGHT HOLDER SHALL NOT BE LIABLE FOR ANY CLAIM,
+DAMAGES, OR OTHER LIABILITY ARISING FROM, OUT OF, OR IN CONNECTION WITH THE
+SOFTWARE OR ITS USE.
+
+7. Separate Written Licenses
+
+The copyright holder may grant additional permissions, commercial licenses,
+open-source licenses, or other rights in a separate written instrument. Such a
+grant applies only to the material and scope expressly identified by that
+instrument.
