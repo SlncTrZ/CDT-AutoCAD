@@ -1,6 +1,6 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-12 08:19 +07:00
+> Updated: 2026-09-12 15:03 +07:00
 > Status: **OPERATIONAL RC since 2026-09-12 · N0–N7 CLOSED · O1 CLOSED/LIVE PASS · MP-2 CLOSED/LIVE PASS · G1/G2/G3 CLOSED/LIVE PASS · 10,000-entity graduation PASS · Feature-based Chunks Streaming LIVE PASS · public promotion FINAL CLOSE GATES PASS**
 > Primary certification target: **AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`**
 > Architecture boundary: **CDT-AutoCAD is a Generic CAD Execution Engine. Domain standards, engineering rules, calculations and reports remain outside the provider.**
@@ -169,3 +169,59 @@ Repository hygiene now intentionally keeps `_private/`, `_test_workspace/`, loca
 Internal research, development, roadmap, ADR, handoff and acceptance-evidence material in this repository now lives only under `_private/`; the published `docs/` set is limited to product-facing contracts and guides, and must stay usable without `_private/`. `_private/README.md` records the internal layout plus the old-to-new path mapping for material that moved out of `docs/`.
 
 Use `docs/README.md` as the documentation map and `docs/OPERATIONS_RUNBOOK.md` for live operation. Release-gate execution and historical pre-close session handoffs are maintainer-internal and are not part of the published documentation set.
+
+## 9. Current maintenance hardening and architecture frontier — 2026-09-12
+
+The latest product-maintenance batch is pushed on `main` at commit **`f721998`** (`Fix: harden COM mutation integrity and provenance`). It does **not** change the public tool catalog, contract version, execution model or contract fingerprint.
+
+Current identity remains:
+
+```text
+provider_version: 0.4.0rc1
+contract_version: autocad-generic-v1-rc1
+public MCP tools: 86
+execution_model: feature-based-chunks-streaming-v1
+contract_hash: 3e6e994100e1bde73dffc6d53f340ec335647aba90bbb29c8a07a5acd9981b9b
+```
+
+This maintenance batch hardens the broad live-COM compatibility lane without weakening the native G1/G2/G3 lane:
+
+- `document_configure_units` now validates before mutation, snapshots all four relevant system variables, verifies exact read-back, restores the complete predecessor on failure/mismatch and quarantines later mutations when restore cannot be proven;
+- `layer_update_state` now validates linetype before writes, refuses XREF-dependent layer mutation, preserves current-layer guards, snapshots/restores six layer fields and independently verifies the resulting state;
+- COM entity/solid inspection now uses one case-insensitive typed/DumbDispatch-compatible property path for the declared verification families; unreadable object type fails closed instead of being reported as fabricated `UNKNOWN`;
+- `document_new` retries only the explicit AutoCAD busy HRESULTs (`RPC_E_CALL_REJECTED` / `SERVERCALL_RETRYLATER`); mutating open/save paths retain their stricter no-blind-retry policy where completion could be ambiguous;
+- acceptance provenance now distinguishes a candidate bridge binary from the bridge actually observed loaded in `acad.exe`; accepted-artifact registration requires the runtime-observed DLL hash and refuses retroactive binding.
+
+Fresh AutoCAD 2027 Session 1 verification on the final code passed the targeted public/live suite **twice**: **5/5 in 13.85 s** and **5/5 in 13.22 s**. Coverage includes units/layer negative and read-back cases, real XREF-dependent layer refusal plus XREF `object_get`, LINE/LWPOLYLINE/INSERT/HATCH inspection, and 3DSOLID inspection/refusal truth. The final full regressions are **350 passed / 6 skipped on Linux** and **349 passed / 7 skipped on Windows `.171`**; Linux/Windows `compileall` and `git diff --check` pass. The loaded Session 1 bridge and current Release/x64 candidate both have SHA-256 **`e9dc90fba11749da08ea8ebf781669e4c7c317f2075dc1f97714e5a89d20f613`**. No C# source or public-contract material changed in this maintenance batch, so the bridge was not rebuilt solely for this Python-only change.
+
+The earlier Ribbon-empty symptom is also understood operationally: `acad.CUIX` was present, while `WSCURRENT` was empty. Selecting **Drafting & Annotation** restored the Ribbon, and a later graceful AutoCAD restart verified `WSCURRENT="Drafting & Annotation"` with `CMDNAMES=""`. Live acceptance launch must start with an actual drawing/template rather than relying on the Start tab as a COM-ready document context.
+
+### 9.1 What downstream orchestration may rely on now
+
+A downstream Engineering/Domain Agent may rely on the following **within their declared scopes**:
+
+- the 86-tool public contract and current names/schemas in `TOOL_GUIDE.md`;
+- Feature-based Chunks Streaming through `feature_execute` for the proven native action families;
+- G3 feature-local predecessor checkpoint/recovery and current native integrity status;
+- bounded native create/insert/transform plus namespaced metadata;
+- broad typed AutoCAD drafting/document/XREF/layout/viewport/3D compatibility tools with their advertised capability/refusal semantics;
+- the newly hardened units/layer mutation and COM inspection behavior above;
+- `artifact_seal` for the currently documented DWG content-addressed sealing behavior.
+
+Do **not** infer that every one of the 86 tools has migrated to the native semantic state loop. The public product deliberately remains hybrid during migration.
+
+### 9.2 Architecture work that is still open
+
+The project is an **operational RC**, not a claim that the target architecture is 100% complete. The following remain explicit architecture frontier items and must not be silently assumed by downstream consumers:
+
+- broad COM-to-native strong-integrity migration is incomplete; the native public strong-integrity surface remains the explicitly promoted subset rather than all non-read-only tools;
+- full native semantic snapshots remain bounded; there is no stable paged whole-DWG semantic reader yet, and native `relations`/topology extraction is not currently an authoritative oracle;
+- native mutation parity is still bounded to the currently advertised families rather than TEXT/MTEXT/HATCH/DIMENSION/SPLINE/layout/viewport and all other public mutation families;
+- 3DSOLID/ACIS operations remain outside the full PID/fingerprint/checkpoint/state-chain loop; face/edge topology is explicitly unsupported by the current ActiveX verifier;
+- XREF lifecycle receipts, deep/nested source dependency completeness, post-seal drift/stale-evidence enforcement and broader artifact manifests still have follow-on work;
+- a versioned generic validation-rules registry with unknown-ruleset refusal / explicit `NOT_EVALUATED` semantics is not yet implemented;
+- historical G1/G2/G3/scale/feature-stream events that did not record a runtime DLL hash are intentionally **not** retroactively rebound to today's DLL; fresh events use the new accepted-artifact control;
+- legacy one-shot interactive Scheduled Task harness lifecycle cleanup remains maintenance debt; current ad-hoc live runs use unique task names and delete the task in `finally`;
+- the internal generic-engine Definition of Done is still under architecture review; this checkpoint therefore does not claim GA/stable or 100% target-architecture completion.
+
+Downstream repositories should discover the live runtime with `system_status`, `system_capabilities` and, when native integrity is required, `native_integrity_status` rather than treating a cached source snapshot as runtime proof.
