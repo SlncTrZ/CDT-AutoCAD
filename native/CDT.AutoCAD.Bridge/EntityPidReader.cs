@@ -10,8 +10,8 @@ internal static class EntityPidReader
     internal static string ReadRequired(DBObject databaseObject, Transaction transaction) =>
         ReadOptional(databaseObject, transaction)
         ?? throw new BridgeServiceException(
-            "ENTITY_PID_MISSING",
-            "semantic snapshot requires persistent PID metadata on every extracted entity"
+            "UNMANAGED_ENTITY_PRESENT",
+            "semantic scope contains an entity outside provider PID ownership; explicit adoption is required before native semantic read or mutation"
         );
 
     internal static string? ReadOptional(DBObject databaseObject, Transaction transaction)

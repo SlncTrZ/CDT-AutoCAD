@@ -228,6 +228,8 @@ Required behavior:
 
 N2 finalized the carrier/clone policy for N3+: shallow `Clone()` receives a fresh PID; deep/cross/WBLOCK/INSERT result scopes require reconciliation/remap because those measured paths copy entity PID metadata; unresolved duplicates block acceptance.
 
+The native semantic lane is intentionally a **provider-owned PID scope**, not an implicit adoption mechanism. AutoCAD 2027 Session-1 mixed-drawing acceptance confirmed that one legacy/COM-created entity without provider PID metadata would otherwise make document-wide semantic extraction and even unrelated PID-targeted operations fail ambiguously. The enforced short-term policy is therefore explicit refusal with `UNMANAGED_ENTITY_PRESENT`. Native semantic reads and mutations do not assign PIDs as a side effect; bringing legacy entities under native ownership requires a future explicit, bounded adoption/bootstrap operation with its own fingerprint/re-baseline semantics.
+
 ### 6.4 Fingerprint families
 
 The protocol must distinguish at least:
