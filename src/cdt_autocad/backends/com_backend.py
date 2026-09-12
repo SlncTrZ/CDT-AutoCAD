@@ -237,7 +237,7 @@ def _com_set_attr(obj: Any, name: str, value: Any) -> None:
 
 def _optional_com_property(obj: Any, name: str) -> Any | None:
     try:
-        return _com_property_with_busy_retry(obj, name)
+        return _com_get_attr(obj, name)
     except Exception:
         return None
 
@@ -307,7 +307,7 @@ def _xyz(value: Any) -> list[float]:
 
 
 def _object_type(entity: Any) -> str:
-    name = str(getattr(entity, "ObjectName", "UNKNOWN"))
+    name = str(_com_get_attr(entity, "ObjectName"))
     mapping = {
         "AcDbLine": "LINE",
         "AcDbCircle": "CIRCLE",
@@ -331,19 +331,20 @@ def _object_type(entity: Any) -> str:
 
 def _com_float_property(entity: Any, name: str) -> float:
     try:
-        return float(getattr(entity, name))
+        return float(_com_get_attr(entity, name))
     except Exception as exc:
         raise RuntimeError(f"AutoCAD property unavailable: {name}") from exc
 
 
 def _com_vector_property(entity: Any, name: str) -> list[float]:
     try:
-        return _xyz(getattr(entity, name))
+        return _xyz(_com_get_attr(entity, name))
     except Exception as exc:
         raise RuntimeError(f"AutoCAD property unavailable: {name}") from exc
 
 
 def _com_bounding_box(entity: Any) -> dict[str, list[float]]:
+    entity = _entity_property_view(entity)
     no_arg_error: Exception | None = None
     try:
         result = entity.GetBoundingBox()
@@ -384,74 +385,65 @@ def _entity_info(entity: Any) -> EntityInfo:
 
     if entity_type == "LINE":
         properties = {
-            "start": _xyz(entity.StartPoint),
-            "end": _xyz(entity.EndPoint),
+            "start": _xyz(_com_get_attr(entity, "StartPoint")),
+            "end": _xyz(_com_get_attr(entity, "EndPoint")),
             "coordinate_frame": "wcs",
         }
     elif entity_type == "CIRCLE":
         properties = {
-            "center": _xyz(entity.Center),
-            "radius": float(entity.Radius),
+            "center": _xyz(_com_get_attr(entity, "Center")),
+            "radius": float(_com_get_attr(entity, "Radius")),
             "coordinate_frame": "wcs",
         }
     elif entity_type == "ARC":
         properties = {
-            "center": _xyz(entity.Center),
-            "radius": float(entity.Radius),
-            "start_angle": math.degrees(float(entity.StartAngle)),
-            "end_angle": math.degrees(float(entity.EndAngle)),
+            "center": _xyz(_com_get_attr(entity, "Center")),
+            "radius": float(_com_get_attr(entity, "Radius")),
+            "start_angle": math.degrees(float(_com_get_attr(entity, "StartAngle"))),
+            "end_angle": math.degrees(float(_com_get_attr(entity, "EndAngle"))),
             "coordinate_frame": "wcs",
         }
     elif entity_type in {"LWPOLYLINE", "POLYLINE"}:
-        coords = list(entity.Coordinates)
+        coords = list(_com_get_attr(entity, "Coordinates"))
         properties = {
             "points": [
                 [float(coords[index]), float(coords[index + 1])]
                 for index in range(0, len(coords) - 1, 2)
             ],
-            "closed": bool(entity.Closed),
+            "closed": bool(_com_get_attr(entity, "Closed")),
             "coordinate_frame": "ocs" if entity_type == "LWPOLYLINE" else "wcs",
         }
     elif entity_type == "TEXT":
         properties = {
-            "text": str(entity.TextString),
-            "insert": _xyz(entity.InsertionPoint),
-            "height": float(entity.Height),
-            "rotation": math.degrees(float(entity.Rotation)),
+            "text": str(_com_get_attr(entity, "TextString")),
+            "insert": _xyz(_com_get_attr(entity, "InsertionPoint")),
+            "height": float(_com_get_attr(entity, "Height")),
+            "rotation": math.degrees(float(_com_get_attr(entity, "Rotation"))),
             "coordinate_frame": "wcs",
         }
     elif entity_type == "INSERT":
         properties = {
-            "block_name": str(entity.Name),
-            "insert": _xyz(entity.InsertionPoint),
-            "x_scale": float(entity.XScaleFactor),
-            "y_scale": float(entity.YScaleFactor),
-            "rotation": math.degrees(float(entity.Rotation)),
+            "block_name": str(_com_get_attr(entity, "Name")),
+            "insert": _xyz(_com_get_attr(entity, "InsertionPoint")),
+            "x_scale": float(_com_get_attr(entity, "XScaleFactor")),
+            "y_scale": float(_com_get_attr(entity, "YScaleFactor")),
+            "rotation": math.degrees(float(_com_get_attr(entity, "Rotation"))),
         }
     elif entity_type == "HATCH":
-        properties = {"pattern_name": str(entity.PatternName)}
+        properties = {"pattern_name": str(_com_get_attr(entity, "PatternName"))}
     elif entity_type == "DIMENSION":
-        try:
-            properties["text"] = str(entity.TextOverride or "<>")
-        except Exception:
-            properties["text"] = "<>"
+        text_override = _optional_com_property(entity, "TextOverride")
+        properties["text"] = str(text_override or "<>")
 
-    try:
-        linetype = str(entity.Linetype)
-    except Exception:
-        linetype = "ByLayer"
-    try:
-        visible = bool(entity.Visible)
-    except Exception:
-        visible = True
-
+    linetype_value = _optional_com_property(entity, "Linetype")
+    visible_value = _optional_com_property(entity, "Visible")
     return EntityInfo(
-        id=str(entity.Handle),
+        id=str(_com_get_attr(entity, "Handle")),
         type=entity_type,
-        layer=str(entity.Layer),
+        layer=str(_com_get_attr(entity, "Layer")),
         color=int(_com_get_attr(entity, "Color")),
-        linetype=linetype,
-        visible=visible,
+        linetype=str(linetype_value) if linetype_value is not None else "ByLayer",
+        visible=bool(visible_value) if visible_value is not None else True,
         properties=properties,
     )
 
@@ -543,6 +535,7 @@ class ComBackend(AutoCADBackend):
         self._transaction_depth = 0
         self._timeout_uncertain = False
         self._uncertain_future: Future[Any] | None = None
+        self._integrity_uncertain_reason: str | None = None
         self._mutation_gate = asyncio.Lock()
         self._document_scope_key: tuple[str, str] | None = None
         self._created_viewport_handles: set[str] = set()
@@ -686,6 +679,8 @@ class ComBackend(AutoCADBackend):
             "uncertain_call_running": bool(
                 self._uncertain_future is not None and not self._uncertain_future.done()
             ),
+            "integrity_uncertain": self._integrity_uncertain_reason is not None,
+            "integrity_uncertain_reason": self._integrity_uncertain_reason,
             "a2_implementation_state": "release_candidate",
             "a2_live_verification": "historical_primary_target_pass_current_process_unverified",
             "live_certification": {
@@ -791,6 +786,12 @@ class ComBackend(AutoCADBackend):
         self._application_metadata = None
         self._created_viewport_handles.clear()
 
+    def _quarantine_integrity(self, reason: str) -> None:
+        self._integrity_uncertain_reason = str(reason)
+        self._connected = False
+        self._application_metadata = None
+        self._created_viewport_handles.clear()
+
     async def _run(
         self,
         func,
@@ -819,6 +820,12 @@ class ComBackend(AutoCADBackend):
             reason = self._runtime_reason() or "executor_unavailable"
             raise RuntimeError(f"AutoCAD COM backend unavailable: {reason}")
 
+        if self._integrity_uncertain_reason is not None and may_mutate_document:
+            raise BackendQuarantinedError(
+                "AutoCAD COM backend is quarantined after an integrity verification failure: "
+                f"{self._integrity_uncertain_reason}. Read-only verification remains available; "
+                "restart the provider before any later mutation."
+            )
         if self._timeout_uncertain and may_mutate_document:
             raise BackendQuarantinedError(
                 "AutoCAD COM backend is quarantined after an unknown mutation completion; "
@@ -903,28 +910,27 @@ class ComBackend(AutoCADBackend):
         if not key:
             raise ValueError("solid handle must not be empty")
         try:
-            solid = self._doc().HandleToObject(key)
+            solid = _entity_property_view(self._doc().HandleToObject(key))
         except Exception as exc:
             raise KeyError(f"solid not found: {handle}") from exc
-        if str(getattr(solid, "ObjectName", "")) != "AcDb3dSolid":
+        if _object_type(solid) != "3DSOLID":
             raise ValueError(f"handle {key} is {_object_type(solid)}, not 3DSOLID")
         return solid
 
     @staticmethod
     def _solid_info(solid: Any) -> dict[str, Any]:
-        lower, upper = solid.GetBoundingBox()
-        centroid = _xyz(solid.Centroid)
+        solid = _entity_property_view(solid)
         raw_solid_type = _optional_com_property(solid, "SolidType")
         return {
             "ok": True,
-            "handle": str(solid.Handle),
+            "handle": str(_com_get_attr(solid, "Handle")),
             "type": "3DSOLID",
-            "layer": str(solid.Layer),
-            "visible": bool(solid.Visible),
+            "layer": str(_com_get_attr(solid, "Layer")),
+            "visible": bool(_com_get_attr(solid, "Visible")),
             "solid_type": str(raw_solid_type) if raw_solid_type is not None else None,
-            "volume": float(solid.Volume),
-            "centroid": centroid,
-            "bounding_box": {"min": _xyz(lower), "max": _xyz(upper)},
+            "volume": _com_float_property(solid, "Volume"),
+            "centroid": _com_vector_property(solid, "Centroid"),
+            "bounding_box": _com_bounding_box(solid),
         }
 
     def _region_from_profile(self, doc: Any, profile_handle: str) -> Any:
@@ -991,7 +997,7 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> dict[str, Any]:
             documents = _com_property_with_busy_retry(self._app(), "Documents")
-            doc = documents.Add()
+            doc = _com_call_with_busy_retry(documents.Add)
             name = str(_com_property_with_busy_retry(doc, "Name"))
             return {"ok": True, "name": name, "backend": self.name}
 
@@ -1219,22 +1225,55 @@ class ComBackend(AutoCADBackend):
         if linear_precision is not None and not 0 <= int(linear_precision) <= 8:
             raise ValueError("linear_precision must be between 0 and 8")
 
+        desired = {
+            name: value
+            for name, value in (
+                ("INSUNITS", unit_code),
+                ("MEASUREMENT", measurement_code),
+                ("LUNITS", format_code),
+                ("LUPREC", int(linear_precision) if linear_precision is not None else None),
+            )
+            if value is not None
+        }
+        unit_variables = ("INSUNITS", "MEASUREMENT", "LUNITS", "LUPREC")
+
+        def _read_units(doc: Any) -> dict[str, int]:
+            return {name: int(doc.GetVariable(name)) for name in unit_variables}
+
         def _sync() -> dict[str, Any]:
             doc = self._doc()
-            if unit_code is not None:
-                doc.SetVariable("INSUNITS", unit_code)
-            if measurement_code is not None:
-                doc.SetVariable("MEASUREMENT", measurement_code)
-            if format_code is not None:
-                doc.SetVariable("LUNITS", format_code)
-            if linear_precision is not None:
-                doc.SetVariable("LUPREC", int(linear_precision))
-            raw = {
-                "INSUNITS": int(doc.GetVariable("INSUNITS")),
-                "MEASUREMENT": int(doc.GetVariable("MEASUREMENT")),
-                "LUNITS": int(doc.GetVariable("LUNITS")),
-                "LUPREC": int(doc.GetVariable("LUPREC")),
-            }
+            predecessor = _read_units(doc)
+            try:
+                for name, value in desired.items():
+                    doc.SetVariable(name, value)
+                raw = _read_units(doc)
+                mismatch = {
+                    name: {"expected": value, "actual": raw[name]}
+                    for name, value in desired.items()
+                    if raw[name] != value
+                }
+                if mismatch:
+                    raise StateConflictError(f"units read-back mismatch: {mismatch}")
+            except Exception as mutation_error:
+                restore_errors: list[str] = []
+                for name, value in predecessor.items():
+                    try:
+                        doc.SetVariable(name, value)
+                    except Exception as restore_error:
+                        restore_errors.append(f"{name}: {restore_error}")
+                try:
+                    restored = _read_units(doc)
+                except Exception as restore_read_error:
+                    restored = None
+                    restore_errors.append(f"read-back: {restore_read_error}")
+                if restore_errors or restored != predecessor:
+                    reason = (
+                        "document_configure_units restore verification failed; "
+                        f"errors={restore_errors}; predecessor={predecessor}; restored={restored}"
+                    )
+                    self._quarantine_integrity(reason)
+                    raise StateConflictError(reason) from mutation_error
+                raise
             return {
                 "insertion_units": _INSERTION_UNIT_NAMES.get(raw["INSUNITS"], f"code_{raw['INSUNITS']}"),
                 "measurement": _MEASUREMENT_NAMES.get(raw["MEASUREMENT"], f"code_{raw['MEASUREMENT']}"),
@@ -1243,7 +1282,7 @@ class ComBackend(AutoCADBackend):
                 "raw": raw,
             }
 
-        return await self._run(_sync)
+        return await self._run(_sync, may_mutate_document=bool(desired))
 
     async def document_dependencies(self) -> dict[str, Any]:
         rows = await self.xref_list()
@@ -1364,10 +1403,10 @@ class ComBackend(AutoCADBackend):
 
     async def object_measure(self, object_id: str) -> dict[str, Any]:
         def _sync() -> dict[str, Any]:
-            entity = self._entity_by_id(object_id)
+            entity = _entity_property_view(self._entity_by_id(object_id))
             entity_type = _object_type(entity)
             result: dict[str, Any] = {
-                "object_id": str(entity.Handle),
+                "object_id": str(_com_get_attr(entity, "Handle")),
                 "type": entity_type,
                 "coordinate_frame": "wcs",
                 "bounding_box": _com_bounding_box(entity),
@@ -1956,39 +1995,91 @@ class ComBackend(AutoCADBackend):
         normalized_color = self._validate_color(color) if color is not None else None
         if lineweight is not None and not -3 <= int(lineweight) <= 211:
             raise ValueError("lineweight must be between -3 and 211")
+        requested_linetype = None
+        if linetype is not None:
+            requested_linetype = str(linetype).strip()
+            if not requested_linetype:
+                raise ValueError("linetype must not be empty")
+        may_mutate = any(
+            value is not None
+            for value in (is_on, is_frozen, is_locked, color, linetype, lineweight)
+        )
+        layer_fields = ("LayerOn", "Freeze", "Lock", "Color", "Linetype", "LineWeight")
+
+        def _read_layer_state(layer: Any) -> dict[str, Any]:
+            return {field: _com_get_attr(layer, field) for field in layer_fields}
 
         def _sync() -> LayerInfo:
             doc = self._doc()
-            canonical = self._find_name(doc.Layers, wanted)
+            layers = _com_get_attr(doc, "Layers")
+            canonical = self._find_name(layers, wanted)
             if canonical is None:
                 raise ValueError(f"layer does not exist: {wanted}")
-            current = str(doc.ActiveLayer.Name)
+            current_layer = _com_get_attr(doc, "ActiveLayer")
+            current = str(_com_get_attr(current_layer, "Name"))
             if canonical.lower() == current.lower():
                 if is_frozen is True:
                     raise ValueError("current layer cannot be frozen")
                 if is_on is False:
                     raise ValueError("current layer cannot be turned off")
-            layer = doc.Layers.Item(canonical)
-            if is_on is not None:
-                _com_set_attr(layer, "LayerOn", bool(is_on))
-            if is_frozen is not None:
-                _com_set_attr(layer, "Freeze", bool(is_frozen))
-            if is_locked is not None:
-                _com_set_attr(layer, "Lock", bool(is_locked))
-            if normalized_color is not None:
-                _com_set_attr(layer, "Color", normalized_color)
-            if linetype is not None:
-                requested = str(linetype).strip()
-                if not requested:
-                    raise ValueError("linetype must not be empty")
-                if self._find_name(doc.Linetypes, requested) is None:
-                    raise ValueError(f"linetype does not exist: {requested}")
-                _com_set_attr(layer, "Linetype", requested)
-            if lineweight is not None:
-                _com_set_attr(layer, "LineWeight", int(lineweight))
-            return _layer_info(layer, current)
+            if may_mutate and "|" in canonical:
+                raise ValueError("XREF-dependent layer cannot be modified")
 
-        return await self._run(_sync)
+            canonical_linetype = None
+            if requested_linetype is not None:
+                linetypes = _com_get_attr(doc, "Linetypes")
+                canonical_linetype = self._find_name(linetypes, requested_linetype)
+                if canonical_linetype is None:
+                    raise ValueError(f"linetype does not exist: {requested_linetype}")
+
+            layer = layers.Item(canonical)
+            desired = {
+                field: value
+                for field, value in (
+                    ("LayerOn", bool(is_on) if is_on is not None else None),
+                    ("Freeze", bool(is_frozen) if is_frozen is not None else None),
+                    ("Lock", bool(is_locked) if is_locked is not None else None),
+                    ("Color", normalized_color),
+                    ("Linetype", canonical_linetype),
+                    ("LineWeight", int(lineweight) if lineweight is not None else None),
+                )
+                if value is not None
+            }
+            predecessor = _read_layer_state(layer)
+            try:
+                for field, value in desired.items():
+                    _com_set_attr(layer, field, value)
+                readback = _read_layer_state(layer)
+                mismatch = {
+                    field: {"expected": value, "actual": readback[field]}
+                    for field, value in desired.items()
+                    if readback[field] != value
+                }
+                if mismatch:
+                    raise StateConflictError(f"layer state read-back mismatch: {mismatch}")
+                return _layer_info(layer, current)
+            except Exception as mutation_error:
+                restore_errors: list[str] = []
+                for field, value in predecessor.items():
+                    try:
+                        _com_set_attr(layer, field, value)
+                    except Exception as restore_error:
+                        restore_errors.append(f"{field}: {restore_error}")
+                try:
+                    restored = _read_layer_state(layer)
+                except Exception as restore_read_error:
+                    restored = None
+                    restore_errors.append(f"read-back: {restore_read_error}")
+                if restore_errors or restored != predecessor:
+                    reason = (
+                        "layer_update_state restore verification failed; "
+                        f"errors={restore_errors}; predecessor={predecessor}; restored={restored}"
+                    )
+                    self._quarantine_integrity(reason)
+                    raise StateConflictError(reason) from mutation_error
+                raise
+
+        return await self._run(_sync, may_mutate_document=may_mutate)
 
     async def block_list(
         self,

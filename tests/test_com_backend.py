@@ -94,6 +94,17 @@ def test_com_call_busy_retry_retries_only_the_rejected_call(monkeypatch):
     assert calls == 3
 
 
+def test_object_type_fails_closed_when_object_name_cannot_be_read(monkeypatch):
+    class UnreadableType:
+        @property
+        def ObjectName(self):
+            raise RuntimeError(-2147467259, "object type unavailable")
+
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+    with pytest.raises(RuntimeError, match="object type unavailable"):
+        cb._object_type(UnreadableType())
+
+
 def test_generated_wrapper_property_names_are_resolved_case_insensitively():
     class GeneratedLike:
         _prop_map_get_ = {"color": object(), "Layer": object()}
@@ -223,6 +234,226 @@ def test_generated_base_entity_can_be_rewrapped_for_subtype_properties(monkeypat
 
     assert cb._entity_property_view(generic) is dynamic
     assert calls == [ole]
+
+
+def test_inspection_reads_typed_dispatch_case_insensitively_across_families():
+    class TypedLike:
+        def __init__(self, properties):
+            self._prop_map_get_ = {name.lower(): object() for name in properties}
+            for name, value in properties.items():
+                object.__setattr__(self, name.lower(), value)
+
+    common = {
+        "Handle": "A1",
+        "Layer": "0",
+        "Color": 256,
+        "Linetype": "ByLayer",
+        "Visible": True,
+    }
+    cases = [
+        (
+            "line",
+            TypedLike({**common, "ObjectName": "AcDbLine", "StartPoint": (0, 0, 0), "EndPoint": (5, 0, 0)}),
+            "LINE",
+        ),
+        (
+            "lwpolyline",
+            TypedLike({**common, "ObjectName": "AcDbPolyline", "Coordinates": (0, 0, 5, 0), "Closed": False}),
+            "LWPOLYLINE",
+        ),
+        (
+            "insert",
+            TypedLike({**common, "ObjectName": "AcDbBlockReference", "Name": "LOCAL_BLOCK", "InsertionPoint": (1, 2, 0), "XScaleFactor": 1.0, "YScaleFactor": 1.0, "Rotation": 0.0}),
+            "INSERT",
+        ),
+        (
+            "xref",
+            TypedLike({**common, "ObjectName": "AcDbBlockReference", "Name": "SITE_XREF", "InsertionPoint": (3, 4, 0), "XScaleFactor": 1.0, "YScaleFactor": 1.0, "Rotation": 0.0}),
+            "INSERT",
+        ),
+    ]
+
+    for label, entity, expected_type in cases:
+        info = cb._entity_info(entity)
+        assert info.type == expected_type, label
+        assert info.id == "A1", label
+        if label in {"insert", "xref"}:
+            assert info.properties["block_name"] in {"LOCAL_BLOCK", "SITE_XREF"}
+
+
+def test_inspection_rewraps_generated_base_dispatch_across_families(monkeypatch):
+    dynamics = {}
+    cases = [
+        ("line", "AcDbLine", {"StartPoint": (0, 0, 0), "EndPoint": (1, 0, 0)}),
+        ("lwpolyline", "AcDbPolyline", {"Coordinates": (0, 0, 1, 0), "Closed": False}),
+        ("insert", "AcDbBlockReference", {"Name": "LOCAL", "InsertionPoint": (0, 0, 0), "XScaleFactor": 1.0, "YScaleFactor": 1.0, "Rotation": 0.0}),
+        ("xref", "AcDbBlockReference", {"Name": "REF", "InsertionPoint": (0, 0, 0), "XScaleFactor": 1.0, "YScaleFactor": 1.0, "Rotation": 0.0}),
+    ]
+    generics = []
+    for index, (label, object_name, extra) in enumerate(cases):
+        ole = object()
+        generics.append((label, SimpleNamespace(_oleobj_=ole)))
+        dynamics[ole] = SimpleNamespace(
+            _oleobj_=ole,
+            ObjectName=object_name,
+            Handle=f"D{index}",
+            Layer="0",
+            Color=256,
+            Linetype="ByLayer",
+            Visible=True,
+            **extra,
+        )
+
+    class FakeDynamic:
+        @staticmethod
+        def DumbDispatch(value):
+            return dynamics[value]
+
+    monkeypatch.setattr(cb, "_COM_IMPORTS_OK", True)
+    monkeypatch.setattr(
+        cb,
+        "win32com",
+        SimpleNamespace(client=SimpleNamespace(dynamic=FakeDynamic)),
+        raising=False,
+    )
+
+    for label, generic in generics:
+        info = cb._entity_info(generic)
+        assert info.type in {"LINE", "LWPOLYLINE", "INSERT"}, label
+
+
+def test_solid_inspection_supports_typed_and_dumb_dispatch_views(monkeypatch):
+    class TypedSolid:
+        _prop_map_get_ = {
+            "handle": object(),
+            "layer": object(),
+            "visible": object(),
+            "solidtype": object(),
+            "volume": object(),
+            "centroid": object(),
+            "objectname": object(),
+        }
+        handle = "S1"
+        layer = "0"
+        visible = True
+        solidtype = "Box"
+        volume = 125.0
+        centroid = (1.0, 2.0, 3.0)
+        objectname = "AcDb3dSolid"
+
+        @staticmethod
+        def GetBoundingBox():
+            return ((-1.0, -2.0, -3.0), (4.0, 5.0, 6.0))
+
+    typed = ComBackend._solid_info(TypedSolid())
+    assert typed["handle"] == "S1"
+    assert typed["volume"] == pytest.approx(125.0)
+
+    ole = object()
+    dynamic = SimpleNamespace(
+        _oleobj_=ole,
+        ObjectName="AcDb3dSolid",
+        Handle="S2",
+        Layer="0",
+        Visible=True,
+        SolidType="Box",
+        Volume=64.0,
+        Centroid=(0.0, 0.0, 0.0),
+        GetBoundingBox=lambda: ((0.0, 0.0, 0.0), (4.0, 4.0, 4.0)),
+    )
+
+    class FakeDynamic:
+        @staticmethod
+        def DumbDispatch(value):
+            assert value is ole
+            return dynamic
+
+    monkeypatch.setattr(cb, "_COM_IMPORTS_OK", True)
+    monkeypatch.setattr(
+        cb,
+        "win32com",
+        SimpleNamespace(client=SimpleNamespace(dynamic=FakeDynamic)),
+        raising=False,
+    )
+    inspected = ComBackend._solid_info(SimpleNamespace(_oleobj_=ole))
+    assert inspected["handle"] == "S2"
+    assert inspected["bounding_box"]["max"] == [4.0, 4.0, 4.0]
+
+
+def test_com_inspection_property_helpers_fail_closed_on_missing_or_error():
+    class Missing:
+        _prop_map_get_ = {}
+
+    class Broken:
+        _prop_map_get_ = {"length": object()}
+
+        @property
+        def length(self):
+            raise RuntimeError("getter failed")
+
+    with pytest.raises(RuntimeError, match="AutoCAD property unavailable: Length"):
+        cb._com_float_property(Missing(), "Length")
+    with pytest.raises(RuntimeError, match="AutoCAD property unavailable: Length"):
+        cb._com_float_property(Broken(), "Length")
+
+
+def test_com_bounding_box_supports_byref_calling_convention(monkeypatch):
+    class Variant:
+        def __init__(self, *_args):
+            self.value = None
+
+    class ByRefBox:
+        def GetBoundingBox(self, *args):
+            if not args:
+                raise TypeError("two output args required")
+            args[0].value = (-2.0, -1.0, 0.0)
+            args[1].value = (2.0, 3.0, 4.0)
+
+    fake_pythoncom = SimpleNamespace(VT_BYREF=1, VT_VARIANT=2)
+    fake_client = SimpleNamespace(VARIANT=Variant)
+    monkeypatch.setattr(cb, "_COM_IMPORTS_OK", True)
+    monkeypatch.setattr(cb, "pythoncom", fake_pythoncom, raising=False)
+    monkeypatch.setattr(cb, "win32com", SimpleNamespace(client=fake_client), raising=False)
+
+    assert cb._com_bounding_box(ByRefBox()) == {
+        "min": [-2.0, -1.0, 0.0],
+        "max": [2.0, 3.0, 4.0],
+    }
+
+
+@pytest.mark.asyncio
+async def test_object_measure_rewraps_generated_dispatch_before_inspection(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+    ole = object()
+    generic = SimpleNamespace(_oleobj_=ole)
+    dynamic = SimpleNamespace(
+        _oleobj_=ole,
+        ObjectName="AcDbLine",
+        Handle="M1",
+        Length=5.0,
+        GetBoundingBox=lambda: ((0.0, 0.0, 0.0), (5.0, 0.0, 0.0)),
+    )
+
+    class FakeDynamic:
+        @staticmethod
+        def DumbDispatch(value):
+            assert value is ole
+            return dynamic
+
+    monkeypatch.setattr(cb, "_COM_IMPORTS_OK", True)
+    monkeypatch.setattr(
+        cb,
+        "win32com",
+        SimpleNamespace(client=SimpleNamespace(dynamic=FakeDynamic)),
+        raising=False,
+    )
+    monkeypatch.setattr(backend, "_entity_by_id", lambda _object_id: generic)
+    monkeypatch.setattr(backend, "_run", _inline_run)
+
+    measured = await backend.object_measure("M1")
+    assert measured["type"] == "LINE"
+    assert measured["length"] == pytest.approx(5.0)
+    assert measured["bounding_box"]["max"] == [5.0, 0.0, 0.0]
 
 
 def test_primary_type_library_bootstrap_uses_common_program_files(monkeypatch, tmp_path):
@@ -572,6 +803,30 @@ class _FakeDoc:
 
 async def _inline_run(func, **_kwargs):
     return func()
+
+
+@pytest.mark.asyncio
+async def test_document_new_retries_explicit_com_busy_rejection(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+    calls = 0
+    doc = SimpleNamespace(Name="Drawing1.dwg")
+
+    class Documents:
+        def Add(self):
+            nonlocal calls
+            calls += 1
+            if calls < 3:
+                raise RuntimeError(cb._RPC_E_CALL_REJECTED, "busy add")
+            return doc
+
+    app = SimpleNamespace(Documents=Documents())
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_app", lambda: app)
+    monkeypatch.setattr(cb.time, "sleep", lambda _seconds: None)
+
+    result = await backend.document_new()
+    assert result["name"] == "Drawing1.dwg"
+    assert calls == 3
 
 
 @pytest.mark.asyncio

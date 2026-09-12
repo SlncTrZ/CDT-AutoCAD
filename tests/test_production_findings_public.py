@@ -5,6 +5,8 @@ Wing: code | Topic: production-findings | Updated: 2026-09-11 17:05
 from __future__ import annotations
 
 import math
+import os
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -299,3 +301,246 @@ async def test_polyline_exact_bulges_are_applied_on_com(settings, monkeypatch):
     assert poly.widths[0] == (1.0, 2.0)
     assert poly.Elevation == 3.0
     assert created.type == "LWPOLYLINE"
+
+
+_LIVE_COM_ENABLED = sys.platform == "win32" and os.environ.get("CDT_AUTOCAD_LIVE_TEST") == "1"
+_LIVE_COM_PROGID = os.environ.get("CDT_AUTOCAD_COM_PROGID", "AutoCAD.Application.26")
+
+
+def _tool_payload(result):
+    content = result.structured_content or {}
+    if isinstance(content, dict) and set(content) == {"result"}:
+        return content["result"]
+    return content
+
+
+@pytest.mark.skipif(
+    not _LIVE_COM_ENABLED,
+    reason="requires Windows + real AutoCAD + CDT_AUTOCAD_LIVE_TEST=1",
+)
+@pytest.mark.asyncio
+async def test_live_public_units_layers_and_dispatch_inspection(settings, tmp_path: Path):
+    import win32com.client
+    import win32com.client.dynamic
+
+    app = create_mcp(
+        replace(
+            settings,
+            allowed_paths=(tmp_path.resolve(),),
+            backend="com",
+            com_progid=_LIVE_COM_PROGID,
+            com_attach_policy="attach_only",
+            com_call_timeout_seconds=60.0,
+        )
+    )
+    created_names: set[str] = set()
+    fixture_path = tmp_path / "cdt-public-xref-fixture.dwg"
+
+    def dynamic_layer_snapshot(name: str) -> dict[str, object]:
+        acad = win32com.client.GetActiveObject(_LIVE_COM_PROGID)
+        raw = acad.ActiveDocument.Layers.Item(name)
+        layer = win32com.client.dynamic.DumbDispatch(raw._oleobj_)
+        return {
+            "LayerOn": bool(layer.LayerOn),
+            "Freeze": bool(layer.Freeze),
+            "Lock": bool(layer.Lock),
+            "Color": int(layer.Color),
+            "Linetype": str(layer.Linetype),
+            "LineWeight": int(layer.LineWeight),
+        }
+
+    def raw_units() -> dict[str, int]:
+        acad = win32com.client.GetActiveObject(_LIVE_COM_PROGID)
+        doc = acad.ActiveDocument
+        return {
+            name: int(doc.GetVariable(name))
+            for name in ("INSUNITS", "MEASUREMENT", "LUNITS", "LUPREC")
+        }
+
+    def close_active_without_save() -> None:
+        acad = win32com.client.GetActiveObject(_LIVE_COM_PROGID)
+        if int(acad.Documents.Count) > 0:
+            acad.ActiveDocument.Close(False)
+
+    try:
+        async with Client(app) as client:
+            fixture_doc = _tool_payload(await client.call_tool("document_new", {}))
+            created_names.add(str(fixture_doc["name"]))
+            await client.call_tool("layer_create", {"name": "ROAD", "color": 2})
+            await client.call_tool(
+                "entity_create_line",
+                {"x1": 0.0, "y1": 0.0, "x2": 20.0, "y2": 0.0, "layer": "ROAD"},
+            )
+            saved_fixture = _tool_payload(
+                await client.call_tool("document_save_as", {"path": str(fixture_path)})
+            )
+            assert Path(saved_fixture["path"]) == fixture_path.resolve()
+            assert fixture_path.is_file()
+            close_active_without_save()
+
+            main_doc = _tool_payload(await client.call_tool("document_new", {}))
+            created_names.add(str(main_doc["name"]))
+
+            units = _tool_payload(
+                await client.call_tool(
+                    "document_configure_units",
+                    {
+                        "insertion_units": "millimeters",
+                        "measurement": "metric",
+                        "linear_format": "decimal",
+                        "linear_precision": 3,
+                    },
+                )
+            )
+            expected_units = {"INSUNITS": 4, "MEASUREMENT": 1, "LUNITS": 2, "LUPREC": 3}
+            assert units["raw"] == expected_units
+            assert raw_units() == expected_units
+            before_invalid_units = raw_units()
+            invalid_units = await client.call_tool(
+                "document_configure_units",
+                {"linear_precision": 9},
+                raise_on_error=False,
+            )
+            assert invalid_units.is_error is True
+            assert raw_units() == before_invalid_units
+
+            await client.call_tool("layer_create", {"name": "CDT-ATOMIC", "color": 7})
+            updated = _tool_payload(
+                await client.call_tool(
+                    "layer_update_state",
+                    {
+                        "name": "CDT-ATOMIC",
+                        "is_on": True,
+                        "is_frozen": False,
+                        "is_locked": False,
+                        "color": 3,
+                        "linetype": "Continuous",
+                        "lineweight": 25,
+                    },
+                )
+            )
+            assert updated["color"] == 3
+            before_invalid_layer = dynamic_layer_snapshot("CDT-ATOMIC")
+            invalid_layer = await client.call_tool(
+                "layer_update_state",
+                {"name": "CDT-ATOMIC", "is_locked": True, "linetype": "__MISSING__"},
+                raise_on_error=False,
+            )
+            assert invalid_layer.is_error is True
+            assert dynamic_layer_snapshot("CDT-ATOMIC") == before_invalid_layer
+
+            await client.call_tool("layer_set_current", {"name": "CDT-ATOMIC"})
+            current_refusal = await client.call_tool(
+                "layer_update_state",
+                {"name": "CDT-ATOMIC", "is_frozen": True},
+                raise_on_error=False,
+            )
+            assert current_refusal.is_error is True
+            assert dynamic_layer_snapshot("CDT-ATOMIC")["Freeze"] is False
+            await client.call_tool("layer_set_current", {"name": "0"})
+
+            xref = _tool_payload(
+                await client.call_tool(
+                    "xref_attach",
+                    {"path": str(fixture_path), "name": "CDT_XREF", "overlay": True},
+                )
+            )
+            assert xref["ok"] is True
+            xref_object = _tool_payload(
+                await client.call_tool("object_get", {"object_id": xref["handle"]})
+            )
+            assert xref_object["type"] == "INSERT"
+            assert xref_object["properties"]["block_name"] == "CDT_XREF"
+            acad = win32com.client.GetActiveObject(_LIVE_COM_PROGID)
+            dependent_names = [
+                str(acad.ActiveDocument.Layers.Item(index).Name)
+                for index in range(int(acad.ActiveDocument.Layers.Count))
+                if "|ROAD" in str(acad.ActiveDocument.Layers.Item(index).Name)
+            ]
+            assert len(dependent_names) == 1
+            dependent = dependent_names[0]
+            before_xref_layer = dynamic_layer_snapshot(dependent)
+            xref_refusal = await client.call_tool(
+                "layer_update_state",
+                {"name": dependent, "is_locked": True},
+                raise_on_error=False,
+            )
+            assert xref_refusal.is_error is True
+            assert dynamic_layer_snapshot(dependent) == before_xref_layer
+
+            line = _tool_payload(
+                await client.call_tool(
+                    "entity_create_line",
+                    {"x1": 0.0, "y1": 10.0, "x2": 25.0, "y2": 10.0},
+                )
+            )
+            measured_line = _tool_payload(
+                await client.call_tool("object_measure", {"object_id": line["id"]})
+            )
+            assert measured_line["type"] == "LINE"
+            assert measured_line["length"] == pytest.approx(25.0)
+
+            polyline = _tool_payload(
+                await client.call_tool(
+                    "entity_create_polyline",
+                    {"points": [[0.0, 20.0], [10.0, 20.0], [10.0, 30.0]], "closed": False},
+                )
+            )
+            measured_polyline = _tool_payload(
+                await client.call_tool("object_measure", {"object_id": polyline["id"]})
+            )
+            assert measured_polyline["type"] == "LWPOLYLINE"
+            assert measured_polyline["length"] == pytest.approx(20.0)
+
+            block_source = _tool_payload(
+                await client.call_tool(
+                    "entity_create_line",
+                    {"x1": 40.0, "y1": 0.0, "x2": 45.0, "y2": 0.0},
+                )
+            )
+            await client.call_tool(
+                "block_create",
+                {"name": "CDT_INSPECT_BLOCK", "object_ids": [block_source["id"]]},
+            )
+            inserted = _tool_payload(
+                await client.call_tool(
+                    "block_insert", {"name": "CDT_INSPECT_BLOCK", "x": 50.0, "y": 10.0}
+                )
+            )
+            measured_insert = _tool_payload(
+                await client.call_tool("object_measure", {"object_id": inserted["id"]})
+            )
+            assert measured_insert["type"] == "INSERT"
+
+            solid = _tool_payload(
+                await client.call_tool(
+                    "solid_create_primitive",
+                    {
+                        "kind": "box",
+                        "parameters": {
+                            "cx": 0.0,
+                            "cy": 0.0,
+                            "cz": 0.0,
+                            "length": 10.0,
+                            "width": 8.0,
+                            "height": 6.0,
+                        },
+                    },
+                )
+            )
+            inspected = _tool_payload(
+                await client.call_tool("solid_inspect", {"handle": solid["handle"]})
+            )
+            assert inspected["volume"] == pytest.approx(480.0)
+            assert inspected["verification_capabilities"]["face_topology"] is False
+            assert inspected["verification_capabilities"]["edge_topology"] is False
+    finally:
+        try:
+            acad = win32com.client.GetActiveObject(_LIVE_COM_PROGID)
+            for index in range(int(acad.Documents.Count) - 1, -1, -1):
+                doc = acad.Documents.Item(index)
+                full_name = str(getattr(doc, "FullName", "") or "")
+                if str(doc.Name) in created_names or (full_name and Path(full_name).parent == tmp_path.resolve()):
+                    doc.Close(False)
+        except Exception:
+            pass

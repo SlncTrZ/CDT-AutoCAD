@@ -5,6 +5,7 @@ Wing: code | Topic: production-findings | Updated: 2026-09-11 17:25
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,7 @@ import cdt_autocad.backends.com_backend as cb
 from cdt_autocad.backends.com_backend import ComBackend
 from cdt_autocad.backends.ezdxf_backend import EzdxfBackend
 from cdt_autocad.command_presets import BOUNDED_COMMAND_PRESETS, VIEW_PRESETS, WORKFLOW_DEFAULTS
+from cdt_autocad.errors import BackendQuarantinedError, StateConflictError
 
 
 def _run_inline(monkeypatch, backend):
@@ -36,6 +38,298 @@ def test_command_preset_registry_locks_video_friendly_defaults():
     )
     assert "display.regen" in BOUNDED_COMMAND_PRESETS
     assert not any("LISP" in value.upper() for value in BOUNDED_COMMAND_PRESETS.values())
+
+
+class _AtomicUnitsDoc:
+    def __init__(
+        self,
+        *,
+        fail_apply_index: int | None = None,
+        ignore_apply_name: str | None = None,
+        fail_restore_name: str | None = None,
+    ):
+        self.initial = {"INSUNITS": 0, "MEASUREMENT": 0, "LUNITS": 2, "LUPREC": 4}
+        self.values = dict(self.initial)
+        self.fail_apply_index = fail_apply_index
+        self.ignore_apply_name = ignore_apply_name
+        self.fail_restore_name = fail_restore_name
+        self.set_count = 0
+        self.apply_failed = False
+        self.restore_failure_fired = False
+
+    def SetVariable(self, name, value):
+        self.set_count += 1
+        if self.fail_apply_index is not None and self.set_count == self.fail_apply_index:
+            self.apply_failed = True
+            raise RuntimeError(f"injected set failure #{self.fail_apply_index}")
+        if (
+            self.apply_failed
+            and self.fail_restore_name == name
+            and value == self.initial[name]
+            and not self.restore_failure_fired
+        ):
+            self.restore_failure_fired = True
+            raise RuntimeError(f"injected restore failure: {name}")
+        if not self.apply_failed and self.ignore_apply_name == name and value != self.initial[name]:
+            return
+        self.values[name] = value
+
+    def GetVariable(self, name):
+        return self.values[name]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail_apply_index", [1, 2, 3, 4])
+async def test_com_units_atomicity_restores_exact_predecessor_after_each_set_failure(
+    settings, monkeypatch, fail_apply_index
+):
+    doc = _AtomicUnitsDoc(fail_apply_index=fail_apply_index)
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(RuntimeError, match="injected set failure"):
+        await backend.document_configure_units(
+            "millimeters", "metric", "architectural", 3
+        )
+
+    assert doc.values == doc.initial
+    assert backend.status()["integrity_uncertain"] is False
+
+
+@pytest.mark.asyncio
+async def test_com_units_atomicity_rolls_back_readback_mismatch(settings, monkeypatch):
+    doc = _AtomicUnitsDoc(ignore_apply_name="LUNITS")
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(StateConflictError, match="units read-back mismatch"):
+        await backend.document_configure_units(
+            "millimeters", "metric", "architectural", 3
+        )
+
+    assert doc.values == doc.initial
+    assert backend.status()["integrity_uncertain"] is False
+
+
+@pytest.mark.asyncio
+async def test_com_units_restore_failure_quarantines_later_mutations(settings, monkeypatch):
+    doc = _AtomicUnitsDoc(fail_apply_index=3, fail_restore_name="INSUNITS")
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(StateConflictError, match="restore verification failed"):
+        await backend.document_configure_units(
+            "millimeters", "metric", "architectural", 3
+        )
+
+    status = backend.status()
+    assert status["integrity_uncertain"] is True
+    assert "document_configure_units" in status["integrity_uncertain_reason"]
+
+    executor = ThreadPoolExecutor(max_workers=1)
+    backend._executor = executor
+    try:
+        with pytest.raises(BackendQuarantinedError, match="integrity verification failure"):
+            await backend._run_after_mutation_gate(lambda: None, may_mutate_document=True)
+        assert (
+            await backend._run_after_mutation_gate(
+                lambda: "read-ok", may_mutate_document=False
+            )
+            == "read-ok"
+        )
+    finally:
+        executor.shutdown(wait=False)
+        backend._executor = None
+
+
+class _AtomicNamedCollection:
+    def __init__(self, items):
+        self.items = list(items)
+
+    @property
+    def Count(self):
+        return len(self.items)
+
+    def Item(self, index_or_name):
+        if isinstance(index_or_name, int):
+            return self.items[index_or_name]
+        wanted = str(index_or_name).lower()
+        for item in self.items:
+            if str(item.Name).lower() == wanted:
+                return item
+        raise KeyError(index_or_name)
+
+
+class _AtomicLayer:
+    _FIELDS = ("LayerOn", "Freeze", "Lock", "Color", "Linetype", "LineWeight")
+
+    def __init__(
+        self,
+        name="WORK",
+        *,
+        fail_apply_index: int | None = None,
+        ignore_apply_field: str | None = None,
+        fail_restore_field: str | None = None,
+    ):
+        object.__setattr__(self, "Name", name)
+        initial = {
+            "LayerOn": True,
+            "Freeze": False,
+            "Lock": False,
+            "Color": 7,
+            "Linetype": "Continuous",
+            "LineWeight": -3,
+        }
+        object.__setattr__(self, "initial", initial)
+        for field, value in initial.items():
+            object.__setattr__(self, field, value)
+        object.__setattr__(self, "fail_apply_index", fail_apply_index)
+        object.__setattr__(self, "ignore_apply_field", ignore_apply_field)
+        object.__setattr__(self, "fail_restore_field", fail_restore_field)
+        object.__setattr__(self, "set_count", 0)
+        object.__setattr__(self, "apply_failed", False)
+        object.__setattr__(self, "restore_failure_fired", False)
+        object.__setattr__(self, "tracking", True)
+
+    def __setattr__(self, name, value):
+        if name not in self._FIELDS or not getattr(self, "tracking", False):
+            object.__setattr__(self, name, value)
+            return
+        object.__setattr__(self, "set_count", self.set_count + 1)
+        if self.fail_apply_index is not None and self.set_count == self.fail_apply_index:
+            object.__setattr__(self, "apply_failed", True)
+            raise RuntimeError(f"injected layer setter failure #{self.fail_apply_index}")
+        if (
+            self.apply_failed
+            and self.fail_restore_field == name
+            and value == self.initial[name]
+            and not self.restore_failure_fired
+        ):
+            object.__setattr__(self, "restore_failure_fired", True)
+            raise RuntimeError(f"injected layer restore failure: {name}")
+        if (
+            not self.apply_failed
+            and self.ignore_apply_field == name
+            and value != self.initial[name]
+        ):
+            return
+        object.__setattr__(self, name, value)
+
+    def snapshot(self):
+        return {field: getattr(self, field) for field in self._FIELDS}
+
+
+def _atomic_layer_doc(layer):
+    return SimpleNamespace(
+        ActiveLayer=SimpleNamespace(Name="CURRENT"),
+        Layers=_AtomicNamedCollection([SimpleNamespace(Name="CURRENT"), layer]),
+        Linetypes=_AtomicNamedCollection(
+            [SimpleNamespace(Name="Continuous"), SimpleNamespace(Name="Dashed")]
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_com_layer_rejects_invalid_linetype_before_any_write(settings, monkeypatch):
+    layer = _AtomicLayer()
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_doc", lambda: _atomic_layer_doc(layer))
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(ValueError, match="linetype does not exist"):
+        await backend.layer_update_state(
+            "WORK", is_on=False, is_locked=True, color=3, linetype="MISSING"
+        )
+
+    assert layer.snapshot() == layer.initial
+    assert layer.set_count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail_apply_index", [1, 2, 3, 4, 5, 6])
+async def test_com_layer_atomicity_restores_exact_predecessor_after_each_setter_failure(
+    settings, monkeypatch, fail_apply_index
+):
+    layer = _AtomicLayer(fail_apply_index=fail_apply_index)
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_doc", lambda: _atomic_layer_doc(layer))
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(RuntimeError, match="injected layer setter failure"):
+        await backend.layer_update_state(
+            "WORK",
+            is_on=False,
+            is_frozen=True,
+            is_locked=True,
+            color=3,
+            linetype="Dashed",
+            lineweight=25,
+        )
+
+    assert layer.snapshot() == layer.initial
+    assert backend.status()["integrity_uncertain"] is False
+
+
+@pytest.mark.asyncio
+async def test_com_layer_atomicity_rolls_back_readback_mismatch(settings, monkeypatch):
+    layer = _AtomicLayer(ignore_apply_field="Color")
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_doc", lambda: _atomic_layer_doc(layer))
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(StateConflictError, match="layer state read-back mismatch"):
+        await backend.layer_update_state(
+            "WORK",
+            is_on=False,
+            is_frozen=True,
+            is_locked=True,
+            color=3,
+            linetype="Dashed",
+            lineweight=25,
+        )
+
+    assert layer.snapshot() == layer.initial
+    assert backend.status()["integrity_uncertain"] is False
+
+
+@pytest.mark.asyncio
+async def test_com_layer_restore_failure_quarantines_later_mutations(settings, monkeypatch):
+    layer = _AtomicLayer(fail_apply_index=4, fail_restore_field="LayerOn")
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_doc", lambda: _atomic_layer_doc(layer))
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(StateConflictError, match="layer_update_state restore verification failed"):
+        await backend.layer_update_state(
+            "WORK",
+            is_on=False,
+            is_frozen=True,
+            is_locked=True,
+            color=3,
+            linetype="Dashed",
+            lineweight=25,
+        )
+
+    status = backend.status()
+    assert status["integrity_uncertain"] is True
+    assert "layer_update_state" in status["integrity_uncertain_reason"]
+
+
+@pytest.mark.asyncio
+async def test_com_layer_rejects_xref_dependent_layer_before_write(settings, monkeypatch):
+    layer = _AtomicLayer(name="SITE|ROAD")
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(backend, "_doc", lambda: _atomic_layer_doc(layer))
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(ValueError, match="XREF-dependent"):
+        await backend.layer_update_state("site|road", is_locked=True)
+
+    assert layer.snapshot() == layer.initial
+    assert layer.set_count == 0
 
 
 @pytest.mark.asyncio

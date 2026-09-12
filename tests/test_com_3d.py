@@ -342,6 +342,14 @@ async def test_solid_move_rotate3d_and_inspect(settings, monkeypatch):
     inspected = await backend.solid_inspect("S1")
     assert inspected["centroid"] == [1.0, 2.0, 3.0]
     assert inspected["volume"] == pytest.approx(125.0)
+    assert inspected["verification_capabilities"] == {
+        "volume": True,
+        "centroid": True,
+        "bounding_box": True,
+        "face_topology": False,
+        "edge_topology": False,
+        "reason": "ActiveX exposes no deterministic face/edge topology API",
+    }
 
     with pytest.raises(ValueError, match="scale factor"):
         await backend.solid_scale3d("S1", 0, 0, 0, 0)

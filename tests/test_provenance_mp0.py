@@ -14,10 +14,12 @@ from cdt_autocad.dependency_lock import (
     normalize_lock_newlines,
 )
 from cdt_autocad.provenance import (
+    build_acceptance_record,
     build_runtime_manifest,
     canonical_lock_path,
     hash_source_tree,
     read_lock_packages,
+    register_accepted_artifact,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -92,6 +94,155 @@ def test_source_tree_hash_is_content_and_path_sensitive(tmp_path):
     (tmp_path / "src" / "nested" / "a.py").write_text("beta\n", encoding="utf-8")
     third = hash_source_tree(tmp_path, (Path("src"),))
     assert second != third
+
+
+def _acceptance_runtime_manifest(*, bridge_sha256: str | None = "b" * 64):
+    return {
+        "schema_version": 1,
+        "generated_at_utc": "2026-09-12T05:00:00+00:00",
+        "git": {
+            "head": "abc123",
+            "dirty": True,
+            "tracked_diff_sha256": "d" * 64,
+        },
+        "source": {"tree_sha256": "s" * 64},
+        "provider": {"version": "0.4.0rc1"},
+        "bridge_artifact": {
+            "present": bridge_sha256 is not None,
+            "path": "native/CDT.AutoCAD.Bridge/bin/x64/Release/CDT.AutoCAD.Bridge.dll",
+            "sha256": bridge_sha256,
+        },
+        "autocad": {
+            "target": "AutoCAD 2027 / Windows x64",
+            "process_present": True,
+            "pid": 4321,
+            "session": "1",
+            "observation": "tasklist",
+        },
+        "runtime": {
+            "python_version": "3.12.3",
+            "python_executable": "python.exe",
+            "platform": "Windows-11",
+            "machine": "AMD64",
+            "hostname": "workstation",
+        },
+    }
+
+
+def _loaded_bridge_observation(sha256: str = "b" * 64):
+    return {
+        "present": True,
+        "path": r"C:\Users\truon\AppData\Roaming\Autodesk\ApplicationPlugins\CDT.AutoCAD.Bridge.bundle\Contents\Windows\CDT.AutoCAD.Bridge.dll",
+        "sha256": sha256,
+        "observation": "acad_process_module",
+    }
+
+
+def test_acceptance_record_binds_run_contract_binary_process_fixture_and_exit_code(tmp_path):
+    fixture = tmp_path / "fixture.dwg"
+    fixture.write_bytes(b"fixture")
+
+    record = build_acceptance_record(
+        _acceptance_runtime_manifest(),
+        run_id="b5a-live-001",
+        finding_ids=("BS-G09", "MP-G08"),
+        contract_version="autocad-generic-v1-rc1",
+        contract_hash="c" * 64,
+        loaded_bridge_observation=_loaded_bridge_observation(),
+        fixture_path=fixture,
+        exit_code=0,
+        result="PASS",
+        checks=[{"name": "typed_dispatch", "result": "PASS"}],
+        remaining_uncertainty=("independent review pending",),
+    )
+
+    assert record["run_id"] == "b5a-live-001"
+    assert record["source_commit"] == "abc123"
+    assert record["source_diff_sha256"] == "d" * 64
+    assert record["provider_version"] == "0.4.0rc1"
+    assert record["contract_version"] == "autocad-generic-v1-rc1"
+    assert record["contract_hash"] == "c" * 64
+    assert record["environment"]["runtime_observed_at_utc"] == "2026-09-12T05:00:00+00:00"
+    assert record["environment"]["loaded_bridge"]["sha256"] == "b" * 64
+    assert record["environment"]["loaded_bridge"]["observation"] == "acad_process_module"
+    assert record["environment"]["candidate_bridge_artifact"]["sha256"] == "b" * 64
+    assert record["environment"]["autocad_process"]["pid"] == 4321
+    assert record["environment"]["autocad_process"]["session"] == "1"
+    assert record["fixture"]["sha256"] == hashlib.sha256(b"fixture").hexdigest()
+    assert record["exit_code"] == 0
+    assert record["result"] == "PASS"
+    assert record["remaining_uncertainty"] == ["independent review pending"]
+
+
+def test_accepted_artifact_registry_uses_runtime_observed_binary_and_rejects_retroactive_binding(tmp_path):
+    fixture = tmp_path / "fixture.dwg"
+    fixture.write_bytes(b"fixture")
+    record = build_acceptance_record(
+        _acceptance_runtime_manifest(),
+        run_id="accepted-001",
+        finding_ids=("BS-G09",),
+        contract_version="autocad-generic-v1-rc1",
+        contract_hash="c" * 64,
+        loaded_bridge_observation=_loaded_bridge_observation(),
+        fixture_path=fixture,
+        exit_code=0,
+        result="PASS",
+        checks=[],
+        remaining_uncertainty=(),
+    )
+    evidence = tmp_path / "accepted-001.json"
+    evidence.write_text(__import__("json").dumps(record), encoding="utf-8")
+    registry_path = tmp_path / "accepted-artifacts.json"
+
+    registry = register_accepted_artifact(registry_path, evidence)
+    entry = registry["entries"]["accepted-001"]
+    assert entry["loaded_bridge_sha256"] == "b" * 64
+    assert entry["runtime_observed_at_utc"] == "2026-09-12T05:00:00+00:00"
+    assert len(entry["evidence_sha256"]) == 64
+
+    no_binary = build_acceptance_record(
+        _acceptance_runtime_manifest(),
+        run_id="historical-without-binary",
+        finding_ids=("A-10",),
+        contract_version="autocad-generic-v1-rc1",
+        contract_hash="c" * 64,
+        loaded_bridge_observation=None,
+        fixture_path=None,
+        exit_code=0,
+        result="PASS",
+        checks=[],
+        remaining_uncertainty=("binary identity absent at run time",),
+    )
+    old_evidence = tmp_path / "historical.json"
+    old_evidence.write_text(__import__("json").dumps(no_binary), encoding="utf-8")
+    with __import__("pytest").raises(ValueError, match="runtime-observed bridge hash"):
+        register_accepted_artifact(registry_path, old_evidence)
+
+
+def test_accepted_artifact_registry_rejects_conflicting_reuse_of_run_id(tmp_path):
+    record = build_acceptance_record(
+        _acceptance_runtime_manifest(),
+        run_id="accepted-duplicate",
+        finding_ids=("A-10",),
+        contract_version="autocad-generic-v1-rc1",
+        contract_hash="c" * 64,
+        loaded_bridge_observation=_loaded_bridge_observation(),
+        fixture_path=None,
+        exit_code=0,
+        result="PASS",
+        checks=[],
+        remaining_uncertainty=(),
+    )
+    first = tmp_path / "first.json"
+    first.write_text(__import__("json").dumps(record), encoding="utf-8")
+    registry_path = tmp_path / "accepted-artifacts.json"
+    register_accepted_artifact(registry_path, first)
+
+    record["environment"]["loaded_bridge"]["sha256"] = "e" * 64
+    second = tmp_path / "second.json"
+    second.write_text(__import__("json").dumps(record), encoding="utf-8")
+    with __import__("pytest").raises(ValueError, match="conflicting accepted-artifact entry"):
+        register_accepted_artifact(registry_path, second)
 
 
 def test_runtime_manifest_binds_git_lock_source_and_optional_dll(tmp_path):

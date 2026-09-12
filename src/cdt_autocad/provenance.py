@@ -12,7 +12,7 @@ import platform
 import subprocess
 import sys
 import tomllib
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -228,6 +228,179 @@ def build_runtime_manifest(
             "hostname": platform.node(),
         },
     }
+
+
+_ACCEPTANCE_RESULTS = {"PASS", "FAIL", "BLOCKED_ENVIRONMENT", "REVIEW_PENDING"}
+
+
+def build_acceptance_record(
+    runtime_manifest: dict[str, Any],
+    *,
+    run_id: str,
+    finding_ids: Iterable[str],
+    contract_version: str,
+    contract_hash: str,
+    loaded_bridge_observation: Mapping[str, Any] | None,
+    fixture_path: str | Path | None,
+    exit_code: int | None,
+    result: str,
+    checks: Iterable[dict[str, Any]],
+    remaining_uncertainty: Iterable[str],
+) -> dict[str, Any]:
+    """Build one evidence record from identities observed during the acceptance run."""
+    normalized_run_id = str(run_id or "").strip()
+    if not normalized_run_id:
+        raise ValueError("run_id must not be empty")
+    normalized_result = str(result or "").strip().upper()
+    if normalized_result not in _ACCEPTANCE_RESULTS:
+        raise ValueError(f"unsupported acceptance result: {result}")
+
+    git_identity = dict(runtime_manifest.get("git") or {})
+    source_identity = dict(runtime_manifest.get("source") or {})
+    provider_identity = dict(runtime_manifest.get("provider") or {})
+    candidate_bridge_identity = dict(runtime_manifest.get("bridge_artifact") or {})
+    loaded_bridge_identity = dict(loaded_bridge_observation or {})
+    if loaded_bridge_observation is None:
+        loaded_bridge_identity = {
+            "present": False,
+            "path": None,
+            "sha256": None,
+            "observation": "not_observed",
+        }
+    elif loaded_bridge_identity.get("present"):
+        bridge_sha = str(loaded_bridge_identity.get("sha256") or "").strip().lower()
+        observation = str(loaded_bridge_identity.get("observation") or "").strip()
+        if len(bridge_sha) != 64 or not observation:
+            raise ValueError(
+                "loaded_bridge_observation must include a runtime-observed sha256 and observation method"
+            )
+        loaded_bridge_identity["sha256"] = bridge_sha
+    autocad_identity = dict(runtime_manifest.get("autocad") or {})
+    runtime_identity = dict(runtime_manifest.get("runtime") or {})
+    observed_at = runtime_manifest.get("generated_at_utc")
+    if not observed_at:
+        raise ValueError("runtime manifest must include generated_at_utc")
+
+    fixture: dict[str, Any] | None = None
+    if fixture_path is not None:
+        resolved_fixture = Path(fixture_path).resolve()
+        if not resolved_fixture.is_file():
+            raise FileNotFoundError(f"acceptance fixture not found: {resolved_fixture}")
+        fixture = {
+            "path": str(resolved_fixture),
+            "sha256": _sha256_file(resolved_fixture),
+            "size": resolved_fixture.stat().st_size,
+        }
+
+    return {
+        "schema_version": 1,
+        "run_id": normalized_run_id,
+        "finding_ids": [str(item) for item in finding_ids],
+        "source_commit": git_identity.get("head"),
+        "source_dirty": bool(git_identity.get("dirty")),
+        "source_diff_sha256": git_identity.get("tracked_diff_sha256"),
+        "source_tree_sha256": source_identity.get("tree_sha256"),
+        "provider_version": provider_identity.get("version"),
+        "contract_version": str(contract_version),
+        "contract_hash": str(contract_hash),
+        "environment": {
+            "runtime_observed_at_utc": observed_at,
+            "candidate_bridge_artifact": candidate_bridge_identity,
+            "loaded_bridge": loaded_bridge_identity,
+            "autocad_process": {
+                "target": autocad_identity.get("target"),
+                "process_present": autocad_identity.get("process_present"),
+                "pid": autocad_identity.get("pid"),
+                "session": autocad_identity.get("session"),
+                "observation": autocad_identity.get("observation"),
+            },
+            "runtime": runtime_identity,
+        },
+        "fixture": fixture,
+        "exit_code": int(exit_code) if exit_code is not None else None,
+        "checks": [dict(check) for check in checks],
+        "result": normalized_result,
+        "remaining_uncertainty": [str(item) for item in remaining_uncertainty],
+    }
+
+
+def register_accepted_artifact(
+    registry_path: str | Path,
+    evidence_path: str | Path,
+) -> dict[str, Any]:
+    """Register PASS evidence only when that run already recorded its loaded bridge hash."""
+    evidence_file = Path(evidence_path).resolve()
+    record = json.loads(evidence_file.read_text(encoding="utf-8"))
+    if record.get("result") != "PASS":
+        raise ValueError("only PASS evidence can enter the accepted-artifact registry")
+
+    run_id = str(record.get("run_id") or "").strip()
+    if not run_id:
+        raise ValueError("acceptance evidence must include run_id")
+    environment = record.get("environment") or {}
+    bridge = environment.get("loaded_bridge") or {}
+    bridge_sha = str(bridge.get("sha256") or "").strip().lower()
+    bridge_observation = str(bridge.get("observation") or "").strip()
+    observed_at = environment.get("runtime_observed_at_utc")
+    if (
+        not bridge.get("present")
+        or len(bridge_sha) != 64
+        or not bridge_observation
+        or bridge_observation == "not_observed"
+        or not observed_at
+    ):
+        raise ValueError(
+            "accepted evidence must contain the runtime-observed bridge hash; "
+            "do not retroactively bind an old event to today's binary"
+        )
+
+    evidence_sha = _sha256_file(evidence_file)
+    candidate = {
+        "run_id": run_id,
+        "evidence_path": str(evidence_file),
+        "evidence_sha256": evidence_sha,
+        "source_commit": record.get("source_commit"),
+        "source_diff_sha256": record.get("source_diff_sha256"),
+        "contract_version": record.get("contract_version"),
+        "contract_hash": record.get("contract_hash"),
+        "loaded_bridge_path": bridge.get("path"),
+        "loaded_bridge_sha256": bridge_sha,
+        "loaded_bridge_observation": bridge_observation,
+        "runtime_observed_at_utc": observed_at,
+    }
+
+    registry_file = Path(registry_path).resolve()
+    if registry_file.is_file():
+        registry = json.loads(registry_file.read_text(encoding="utf-8"))
+        if registry.get("schema_version") != 1 or not isinstance(registry.get("entries"), dict):
+            raise ValueError("invalid accepted-artifact registry schema")
+    else:
+        registry = {"schema_version": 1, "entries": {}}
+
+    existing = registry["entries"].get(run_id)
+    if existing is not None:
+        comparable = {key: existing.get(key) for key in candidate}
+        if comparable != candidate:
+            raise ValueError(f"conflicting accepted-artifact entry for run_id: {run_id}")
+        return registry
+
+    registry["entries"][run_id] = {
+        **candidate,
+        "registered_at_utc": datetime.now(UTC).isoformat(),
+    }
+    registry_file.parent.mkdir(parents=True, exist_ok=True)
+    temporary = registry_file.with_name(f".{registry_file.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(registry, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        os.replace(temporary, registry_file)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return registry
 
 
 def _build_parser() -> argparse.ArgumentParser:

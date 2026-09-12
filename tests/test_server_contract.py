@@ -131,6 +131,40 @@ def test_capability_keyset_is_stable_across_backends(settings):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "capability", "reason"),
+    [
+        ("fillet", "autocad.solid.edge_fillet", "no_deterministic_activex_subentity_api"),
+        ("chamfer", "autocad.solid.edge_chamfer", "no_deterministic_activex_subentity_api"),
+        ("shell", "autocad.solid.shell", "no_deterministic_activex_shell_api"),
+    ],
+)
+async def test_com_solid_edge_refusals_are_locked_at_public_boundary(
+    settings, operation, capability, reason
+):
+    app = create_mcp(replace(settings, backend="com"))
+    async with Client(app) as client:
+        capabilities_result = await client.call_tool("system_capabilities", {})
+        payload = capabilities_result.structured_content or {}
+        refusal = payload["capabilities"][capability]
+        assert refusal["supported"] is False
+        assert refusal["reason"] == reason
+
+        result = await client.call_tool(
+            "solid_transform",
+            {"handle": "DO_NOT_TOUCH", "operation": operation, "parameters": {}},
+            raise_on_error=False,
+        )
+
+    assert result.is_error is True
+    error = result.structured_content or {}
+    assert error["kind"] == "validation_error"
+    assert error["retryable"] is False
+    assert error["tool"] == "solid_transform"
+    assert "move, rotate, scale, mirror" in error["error"]
+
+
+@pytest.mark.asyncio
 async def test_com_selection_keeps_the_same_bounded_generic_tool_surface(settings):
     app = create_mcp(replace(settings, backend="com"))
     async with Client(app) as client:
