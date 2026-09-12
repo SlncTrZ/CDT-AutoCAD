@@ -8,7 +8,8 @@ This repository owns the AutoCAD MCP provider runtime only. `CDT_Engineer` is th
 
 - Source repo: `SlncTrZ/CDT_Engineer`
 - Pinned commit: `643019c`
-- Read first: `docs/CURRENT_CHECKPOINT.md`, `docs/SPEC_BASELINE.md`, `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/ROADMAP.md`, `docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`, `docs/SEMANTIC_STATE_PROTOCOL.md`, `docs/ARCHITECTURE_UPGRADE_PLAN.md`, `docs/NATIVE_BRIDGE_ACCEPTANCE.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`.
+- Read first (published): `docs/CURRENT_CHECKPOINT.md`, `docs/SPEC_BASELINE.md`, `docs/SEMANTIC_STATE_PROTOCOL.md`, `specs/MCP_PROVIDER_STANDARD.md`, `specs/ARCHITECTURE.md`, `specs/CONTRACTS.md`, `docs/DRAWING_QUALITY_ACCEPTANCE.md`, `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`.
+- Read first (internal, untracked working record): `_private/README.md`, `_private/development/roadmap/ROADMAP.md`, `_private/development/architecture/ARCHITECTURE_UPGRADE_PLAN.md`, `_private/development/adr/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`, `_private/development/acceptance/NATIVE_BRIDGE_ACCEPTANCE.md`.
 - Do not edit files under `specs/`; they are pinned snapshots. Contract changes must be proposed in `CDT_Engineer` and synced here only after approval.
 
 ## Ownership boundary
@@ -35,7 +36,7 @@ Forbidden unless explicitly assigned:
 - Scale graduation 100 / 1,000 / 5,000 / 10,000 is LIVE PASS with beginning/middle/end failure injection, exact predecessor recovery, zero pending recovery and process-stability evidence.
 - Feature-based Chunks Streaming is the approved Production Domain execution model: the Domain Agent defines one meaningful feature; a failed current feature rolls back to its own predecessor without undoing earlier committed features. Default presentation pacing is 300 ms between completed features, not between native micro-chunks.
 - Domain semantics remain outside CDT-AutoCAD. `feature_id` is correlation metadata; the provider must not interpret road/manhole/kiosk/beam/pipe/TCVN or similar business meaning.
-- Canonical current-state authority: `docs/CURRENT_CHECKPOINT.md`; operational procedure: `docs/OPERATIONS_RUNBOOK.md`; release gate: `docs/RELEASE_CHECKLIST.md`. Historical session handoffs remain evidence of their original checkpoints and are not current-state instructions.
+- Canonical current-state authority: `docs/CURRENT_CHECKPOINT.md`; operational procedure: `docs/OPERATIONS_RUNBOOK.md`; release gate: the maintainer-internal release checklist under `_private/development/release/`. Historical session handoffs remain evidence of their original checkpoints and are not current-state instructions.
 
 ## Current delivery gates
 

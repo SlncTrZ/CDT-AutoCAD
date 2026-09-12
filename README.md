@@ -16,8 +16,7 @@ Operational use begins **2026-09-12** under the existing RC contract. This is an
 not a GA/stable-version declaration and not an expansion of capability claims.
 
 Start with [`docs/README.md`](docs/README.md) for the documentation map and
-[`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md) for live operation. Release changes follow
-[`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md). Security/support policy is in
+[`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md) for live operation. Security/support policy is in
 [`SECURITY.md`](SECURITY.md) and [`SUPPORT.md`](SUPPORT.md); notable changes are tracked in
 [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -105,8 +104,8 @@ Two invariants are non-negotiable:
 2. **Precise Identity / PID + Fingerprinting** — ObjectId/Handle are not treated as sufficient
    semantic identity; persistent PIDs and versioned fingerprints bind the state chain.
 
-See [`docs/ARCHITECTURE_UPGRADE_PLAN.md`](docs/ARCHITECTURE_UPGRADE_PLAN.md) and
-[`docs/ADR-002-GENERIC-CAD-EXECUTION-ENGINE.md`](docs/ADR-002-GENERIC-CAD-EXECUTION-ENGINE.md).
+Both invariants are enforced by the semantic-state protocol and the native integrity contract in
+[`docs/SEMANTIC_STATE_PROTOCOL.md`](docs/SEMANTIC_STATE_PROTOCOL.md).
 
 ## Install
 
@@ -217,7 +216,8 @@ At 10,000 entities the accepted run used 313 native chunks, preserved the same A
 restored the exact predecessor at beginning/middle/end injected failures and finished with 10,000
 unique persistent entity PIDs. The bridge remains bounded at 32 entities per native micro-chunk.
 
-Canonical evidence is under [`docs/evidence/`](docs/evidence/), including
+Machine-readable acceptance evidence is retained with the internal acceptance record under its
+original file names and is not part of the published tree, including
 `g3-scale-10000-2026-09-11.json` and `feature-stream-production-2026-09-11.json`.
 
 ## 2D and 3D workflow notes

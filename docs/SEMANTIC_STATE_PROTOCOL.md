@@ -29,7 +29,7 @@ As of the current checkpoint:
 - Feature-based Chunks Streaming is the Production Domain orchestration model: one caller-defined feature owns one logical predecessor; failure restores only the current feature while prior committed features remain accepted;
 - the public promotion `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` is CLOSED/PUSHED at commit `0516fe3`; selected G2/G3 strong-integrity tools and `feature_execute` are public while broader COM-to-native replacement remains separately gated.
 
-The protocol below remains both implemented contract and normative guardrail. Current status authority is `docs/CURRENT_CHECKPOINT.md`; historical N7 details remain in `docs/N7_WORKING_CHECKPOINT_2026-09-10.md`.
+The protocol below remains both implemented contract and normative guardrail. Current status authority is `docs/CURRENT_CHECKPOINT.md`; historical N7 details are retained in the maintainer-internal acceptance record and are not part of the published documentation set.
 
 ## 2. Core protocol objects
 

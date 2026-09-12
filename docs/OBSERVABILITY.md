@@ -101,4 +101,4 @@ Reload operational events cover bootstrap/start/fence/completion/failure with re
 
 Native bridge correlation should be propagated in a typed IPC field only after the protocol change has its own compatibility/version review; it must not be smuggled through free-text commands or logs. Control-plane edits to `hot_reload.py` or `supervisor.py` require supervisor restart; worker-source hot reload intentionally does not claim to replace its own supervisor.
 
-Canonical closure evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`.
+Canonical closure evidence: `mp2-hot-reload-2026-09-11.json`, retained with the internal acceptance record and not part of the published tree.

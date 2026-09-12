@@ -80,7 +80,7 @@ Example on Linux:
 
 ```bash
 PYTHONPATH=src python3 -m cdt_autocad.provenance \
-  --output docs/evidence/mp0-t00-linux-runtime-2026-09-11.json
+  --output _private/evidence/mp0-t00-linux-runtime-2026-09-11.json
 ```
 
 Example on the primary Windows host with an installed bridge artifact:
@@ -89,8 +89,10 @@ Example on the primary Windows host with an installed bridge artifact:
 $env:PYTHONPATH='H:\Develop\CDT-AutoCAD\src'
 python -m cdt_autocad.provenance `
   --dll "$env:APPDATA\Autodesk\ApplicationPlugins\CDT.AutoCAD.Bridge.bundle\Contents\Windows\CDT.AutoCAD.Bridge.dll" `
-  --output docs\evidence\mp0-t00-windows-runtime-2026-09-11.json
+  --output _private\evidence\mp0-t00-windows-runtime-2026-09-11.json
 ```
+
+Provenance output belongs in the ignored `_private/evidence/` working area; it is a local observation record, not a published artifact.
 
 A manifest records **what was observed**, not certification. A DLL hash that differs from accepted evidence must remain explicitly unaccepted until the corresponding native gate passes.
 

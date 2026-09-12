@@ -21,15 +21,16 @@ Current live native requirements already measured PASS on `.171` AutoCAD 2027 Se
 - feature presentation pacing recommendation 300 ms; live measured pause 300.295 ms;
 - no arbitrary C#/AutoLISP/shell/macro/free-text command surface.
 
-Canonical current evidence:
+Canonical current evidence (machine-readable artifacts retained with the internal acceptance record
+under these file names; not part of the published tree):
 
 ```text
-docs/evidence/g23-live-2026-09-11.json
-docs/evidence/g3-scale-100-2026-09-11.json
-docs/evidence/g3-scale-1000-2026-09-11.json
-docs/evidence/g3-scale-5000-2026-09-11.json
-docs/evidence/g3-scale-10000-2026-09-11.json
-docs/evidence/feature-stream-production-2026-09-11.json
+g23-live-2026-09-11.json
+g3-scale-100-2026-09-11.json
+g3-scale-1000-2026-09-11.json
+g3-scale-5000-2026-09-11.json
+g3-scale-10000-2026-09-11.json
+feature-stream-production-2026-09-11.json
 ```
 
 Final close-gate result on the promotion tree: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**; Linux/Windows compileall and `git diff --check` PASS; focused security/code review found no blocking issue or arbitrary-command regression. Ruff was unavailable in the prepared Linux and Windows environments and is recorded as a tooling gap rather than a false PASS. Older sections below retain historical wording such as “50 tools” where that wording records the state of an earlier acceptance run.
@@ -196,14 +197,14 @@ These A3 promotion rules were satisfied by the reviewed `0.4.0rc1 / autocad-gene
 
 ## 11. Architecture migration acceptance
 
-The current COM lane remains the public/runtime migration baseline. The accepted target architecture is an in-process AutoCAD Managed .NET bridge plus the provider-level Semantic State Loop. N0–N7 and O1 have passed their bounded native gates; N7 two-phase post-commit recovery now includes activation-safe R2 restore after a real AutoCAD restart. Remaining parity and promotion gates are defined in `docs/NATIVE_BRIDGE_ACCEPTANCE.md`; canonical N7 closure evidence is `docs/evidence/n7-native-recovery-2026-09-11.json`.
+The current COM lane remains the public/runtime migration baseline. The accepted target architecture is an in-process AutoCAD Managed .NET bridge plus the provider-level Semantic State Loop. N0–N7 and O1 have passed their bounded native gates; N7 two-phase post-commit recovery now includes activation-safe R2 restore after a real AutoCAD restart. Remaining parity and promotion gates are tracked in the maintainer-internal native bridge acceptance record; canonical N7 closure evidence is `n7-native-recovery-2026-09-11.json`.
 
 The native architecture lane must ultimately prove, on real AutoCAD 2027, both non-negotiable pillars:
 
 1. **Data Integrity / Rollback** — injected failures/timeout uncertainty cannot advance state; native abort or recovery must be followed by read-back proving the exact predecessor fingerprint.
 2. **Precise Identity / PID + Fingerprinting** — document/entity PID persistence, clone/remap behavior, duplicate detection, deterministic content fingerprints and `expected_parent_fp` state-drift blocking.
 
-The .NET bridge is not promoted merely because an internal native gate passes. Selected strong-integrity tools are now public in `0.4.0rc1`, while full replacement of the broader COM backend remains separately gated by parity/evidence. **MP-2 Python MCP hot reload is CLOSED / LIVE PASS**: stable supervisor/process/stable-URL, protocol/contract-hash promotion, process `20` success + `10` injected failure, and `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge acceptance all passed. Canonical evidence: `docs/evidence/mp2-hot-reload-2026-09-11.json`.
+The .NET bridge is not promoted merely because an internal native gate passes. Selected strong-integrity tools are now public in `0.4.0rc1`, while full replacement of the broader COM backend remains separately gated by parity/evidence. **MP-2 Python MCP hot reload is CLOSED / LIVE PASS**: stable supervisor/process/stable-URL, protocol/contract-hash promotion, process `20` success + `10` injected failure, and `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge acceptance all passed. Canonical evidence: `mp2-hot-reload-2026-09-11.json`.
 
 AutoCAD 2027 installs Microsoft .NET 10 when needed; the bridge build/runtime target must follow the AutoCAD 2027 Managed .NET compatibility requirements and secure loading policy.
 
@@ -223,4 +224,4 @@ Live AutoCAD 2027 Interactive Session 1 evidence on `.171` proves:
 - Batch R2: committed insertion of 2 block references restored from immutable checkpoint through activation-safe document replacement; `runtime_document_id` changed as expected, predecessor fingerprint and ModelSpace membership were exact, zero pending recoveries.
 - Final regressions on the G1 production tree: Linux `270 passed / 5 skipped`; Windows `.171` `269 passed / 6 skipped`; native Release build 0 errors with the existing Autodesk-reference MSB3277 warning families; Linux/Windows compileall and `git diff --check` pass.
 
-Canonical evidence: `docs/evidence/g1-generic-cad-execution-2026-09-11.json`. Scale graduation beyond 1,000 entities remains open; 5,000/10,000 tiers are not claimed. Cross-chunk logical all-or-nothing semantics remains G3.
+Canonical evidence: `g1-generic-cad-execution-2026-09-11.json`. Scale graduation beyond 1,000 entities remains open; 5,000/10,000 tiers are not claimed. Cross-chunk logical all-or-nothing semantics remains G3.

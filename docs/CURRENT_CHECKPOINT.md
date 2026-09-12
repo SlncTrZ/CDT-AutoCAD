@@ -85,14 +85,14 @@ For 3D showcase work the current presentation convention remains **SE Isometric 
 
 ## 4. Live evidence
 
-Canonical new evidence:
+Canonical new evidence (machine-readable artifacts retained with the internal acceptance record under these file names; not part of the published tree):
 
-- `docs/evidence/g23-live-2026-09-11.json` — G2 metadata + G3 recovery acceptance;
-- `docs/evidence/g3-scale-100-2026-09-11.json`;
-- `docs/evidence/g3-scale-1000-2026-09-11.json`;
-- `docs/evidence/g3-scale-5000-2026-09-11.json`;
-- `docs/evidence/g3-scale-10000-2026-09-11.json`;
-- `docs/evidence/feature-stream-production-2026-09-11.json`.
+- `g23-live-2026-09-11.json` — G2 metadata + G3 recovery acceptance;
+- `g3-scale-100-2026-09-11.json`;
+- `g3-scale-1000-2026-09-11.json`;
+- `g3-scale-5000-2026-09-11.json`;
+- `g3-scale-10000-2026-09-11.json`;
+- `feature-stream-production-2026-09-11.json`.
 
 Feature-stream live acceptance proves:
 
@@ -166,4 +166,6 @@ Operational use begins **2026-09-12** under the existing `0.4.0rc1` RC/preview c
 
 Repository hygiene now intentionally keeps `_private/`, `_test_workspace/`, local `artifacts/`, runtime/cache/build output and local secret files untracked. `_private/` contains benchmark/planning material and must not be swept into public/product commits. `specs/**` remains a pinned snapshot and is not to be edited.
 
-Use `docs/README.md` as the documentation map, `docs/OPERATIONS_RUNBOOK.md` for live operation and `docs/RELEASE_CHECKLIST.md` for future publication gates. `docs/SESSION_HANDOFF_2026-09-11_FEATURE_STREAMING_PRODUCTION.md` is retained only as historical pre-close evidence.
+Internal research, development, roadmap, ADR, handoff and acceptance-evidence material in this repository now lives only under `_private/`; the published `docs/` set is limited to product-facing contracts and guides, and must stay usable without `_private/`. `_private/README.md` records the internal layout plus the old-to-new path mapping for material that moved out of `docs/`.
+
+Use `docs/README.md` as the documentation map and `docs/OPERATIONS_RUNBOOK.md` for live operation. Release-gate execution and historical pre-close session handoffs are maintainer-internal and are not part of the published documentation set.

@@ -307,7 +307,7 @@ micro-chunk then fails and rolls back only Feature 2, Feature 1 remains exact, a
 continue immediately afterward. The observed presentation delay in that live run was 300.295 ms for
 the configured 300 ms feature pacing.
 
-Canonical evidence is under `docs/evidence/`:
+Canonical evidence artifacts are retained with the internal acceptance record under these file names and are not part of the published tree:
 
 - `feature-stream-production-2026-09-11.json`
 - `g23-live-2026-09-11.json`

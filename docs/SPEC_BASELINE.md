@@ -12,7 +12,8 @@ This provider repository implements AutoCAD runtime behavior against a pinned sn
 | `specs/MCP_PROVIDER_STANDARD.md` | `MCP_PROVIDER_STANDARD.md` |
 | `specs/ARCHITECTURE.md` | `docs/ARCHITECTURE.md` |
 | `specs/CONTRACTS.md` | `docs/CONTRACTS.md` |
-| `docs/ROADMAP.md` | `docs/PLAN_AUTOCAD.md` |
+
+The local roadmap/plan mirror of `docs/PLAN_AUTOCAD.md` is maintainer-internal and is not part of the published documentation set.
 
 ## Rules
 
@@ -32,13 +33,11 @@ This provider repository implements AutoCAD runtime behavior against a pinned sn
 
 ## Local architecture overlay
 
-The pinned common specifications remain authoritative for the currently published provider contract. CDT-AutoCAD also has a provider-local architecture overlay; N0–N3 of that overlay are implemented/closed and N4 is the current frontier:
+The pinned common specifications remain authoritative for the currently published provider contract. CDT-AutoCAD also has a provider-local architecture overlay; N0–N7 and O1 are closed/live-verified for their bounded native scopes. The overlay's published parts are:
 
 - `docs/CURRENT_CHECKPOINT.md`;
-- `docs/ADR-001-NATIVE-BRIDGE-SEMANTIC-STATE-LOOP.md`;
 - `docs/SEMANTIC_STATE_PROTOCOL.md`;
-- `docs/ARCHITECTURE_UPGRADE_PLAN.md`;
-- `docs/NATIVE_BRIDGE_ACCEPTANCE.md`;
+- `docs/LIVE_ACCEPTANCE.md`;
 - `docs/DRAWING_EXECUTION_QA_WORKFLOW.md`;
 - `docs/DRAWING_QUALITY_ACCEPTANCE.md`.
 

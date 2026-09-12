@@ -108,7 +108,7 @@ Preserve:
 - `system_status` / `native_integrity_status` snapshots;
 - exact provider, contract, bridge and AutoCAD versions.
 
-Reconcile through authoritative semantic read-back and the recovery procedures defined by `SEMANTIC_STATE_PROTOCOL.md` and `NATIVE_BRIDGE_ACCEPTANCE.md`. Telemetry alone never proves commit or rollback.
+Reconcile through authoritative semantic read-back and the recovery procedures defined by `SEMANTIC_STATE_PROTOCOL.md` and the maintainer-internal native bridge acceptance record. Telemetry alone never proves commit or rollback.
 
 ## 7. Save and artifact policy
 
@@ -124,7 +124,7 @@ For important drawing steps:
 
 `.runtime/`, local `artifacts/`, `_private/` and `_test_workspace/` are intentionally local/ignored operational areas. They are not publication targets by default.
 
-Canonical reviewed acceptance evidence belongs under `docs/evidence/` only when intentionally selected for the repository. Structured diagnostics are operational evidence, not recovery authority; see `OBSERVABILITY.md`.
+Canonical reviewed acceptance evidence is retained in the ignored maintainer workspace (`_private/evidence/`) and must never be swept into a public/product commit. Structured diagnostics are operational evidence, not recovery authority; see `OBSERVABILITY.md`.
 
 ## 9. Verification environment
 
@@ -143,7 +143,7 @@ Linux/headless verification may use the Linux venv/lock or a clean CI environmen
 
 Before publishing a product change:
 
-- follow `RELEASE_CHECKLIST.md`;
+- follow the maintainer-internal release checklist;
 - update `CHANGELOG.md` and `CURRENT_CHECKPOINT.md` when current truth changes;
 - rerun the exact gates required by the changed scope;
 - perform live Windows/AutoCAD acceptance for any capability that requires AutoCAD;
