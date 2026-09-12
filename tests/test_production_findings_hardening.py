@@ -16,7 +16,11 @@ import cdt_autocad.backends.com_backend as cb
 from cdt_autocad.backends.com_backend import ComBackend
 from cdt_autocad.backends.ezdxf_backend import EzdxfBackend
 from cdt_autocad.command_presets import BOUNDED_COMMAND_PRESETS, VIEW_PRESETS, WORKFLOW_DEFAULTS
-from cdt_autocad.errors import BackendQuarantinedError, StateConflictError, UnsupportedCapabilityError
+from cdt_autocad.errors import (
+    BackendQuarantinedError,
+    StateConflictError,
+    UnsupportedCapabilityError,
+)
 
 
 def _run_inline(monkeypatch, backend):

@@ -8,7 +8,6 @@ import argparse
 import asyncio
 import json
 import math
-import os
 import statistics
 import subprocess
 import sys

@@ -2495,7 +2495,7 @@ class ComBackend(AutoCADBackend):
                 attribute_count = 0
                 for item_index in range(block_count):
                     item = _com_call_with_busy_retry(
-                        lambda item_index=item_index: block.Item(item_index)
+                        lambda item_index=item_index, block=block: block.Item(item_index)
                     )
                     if str(_com_get_attr(item, "ObjectName")) == "AcDbAttributeDefinition":
                         attribute_count += 1
