@@ -16,6 +16,7 @@ from fastmcp import Client
 
 import cdt_autocad.backends.com_backend as cb
 from cdt_autocad.backends.com_backend import ComBackend
+from cdt_autocad.errors import StateConflictError
 from cdt_autocad.server import create_mcp
 
 
@@ -383,6 +384,146 @@ async def test_xref_attach_validates_path_and_uses_overlay(settings, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_xref_attach_quarantines_if_source_changes_during_attach(
+    settings, monkeypatch, tmp_path: Path
+):
+    source = tmp_path / "source-drift.dwg"
+    source.write_bytes(b"before")
+    blocks = _NamedCollection([])
+
+    class XrefBlock:
+        IsXRef = True
+
+        def __init__(self, name):
+            self.Name = name
+
+        def Detach(self):
+            blocks.items.remove(self)
+
+    class Reference:
+        Handle = "A2"
+        Layer = "0"
+        ObjectName = "AcDbBlockReference"
+
+        def __init__(self, name, collection):
+            self.Name = name
+            self._collection = collection
+
+        def Delete(self):
+            self._collection.items.remove(self)
+
+    class Space:
+        def __init__(self):
+            self.items = []
+
+        @property
+        def Count(self):
+            return len(self.items)
+
+        def Item(self, index):
+            return self.items[index]
+
+        def AttachExternalReference(self, _path, name, *_args):
+            blocks.items.append(XrefBlock(name))
+            reference = Reference(name, self)
+            self.items.append(reference)
+            return reference
+
+    space = Space()
+    doc = SimpleNamespace(Blocks=blocks)
+    backend = ComBackend(
+        replace(settings, backend="com", allowed_paths=(tmp_path.resolve(),))
+    )
+    monkeypatch.setattr(backend, "_space", lambda: space)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    monkeypatch.setattr(cb, "_point", lambda x, y, z=0.0: (x, y, z))
+
+    async def _run_with_source_drift(func, **_kwargs):
+        source.write_bytes(b"after")
+        return func()
+
+    monkeypatch.setattr(backend, "_run", _run_with_source_drift)
+
+    with pytest.raises(StateConflictError, match="source changed during attach"):
+        await backend.xref_attach(str(source), name="REF_DRIFT")
+    assert backend.status()["integrity_uncertain"] is True
+
+
+@pytest.mark.asyncio
+async def test_xref_attach_configuration_failure_removes_partial_reference_and_definition(
+    settings, monkeypatch, tmp_path: Path
+):
+    source = tmp_path / "source-config-fail.dwg"
+    source.write_bytes(b"stable")
+    blocks = _NamedCollection([])
+
+    class XrefBlock:
+        IsXRef = True
+
+        def __init__(self, name):
+            self.Name = name
+
+        def Detach(self):
+            blocks.items.remove(self)
+
+    class Reference:
+        Handle = "A3"
+        Name = "REF_FAIL"
+        ObjectName = "AcDbBlockReference"
+
+        def __init__(self, collection):
+            self._collection = collection
+            self._layer = "0"
+
+        @property
+        def Layer(self):
+            return self._layer
+
+        @Layer.setter
+        def Layer(self, value):
+            if value == "TARGET":
+                raise RuntimeError("injected xref layer assignment failure")
+            self._layer = value
+
+        def Delete(self):
+            self._collection.items.remove(self)
+
+    class Space:
+        def __init__(self):
+            self.items = []
+
+        @property
+        def Count(self):
+            return len(self.items)
+
+        def Item(self, index):
+            return self.items[index]
+
+        def AttachExternalReference(self, _path, name, *_args):
+            blocks.items.append(XrefBlock(name))
+            reference = Reference(self)
+            self.items.append(reference)
+            return reference
+
+    space = Space()
+    doc = SimpleNamespace(Blocks=blocks)
+    backend = ComBackend(
+        replace(settings, backend="com", allowed_paths=(tmp_path.resolve(),))
+    )
+    monkeypatch.setattr(backend, "_space", lambda: space)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    monkeypatch.setattr(backend, "_validate_layer", lambda _layer: "TARGET")
+    monkeypatch.setattr(cb, "_point", lambda x, y, z=0.0: (x, y, z))
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(RuntimeError, match="xref layer assignment failure"):
+        await backend.xref_attach(str(source), name="REF_FAIL", layer="TARGET")
+    assert space.items == []
+    assert blocks.items == []
+    assert backend.status()["integrity_uncertain"] is False
+
+
+@pytest.mark.asyncio
 async def test_polyline_exact_bulges_are_applied_on_com(settings, monkeypatch):
     class Poly:
         ObjectName = "AcDbPolyline"
@@ -438,6 +579,10 @@ def _tool_payload(result):
     return content
 
 
+def _live_com_retry(func):
+    return cb._com_call_with_busy_retry(func, attempts=20, delay_seconds=0.05)
+
+
 @pytest.mark.skipif(
     not _LIVE_COM_ENABLED,
     reason="requires Windows + real AutoCAD + CDT_AUTOCAD_LIVE_TEST=1",
@@ -461,30 +606,34 @@ async def test_live_public_units_layers_and_dispatch_inspection(settings, tmp_pa
     fixture_path = tmp_path / "cdt-public-xref-fixture.dwg"
 
     def dynamic_layer_snapshot(name: str) -> dict[str, object]:
-        acad = win32com.client.GetActiveObject(_LIVE_COM_PROGID)
-        raw = acad.ActiveDocument.Layers.Item(name)
+        acad = _live_com_retry(lambda: win32com.client.GetActiveObject(_LIVE_COM_PROGID))
+        doc = _live_com_retry(lambda: acad.ActiveDocument)
+        layers = _live_com_retry(lambda: doc.Layers)
+        raw = _live_com_retry(lambda: layers.Item(name))
         layer = win32com.client.dynamic.DumbDispatch(raw._oleobj_)
         return {
-            "LayerOn": bool(layer.LayerOn),
-            "Freeze": bool(layer.Freeze),
-            "Lock": bool(layer.Lock),
-            "Color": int(layer.Color),
-            "Linetype": str(layer.Linetype),
-            "LineWeight": int(layer.LineWeight),
+            "LayerOn": bool(_live_com_retry(lambda: layer.LayerOn)),
+            "Freeze": bool(_live_com_retry(lambda: layer.Freeze)),
+            "Lock": bool(_live_com_retry(lambda: layer.Lock)),
+            "Color": int(_live_com_retry(lambda: layer.Color)),
+            "Linetype": str(_live_com_retry(lambda: layer.Linetype)),
+            "LineWeight": int(_live_com_retry(lambda: layer.LineWeight)),
         }
 
     def raw_units() -> dict[str, int]:
-        acad = win32com.client.GetActiveObject(_LIVE_COM_PROGID)
-        doc = acad.ActiveDocument
+        acad = _live_com_retry(lambda: win32com.client.GetActiveObject(_LIVE_COM_PROGID))
+        doc = _live_com_retry(lambda: acad.ActiveDocument)
         return {
-            name: int(doc.GetVariable(name))
+            name: int(_live_com_retry(lambda name=name: doc.GetVariable(name)))
             for name in ("INSUNITS", "MEASUREMENT", "LUNITS", "LUPREC")
         }
 
     def close_active_without_save() -> None:
-        acad = win32com.client.GetActiveObject(_LIVE_COM_PROGID)
-        if int(acad.Documents.Count) > 0:
-            acad.ActiveDocument.Close(False)
+        acad = _live_com_retry(lambda: win32com.client.GetActiveObject(_LIVE_COM_PROGID))
+        documents = _live_com_retry(lambda: acad.Documents)
+        if int(_live_com_retry(lambda: documents.Count)) > 0:
+            doc = _live_com_retry(lambda: acad.ActiveDocument)
+            _live_com_retry(lambda: doc.Close(False))
 
     try:
         async with Client(app) as client:
@@ -575,12 +724,15 @@ async def test_live_public_units_layers_and_dispatch_inspection(settings, tmp_pa
             )
             assert xref_object["type"] == "INSERT"
             assert xref_object["properties"]["block_name"] == "CDT_XREF"
-            acad = win32com.client.GetActiveObject(_LIVE_COM_PROGID)
-            dependent_names = [
-                str(acad.ActiveDocument.Layers.Item(index).Name)
-                for index in range(int(acad.ActiveDocument.Layers.Count))
-                if "|ROAD" in str(acad.ActiveDocument.Layers.Item(index).Name)
-            ]
+            acad = _live_com_retry(lambda: win32com.client.GetActiveObject(_LIVE_COM_PROGID))
+            doc = _live_com_retry(lambda: acad.ActiveDocument)
+            layers = _live_com_retry(lambda: doc.Layers)
+            dependent_names = []
+            for index in range(int(_live_com_retry(lambda: layers.Count))):
+                item = _live_com_retry(lambda index=index: layers.Item(index))
+                item_name = str(_live_com_retry(lambda item=item: item.Name))
+                if "|ROAD" in item_name:
+                    dependent_names.append(item_name)
             assert len(dependent_names) == 1
             dependent = dependent_names[0]
             before_xref_layer = dynamic_layer_snapshot(dependent)

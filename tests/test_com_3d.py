@@ -19,6 +19,7 @@ from cdt_autocad.errors import StateConflictError, UnsupportedCapabilityError
 
 class _FakeRegion:
     ObjectName = "AcDbRegion"
+    Handle = "R1"
 
     def __init__(self):
         self.deleted = False
@@ -30,8 +31,9 @@ class _FakeRegion:
 class _FakeSolid:
     ObjectName = "AcDb3dSolid"
 
-    def __init__(self, handle: str, volume: float = 100.0):
+    def __init__(self, handle: str, volume: float = 100.0, collection=None):
         self.Handle = handle
+        self._collection = collection
         self.Layer = "0"
         self.Visible = True
         self.Volume = volume
@@ -62,6 +64,10 @@ class _FakeSolid:
     def Boolean(self, operation, tool):
         self.boolean_calls.append((operation, tool.Handle))
 
+    def Delete(self):
+        if self._collection is not None and self in self._collection.items:
+            self._collection.items.remove(self)
+
 
 class _FakeProfile:
     ObjectName = "AcDbPolyline"
@@ -80,25 +86,39 @@ class _FakeProfile:
 class _FakePath:
     ObjectName = "AcDb3dPolyline"
 
-    def __init__(self, handle: str, coordinates=None):
+    def __init__(self, handle: str, coordinates=None, collection=None):
         self.Handle = handle
         self.Coordinates = tuple(coordinates or ())
         self.Closed = False
+        self._collection = collection
+
+    def Delete(self):
+        if self._collection is not None and self in self._collection.items:
+            self._collection.items.remove(self)
 
 
 class _FakeModelSpace:
     def __init__(self):
         self.calls = []
+        self.items = []
         self._next = 0x100
         self.last_region = None
         self.last_regions = []
         self.region_count = 1
         self.fail_extrude = False
 
+    @property
+    def Count(self):
+        return len(self.items)
+
+    def Item(self, index):
+        return self.items[index]
+
     def _solid(self, kind, *args):
         self.calls.append((kind, *args))
-        solid = _FakeSolid(f"{self._next:X}")
+        solid = _FakeSolid(f"{self._next:X}", collection=self)
         self._next += 1
+        self.items.append(solid)
         return solid
 
     def AddBox(self, center, length, width, height):
@@ -121,8 +141,9 @@ class _FakeModelSpace:
 
     def Add3DPoly(self, points):
         self.calls.append(("3dpolyline", tuple(points)))
-        path = _FakePath(f"{self._next:X}", points)
+        path = _FakePath(f"{self._next:X}", points, collection=self)
         self._next += 1
+        self.items.append(path)
         return path
 
     def AddRegion(self, profiles):
@@ -154,9 +175,11 @@ class _FakeDoc:
         self.objects = {
             "P1": _FakeProfile("P1"),
             "PATH": _FakePath("PATH"),
-            "S1": _FakeSolid("S1", volume=125.0),
-            "S2": _FakeSolid("S2", volume=25.0),
+            "S1": _FakeSolid("S1", volume=125.0, collection=self.ModelSpace),
+            "S2": _FakeSolid("S2", volume=25.0, collection=self.ModelSpace),
         }
+        self.ModelSpace.items.extend([self.objects["S1"], self.objects["S2"]])
+        self.Blocks = SimpleNamespace(Count=1, Item=lambda _index: self.ModelSpace)
         self.ActiveViewport = SimpleNamespace(Direction=(0.0, 0.0, 1.0))
 
     def HandleToObject(self, handle):
@@ -273,10 +296,17 @@ async def test_solid_primitive_layer_is_validated_before_create_and_assignment_f
 
         def Delete(self):
             self.deleted = True
+            if self in doc.ModelSpace.items:
+                doc.ModelSpace.items.remove(self)
 
     created = FailingLayerSolid("BAD1")
     monkeypatch.setattr(backend, "_validate_layer", lambda _layer: "TARGET")
-    monkeypatch.setattr(doc.ModelSpace, "AddBox", lambda *_args: created)
+
+    def add_box(*_args):
+        doc.ModelSpace.items.append(created)
+        return created
+
+    monkeypatch.setattr(doc.ModelSpace, "AddBox", add_box)
     with pytest.raises(RuntimeError, match="layer assignment failed"):
         await backend.solid_box(0, 0, 0, 10, 10, 10, layer="TARGET")
     assert created.deleted is True
@@ -305,10 +335,17 @@ async def test_solid_extrude_layer_assignment_failure_deletes_solid_and_region(s
 
         def Delete(self):
             self.deleted = True
+            if self in doc.ModelSpace.items:
+                doc.ModelSpace.items.remove(self)
 
     created = FailingLayerSolid("BAD2")
     monkeypatch.setattr(backend, "_validate_layer", lambda _layer: "TARGET")
-    monkeypatch.setattr(doc.ModelSpace, "AddExtrudedSolid", lambda *_args: created)
+
+    def add_extruded(*_args):
+        doc.ModelSpace.items.append(created)
+        return created
+
+    monkeypatch.setattr(doc.ModelSpace, "AddExtrudedSolid", add_extruded)
 
     with pytest.raises(RuntimeError, match="layer assignment failed"):
         await backend.solid_extrude("P1", 20, layer="TARGET")
@@ -378,6 +415,66 @@ async def test_failed_extrude_still_deletes_temporary_region(settings, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_extrude_fails_closed_when_temporary_profile_copy_delete_is_silent_noop(
+    settings, monkeypatch
+):
+    backend, doc = _backend(settings, monkeypatch)
+
+    class StickyProfile(_FakeProfile):
+        def Delete(self):
+            return None
+
+    class SourceProfile(_FakeProfile):
+        def Copy(self):
+            temporary = StickyProfile("P-STICKY-COPY")
+            doc.ModelSpace.items.append(temporary)
+            return temporary
+
+    doc.objects["P1"] = SourceProfile("P1")
+
+    with pytest.raises(StateConflictError, match="temporary profile.*cleanup verification failed"):
+        await backend.solid_extrude("P1", 20)
+    assert any(
+        str(getattr(item, "Handle", "")) == "P-STICKY-COPY"
+        for item in doc.ModelSpace.items
+    )
+    assert not any(str(getattr(item, "Handle", "")) == "100" for item in doc.ModelSpace.items)
+    assert backend.status()["integrity_uncertain"] is True
+
+
+@pytest.mark.asyncio
+async def test_extrude_fails_closed_when_temporary_region_delete_is_silent_noop(
+    settings, monkeypatch
+):
+    backend, doc = _backend(settings, monkeypatch)
+
+    class StickyRegion:
+        ObjectName = "AcDbRegion"
+        Handle = "R-STICKY"
+
+        def Delete(self):
+            return None
+
+    sticky = StickyRegion()
+
+    def add_region(profiles):
+        for profile in profiles:
+            profile.Delete()
+        doc.ModelSpace.items.append(sticky)
+        doc.ModelSpace.last_regions = [sticky]
+        doc.ModelSpace.last_region = sticky
+        return [sticky]
+
+    monkeypatch.setattr(doc.ModelSpace, "AddRegion", add_region)
+
+    with pytest.raises(StateConflictError, match="cleanup verification failed"):
+        await backend.solid_extrude("P1", 20)
+    assert sticky in doc.ModelSpace.items
+    assert not any(str(getattr(item, "Handle", "")) == "100" for item in doc.ModelSpace.items)
+    assert backend.status()["integrity_uncertain"] is True
+
+
+@pytest.mark.asyncio
 async def test_boolean_validates_solid_types_and_operation_before_mutation(settings, monkeypatch):
     backend, doc = _backend(settings, monkeypatch)
 
@@ -391,6 +488,94 @@ async def test_boolean_validates_solid_types_and_operation_before_mutation(setti
         await backend.solid_boolean("S1", "S2", "xor")
     with pytest.raises(ValueError, match="3DSOLID"):
         await backend.solid_boolean("P1", "S2", "union")
+
+
+@pytest.mark.asyncio
+async def test_boolean_tool_existence_uses_independent_collection_readback(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+    target = _FakeSolid("S1", volume=125.0)
+    tool = _FakeSolid("S2", volume=25.0)
+
+    class ModelSpace:
+        def __init__(self):
+            self.items = [target, tool]
+
+        @property
+        def Count(self):
+            return len(self.items)
+
+        def Item(self, index):
+            return self.items[index]
+
+    class Doc:
+        def __init__(self):
+            self.ModelSpace = ModelSpace()
+            self.Blocks = SimpleNamespace(Count=1, Item=lambda _index: self.ModelSpace)
+            self.calls = 0
+
+        def HandleToObject(self, handle):
+            self.calls += 1
+            key = str(handle).upper()
+            if self.calls >= 3 and key == "S2":
+                raise RuntimeError("injected post-Boolean handle readback failure")
+            return {"S1": target, "S2": tool}[key]
+
+    doc = Doc()
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+
+    result = await backend.solid_boolean("S1", "S2", "subtract")
+    assert result["tool_exists_after"] is True
+    assert backend.status()["integrity_uncertain"] is False
+
+
+@pytest.mark.asyncio
+async def test_boolean_tool_existence_searches_non_modelspace_owners(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+    model_space = _FakeModelSpace()
+    target = _FakeSolid("S1", volume=125.0, collection=model_space)
+    tool_owner = _FakeModelSpace()
+    tool = _FakeSolid("S2", volume=25.0, collection=tool_owner)
+    model_space.items.append(target)
+    tool_owner.items.append(tool)
+
+    class BlockRecord:
+        def __init__(self, name, items):
+            self.Name = name
+            self._items = items
+
+        @property
+        def Count(self):
+            return len(self._items)
+
+        def Item(self, index):
+            return self._items[index]
+
+    class Blocks:
+        def __init__(self):
+            self.items = [
+                BlockRecord("*Model_Space", model_space.items),
+                BlockRecord("TOOL_OWNER", tool_owner.items),
+            ]
+
+        @property
+        def Count(self):
+            return len(self.items)
+
+        def Item(self, index):
+            return self.items[index]
+
+    doc = SimpleNamespace(
+        ModelSpace=model_space,
+        Blocks=Blocks(),
+        HandleToObject=lambda handle: {"S1": target, "S2": tool}[str(handle).upper()],
+    )
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+
+    result = await backend.solid_boolean("S1", "S2", "subtract")
+    assert result["tool_exists_after"] is True
+    assert backend.status()["integrity_uncertain"] is False
 
 
 @pytest.mark.asyncio
@@ -452,6 +637,38 @@ async def test_solid_move_rotate3d_and_inspect(settings, monkeypatch):
         await backend.solid_mirror3d("S1", 0, 0, 0, 1, 0, 0, 2, 0, 0)
     with pytest.raises(ValueError, match="distinct"):
         await backend.solid_rotate3d("S1", 0, 0, 0, 0, 0, 0, 45)
+
+
+@pytest.mark.asyncio
+async def test_solid_mirror_inspection_failure_removes_created_solid(settings, monkeypatch):
+    backend, doc = _backend(settings, monkeypatch)
+
+    class BrokenMirror(_FakeSolid):
+        @property
+        def Volume(self):
+            raise RuntimeError("injected mirrored volume read failure")
+
+        @Volume.setter
+        def Volume(self, _value):
+            return None
+
+    mirrored = BrokenMirror("MFAIL", collection=doc.ModelSpace)
+
+    class Source(_FakeSolid):
+        def Mirror3D(self, _p1, _p2, _p3):
+            doc.ModelSpace.items.append(mirrored)
+            return mirrored
+
+    source = Source("S1", volume=125.0, collection=doc.ModelSpace)
+    doc.objects["S1"] = source
+    doc.ModelSpace.items = [
+        source if item.Handle == "S1" else item for item in doc.ModelSpace.items
+    ]
+
+    with pytest.raises(RuntimeError, match="Volume"):
+        await backend.solid_mirror3d("S1", 0, 0, 0, 0, 10, 0, 0, 10, 10)
+    assert mirrored not in doc.ModelSpace.items
+    assert backend.status()["integrity_uncertain"] is False
 
 
 @pytest.mark.asyncio

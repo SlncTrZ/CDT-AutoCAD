@@ -220,6 +220,7 @@ class EzdxfBackend(AutoCADBackend):
         self._redo_stack: list[bytes] = []
         self._transaction_stack: list[bytes] = []
         self._lock = asyncio.Lock()
+        self._uncertain_task: asyncio.Task[Any] | None = None
 
     @property
     def name(self) -> str:
@@ -292,10 +293,23 @@ class EzdxfBackend(AutoCADBackend):
             "current_layer": self._current_layer,
             "current_space": self._current_space,
             "quarantined": self._quarantined,
+            "uncertain_worker_active": bool(
+                self._uncertain_task is not None and not self._uncertain_task.done()
+            ),
             "undo_depth": max(0, len(self._undo_stack) - 1),
             "redo_depth": len(self._redo_stack),
             "transaction_depth": len(self._transaction_stack),
         }
+
+    def _reap_uncertain_task(self) -> None:
+        task = self._uncertain_task
+        if task is None or not task.done():
+            return
+        try:
+            task.result()
+        except BaseException:
+            pass
+        self._uncertain_task = None
 
     def _require_doc(self) -> Any:
         if self._doc is None:
@@ -397,6 +411,11 @@ class EzdxfBackend(AutoCADBackend):
         if may_mutate_document is not None:
             integrity_sensitive = may_mutate_document
         async with self._lock:
+            self._reap_uncertain_task()
+            if quarantine_exit and self._uncertain_task is not None:
+                raise BackendQuarantinedError(
+                    "Document cannot be rebound while a timed-out mutation worker is still running"
+                )
             if self._quarantined and not quarantine_exit:
                 raise BackendQuarantinedError(
                     "Document is quarantined after a timed-out mutation; rebind with "
@@ -424,6 +443,7 @@ class EzdxfBackend(AutoCADBackend):
             except TimeoutError as exc:
                 if integrity_sensitive:
                     self._quarantined = True
+                    self._uncertain_task = task
                 raise BackendTimeoutError(
                     f"ezdxf operation exceeded {deadline:g}s",
                     retryable=not integrity_sensitive,

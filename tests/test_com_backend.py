@@ -1111,6 +1111,48 @@ async def test_viewport_create_retries_busy_display_scale_and_target_writes(sett
 
 
 @pytest.mark.asyncio
+async def test_viewport_create_restore_failure_cleans_created_viewport_and_quarantines(
+    settings, monkeypatch
+):
+    backend = ComBackend(replace(settings, backend="com"))
+
+    class RestoreFailDoc:
+        def __init__(self):
+            self.Layouts = _FakeCollection([_FakeLayout("Model"), _FakeLayout("Layout1")])
+            self._active_layout = self.Layouts.Item("Model")
+            self._switched = False
+            self.PaperSpace = SimpleNamespace(AddPViewport=self._add_viewport)
+
+        @property
+        def ActiveLayout(self):
+            return self._active_layout
+
+        @ActiveLayout.setter
+        def ActiveLayout(self, value):
+            if self._switched and value.Name == "Model":
+                raise RuntimeError("injected active layout restore failure")
+            self._active_layout = value
+            if value.Name == "Layout1":
+                self._switched = True
+
+        def _add_viewport(self, center, width, height):
+            block = self._active_layout.Block
+            viewport = _FakeViewport("C1", tuple(center), float(width), float(height), block)
+            block.items.append(viewport)
+            return viewport
+
+    doc = RestoreFailDoc()
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    monkeypatch.setattr(cb, "_point", lambda x, y, z=0.0: (float(x), float(y), float(z)))
+
+    with pytest.raises(StateConflictError, match="restore"):
+        await backend.viewport_create("Layout1", 100, 75, 80, 40, 10, 20, scale=0.5)
+    assert doc.Layouts.Item("Layout1").Block.Count == 0
+    assert backend.status()["integrity_uncertain"] is True
+
+
+@pytest.mark.asyncio
 async def test_preexisting_viewport_delete_requires_explicit_force(settings, monkeypatch):
     backend = ComBackend(replace(settings, backend="com"))
     doc = _FakeDoc()
@@ -1376,6 +1418,296 @@ async def test_live_autocad_native_dwg_smoke(settings, tmp_path: Path):
             except Exception:
                 pass
         backend.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_object_copy_cleanup_verifies_actual_document_owner(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+
+    class Collection:
+        def __init__(self, items=None):
+            self.items = list(items or [])
+
+        @property
+        def Count(self):
+            return len(self.items)
+
+        def Item(self, index):
+            return self.items[index]
+
+    active_space = Collection()
+    owner = Collection()
+
+    class Duplicate:
+        ObjectName = "AcDbLine"
+        Handle = "D1"
+        Layer = "0"
+        Color = 256
+        Linetype = "ByLayer"
+        Visible = True
+        StartPoint = (0.0, 0.0, 0.0)
+        EndPoint = (1.0, 0.0, 0.0)
+
+        def Move(self, _origin, _target):
+            raise RuntimeError("injected copy move failure")
+
+        def Delete(self):
+            return None
+
+    duplicate = Duplicate()
+
+    class Source:
+        def Copy(self):
+            owner.items.append(duplicate)
+            return duplicate
+
+    blocks = SimpleNamespace(Count=2, Item=lambda index: (active_space, owner)[index])
+    doc = SimpleNamespace(Blocks=blocks)
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+    monkeypatch.setattr(backend, "_space", lambda: active_space)
+    monkeypatch.setattr(backend, "_entity_by_id", lambda _object_id: Source())
+    monkeypatch.setattr(cb, "_point", lambda x, y, z=0.0: (float(x), float(y), float(z)))
+
+    with pytest.raises(StateConflictError, match="cleanup verification failed"):
+        await backend.object_copy("S1", 1, 0)
+    assert owner.items == [duplicate]
+    assert backend.status()["integrity_uncertain"] is True
+
+
+@pytest.mark.asyncio
+async def test_created_entity_configuration_failure_removes_partial_entity(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+
+    class Entity:
+        ObjectName = "AcDbLine"
+        Handle = "E1"
+        StartPoint = (0.0, 0.0, 0.0)
+        EndPoint = (1.0, 0.0, 0.0)
+        Color = 256
+        Linetype = "ByLayer"
+        Visible = True
+
+        def __init__(self, collection):
+            self._collection = collection
+            self._layer = "0"
+
+        @property
+        def Layer(self):
+            return self._layer
+
+        @Layer.setter
+        def Layer(self, value):
+            if value == "TARGET":
+                raise RuntimeError("injected layer assignment failure")
+            self._layer = value
+
+        def Delete(self):
+            self._collection.items.remove(self)
+
+    class Space:
+        def __init__(self):
+            self.items = []
+
+        @property
+        def Count(self):
+            return len(self.items)
+
+        def Item(self, index):
+            return self.items[index]
+
+        def AddLine(self, _start, _end):
+            entity = Entity(self)
+            self.items.append(entity)
+            return entity
+
+    space = Space()
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_space", lambda: space)
+    monkeypatch.setattr(backend, "_validate_layer", lambda _layer: "TARGET")
+    monkeypatch.setattr(cb, "_point", lambda x, y, z=0.0: (float(x), float(y), float(z)))
+
+    with pytest.raises(RuntimeError, match="layer assignment failure"):
+        await backend.entity_create_line(0, 0, 1, 0, layer="TARGET")
+    assert space.items == []
+    assert backend.status()["integrity_uncertain"] is False
+
+
+@pytest.mark.asyncio
+async def test_created_entity_cleanup_mismatch_quarantines_backend(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+
+    class Entity:
+        ObjectName = "AcDbLine"
+        Handle = "E1"
+        StartPoint = (0.0, 0.0, 0.0)
+        EndPoint = (1.0, 0.0, 0.0)
+        Color = 256
+        Linetype = "ByLayer"
+        Visible = True
+
+        def __init__(self, collection):
+            self._collection = collection
+            self._layer = "0"
+
+        @property
+        def Layer(self):
+            return self._layer
+
+        @Layer.setter
+        def Layer(self, value):
+            if value == "TARGET":
+                raise RuntimeError("injected layer assignment failure")
+            self._layer = value
+
+        def Delete(self):
+            return None
+
+    class Space:
+        def __init__(self):
+            self.items = []
+
+        @property
+        def Count(self):
+            return len(self.items)
+
+        def Item(self, index):
+            return self.items[index]
+
+        def AddLine(self, _start, _end):
+            entity = Entity(self)
+            self.items.append(entity)
+            return entity
+
+    space = Space()
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_space", lambda: space)
+    monkeypatch.setattr(backend, "_validate_layer", lambda _layer: "TARGET")
+    monkeypatch.setattr(cb, "_point", lambda x, y, z=0.0: (float(x), float(y), float(z)))
+
+    with pytest.raises(StateConflictError, match="cleanup verification failed"):
+        await backend.entity_create_line(0, 0, 1, 0, layer="TARGET")
+    assert backend.status()["integrity_uncertain"] is True
+
+
+@pytest.mark.asyncio
+async def test_hatch_success_fails_closed_when_temporary_boundary_survives(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+
+    class Item:
+        def __init__(self, handle, kind, collection, delete_removes=True):
+            self.Handle = handle
+            self.ObjectName = kind
+            self.Layer = "0"
+            self.Color = 256
+            self.Linetype = "ByLayer"
+            self.Visible = True
+            self.PatternName = "SOLID"
+            self.Closed = False
+            self._collection = collection
+            self._delete_removes = delete_removes
+
+        def AppendOuterLoop(self, _items):
+            return None
+
+        def Evaluate(self):
+            return None
+
+        def Delete(self):
+            if self._delete_removes:
+                self._collection.items.remove(self)
+
+    class Space:
+        def __init__(self):
+            self.items = []
+
+        @property
+        def Count(self):
+            return len(self.items)
+
+        def Item(self, index):
+            return self.items[index]
+
+        def AddHatch(self, *_args):
+            item = Item("H1", "AcDbHatch", self)
+            self.items.append(item)
+            return item
+
+        def AddLightWeightPolyline(self, _values):
+            item = Item("B1", "AcDbPolyline", self, delete_removes=False)
+            self.items.append(item)
+            return item
+
+    space = Space()
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_space", lambda: space)
+    monkeypatch.setattr(backend, "_validate_layer", lambda _layer: None)
+    monkeypatch.setattr(cb, "_double_array", lambda values: tuple(values))
+    monkeypatch.setattr(cb, "_dispatch_array", lambda values: list(values))
+
+    with pytest.raises(StateConflictError, match="cleanup verification failed"):
+        await backend.hatch_create([[0, 0], [10, 0], [10, 10]])
+    assert backend.status()["integrity_uncertain"] is True
+    assert any(item.Handle == "B1" for item in space.items)
+
+
+@pytest.mark.asyncio
+async def test_viewport_delete_verifies_absence_before_discarding_ownership(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+    doc = _FakeDoc()
+    viewport = doc._add_viewport((100.0, 75.0, 0.0), 80.0, 40.0)
+    key = viewport.Handle.upper()
+    backend._created_viewport_handles.add(key)
+    viewport.Delete = lambda: None
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+
+    with pytest.raises(StateConflictError, match="still present"):
+        await backend.viewport_delete(key)
+    assert doc.HandleToObject(key) is viewport
+    assert backend.status()["integrity_uncertain"] is True
+
+
+@pytest.mark.asyncio
+async def test_xref_membership_read_failure_is_not_reported_as_empty_complete_set(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+
+    class BrokenXref:
+        @property
+        def IsXRef(self):
+            raise RuntimeError("injected IsXRef read failure")
+
+    blocks = _FakeCollection([BrokenXref()])
+    doc = SimpleNamespace(Blocks=blocks)
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+
+    with pytest.raises(RuntimeError, match="IsXRef read failure"):
+        await backend.document_dependencies()
+
+
+@pytest.mark.asyncio
+async def test_com_transaction_rollback_receipt_does_not_claim_verified_restore(settings, monkeypatch):
+    backend = ComBackend(replace(settings, backend="com"))
+    calls = []
+
+    class Doc:
+        def EndUndoMark(self):
+            calls.append("end")
+
+        def SendCommand(self, command):
+            calls.append(command)
+
+    backend._transaction_depth = 1
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: Doc())
+
+    result = await backend.transaction_rollback()
+    assert result["queued"] is True
+    assert result["rollback_command_queued"] is True
+    assert result["rollback_verified"] is False
+    assert result["rolled_back"] is False
+    assert calls == ["end", "_.UNDO _1\n"]
 
 
 @pytest.mark.asyncio

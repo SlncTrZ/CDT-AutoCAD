@@ -4,9 +4,12 @@ Wing: code | Topic: autocad-a0 | Updated: 2026-09-09 19:19
 
 from __future__ import annotations
 
-import time
+import asyncio
+import threading
+from dataclasses import replace
 from pathlib import Path
 
+import ezdxf
 import pytest
 
 from cdt_autocad.backends.ezdxf_backend import EzdxfBackend
@@ -106,21 +109,82 @@ async def test_capability_map_is_explicit(settings):
     assert caps["common.transaction.rollback"]["supported"] is True
 
 
-async def test_timed_out_mutation_quarantines_until_document_rebind(settings):
+async def test_timed_out_mutation_blocks_rebind_until_worker_finishes(settings):
     backend = EzdxfBackend(settings)
     await backend.document_new()
+    entered = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
 
-    with pytest.raises(BackendTimeoutError):
-        await backend._run(
-            lambda: time.sleep(0.05),
-            may_mutate_document=True,
-            timeout_seconds=0.01,
-        )
+    def blocked_mutation() -> None:
+        entered.set()
+        release.wait(2.0)
+        finished.set()
 
-    assert backend.status()["quarantined"] is True
-    with pytest.raises(BackendQuarantinedError):
-        await backend.object_count()
+    try:
+        with pytest.raises(BackendTimeoutError):
+            await backend._run(
+                blocked_mutation,
+                may_mutate_document=True,
+                timeout_seconds=0.25,
+            )
 
+        assert entered.is_set()
+        assert backend.status()["quarantined"] is True
+        assert backend.status()["uncertain_worker_active"] is True
+        with pytest.raises(BackendQuarantinedError):
+            await backend.object_count()
+        with pytest.raises(BackendQuarantinedError, match="still running"):
+            await backend.document_new()
+
+        release.set()
+        assert await asyncio.to_thread(finished.wait, 2.0)
+        await backend.document_new()
+        assert backend.status()["quarantined"] is False
+        assert backend.status()["uncertain_worker_active"] is False
+        assert await backend.object_count() == 0
+    finally:
+        release.set()
+
+
+async def test_timed_out_save_cannot_rebind_before_late_writer_finishes(settings, tmp_path: Path):
+    target = tmp_path / "timeout-race.dxf"
+    baseline = ezdxf.new("R2010")
+    baseline.modelspace().add_circle((100, 100), 7)
+    baseline.saveas(target)
+
+    backend = EzdxfBackend(settings)
     await backend.document_new()
-    assert backend.status()["quarantined"] is False
-    assert await backend.object_count() == 0
+    await backend.entity_create_line(0, 0, 10, 0)
+    backend.settings = replace(settings, call_timeout_seconds=0.25)
+
+    entered = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    original_write = backend._atomic_write_dxf
+
+    def blocked_write(doc, path) -> None:
+        entered.set()
+        release.wait(2.0)
+        original_write(doc, path)
+        finished.set()
+
+    backend._atomic_write_dxf = blocked_write
+    try:
+        with pytest.raises(BackendTimeoutError):
+            await backend.document_save(str(target))
+        assert entered.is_set()
+
+        with pytest.raises(BackendQuarantinedError, match="still running"):
+            await backend.document_open(str(target))
+
+        release.set()
+        assert await asyncio.to_thread(finished.wait, 2.0)
+        backend.settings = settings
+        await backend.document_open(str(target))
+        memory_types = [entity.dxftype() for entity in backend._require_doc().modelspace()]
+        disk_types = [entity.dxftype() for entity in ezdxf.readfile(target).modelspace()]
+        assert memory_types == disk_types == ["LINE"]
+        assert backend.status()["quarantined"] is False
+    finally:
+        release.set()

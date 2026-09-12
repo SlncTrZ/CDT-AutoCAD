@@ -343,6 +343,16 @@ def _com_vector_property(entity: Any, name: str) -> list[float]:
         raise RuntimeError(f"AutoCAD property unavailable: {name}") from exc
 
 
+def _file_sha256_size(path: Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            size += len(chunk)
+            digest.update(chunk)
+    return digest.hexdigest(), size
+
+
 def _com_bounding_box(entity: Any) -> dict[str, list[float]]:
     entity = _entity_property_view(entity)
     no_arg_error: Exception | None = None
@@ -779,6 +789,202 @@ class ComBackend(AutoCADBackend):
             return None
         return next((name for name in cls._collection_names(collection) if name.lower() == wanted), None)
 
+    @staticmethod
+    def _collection_contains_handle(collection: Any, handle: str) -> bool:
+        key = str(handle or "").strip().upper()
+        if not key:
+            raise ValueError("handle must not be empty")
+        count = int(_com_get_attr(collection, "Count"))
+        for index in range(count):
+            item = _com_call_with_busy_retry(lambda index=index: collection.Item(index))
+            if str(_com_get_attr(item, "Handle")).upper() == key:
+                return True
+        return False
+
+    @classmethod
+    def _document_contains_handle(cls, doc: Any, handle: str) -> bool:
+        blocks = _com_get_attr(doc, "Blocks")
+        count = int(_com_get_attr(blocks, "Count"))
+        for index in range(count):
+            block = _com_call_with_busy_retry(lambda index=index: blocks.Item(index))
+            if cls._collection_contains_handle(block, handle):
+                return True
+        return False
+
+    def _delete_com_object_verified(
+        self,
+        obj: Any,
+        collection: Any,
+        *,
+        context: str,
+    ) -> None:
+        try:
+            handle = str(_com_get_attr(obj, "Handle")).upper()
+        except Exception as handle_error:
+            reason = f"{context} cleanup cannot read created-object handle: {handle_error}"
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from handle_error
+
+        delete_error: Exception | None = None
+        try:
+            _com_call_with_busy_retry(lambda: obj.Delete())
+        except Exception as exc:
+            delete_error = exc
+        try:
+            still_present = self._collection_contains_handle(collection, handle)
+        except Exception as verify_error:
+            reason = (
+                f"{context} cleanup verification failed; handle={handle}; "
+                f"delete_error={delete_error}; readback_error={verify_error}"
+            )
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from verify_error
+        if still_present:
+            reason = (
+                f"{context} cleanup verification failed; handle={handle} still present; "
+                f"delete_error={delete_error}"
+            )
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from delete_error
+
+    def _delete_com_object_document_verified(
+        self,
+        obj: Any,
+        doc: Any,
+        *,
+        context: str,
+        known_handle: str | None = None,
+    ) -> None:
+        if known_handle is None:
+            try:
+                handle = str(_com_get_attr(obj, "Handle")).strip().upper()
+            except Exception as handle_error:
+                reason = f"{context} cleanup cannot read created-object handle: {handle_error}"
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason) from handle_error
+        else:
+            handle = str(known_handle).strip().upper()
+        if not handle:
+            reason = f"{context} cleanup cannot verify an empty created-object handle"
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason)
+
+        delete_error: Exception | None = None
+        try:
+            _com_call_with_busy_retry(lambda: obj.Delete())
+        except Exception as exc:
+            delete_error = exc
+        try:
+            still_present = self._document_contains_handle(doc, handle)
+        except Exception as verify_error:
+            reason = (
+                f"{context} cleanup verification failed; handle={handle}; "
+                f"delete_error={delete_error}; readback_error={verify_error}"
+            )
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from verify_error
+        if still_present:
+            reason = (
+                f"{context} cleanup verification failed; handle={handle} still present; "
+                f"delete_error={delete_error}"
+            )
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from delete_error
+
+    def _delete_named_object_verified(
+        self,
+        obj: Any,
+        collection: Any,
+        name: str,
+        *,
+        context: str,
+    ) -> None:
+        delete_error: Exception | None = None
+        try:
+            _com_call_with_busy_retry(lambda: obj.Delete())
+        except Exception as exc:
+            delete_error = exc
+        try:
+            still_present = self._find_name(collection, name) is not None
+        except Exception as verify_error:
+            reason = (
+                f"{context} cleanup verification failed; name={name!r}; "
+                f"delete_error={delete_error}; readback_error={verify_error}"
+            )
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from verify_error
+        if still_present:
+            reason = (
+                f"{context} cleanup verification failed; name={name!r} still present; "
+                f"delete_error={delete_error}"
+            )
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from delete_error
+
+    def _detach_xref_definition_verified(
+        self,
+        doc: Any,
+        name: str,
+        *,
+        context: str,
+    ) -> None:
+        blocks = _com_get_attr(doc, "Blocks")
+        canonical = self._find_name(blocks, name)
+        if canonical is None:
+            return
+        block = _com_call_with_busy_retry(lambda: blocks.Item(canonical))
+        try:
+            is_xref = bool(_com_get_attr(block, "IsXRef"))
+        except Exception as read_error:
+            reason = f"{context} cleanup cannot verify XREF definition {name!r}: {read_error}"
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from read_error
+        if not is_xref:
+            reason = f"{context} cleanup found non-XREF block definition {canonical!r}"
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason)
+
+        detach_error: Exception | None = None
+        try:
+            _com_call_with_busy_retry(lambda: block.Detach())
+        except Exception as exc:
+            detach_error = exc
+        try:
+            remaining = self._find_name(blocks, canonical)
+        except Exception as verify_error:
+            reason = (
+                f"{context} cleanup verification failed for XREF definition {canonical!r}; "
+                f"detach_error={detach_error}; readback_error={verify_error}"
+            )
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from verify_error
+        if remaining is not None:
+            reason = (
+                f"{context} cleanup verification failed; XREF definition {canonical!r} still present; "
+                f"detach_error={detach_error}"
+            )
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from detach_error
+
+    def _finalize_created_entity(
+        self,
+        entity: Any,
+        collection: Any,
+        *,
+        context: str,
+        configure=None,
+    ) -> EntityInfo:
+        try:
+            if configure is not None:
+                configure()
+            return _entity_info(entity)
+        except Exception as creation_error:
+            try:
+                self._delete_com_object_verified(entity, collection, context=context)
+            except StateConflictError as cleanup_error:
+                raise cleanup_error from creation_error
+            raise
+
     def _latch_uncertain_completion(self, future: Future[Any]) -> None:
         self._timeout_uncertain = True
         self._uncertain_future = future
@@ -963,32 +1169,67 @@ class ComBackend(AutoCADBackend):
 
         temporary_profile = profile.Copy()
         try:
+            temporary_handle = str(_com_get_attr(temporary_profile, "Handle")).strip().upper()
+        except Exception as handle_error:
+            reason = (
+                "solid profile temporary profile cleanup cannot capture the created-object handle; "
+                f"profile={profile_handle}; error={handle_error}"
+            )
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from handle_error
+
+        regions: list[Any] = []
+        try:
             raw_regions = doc.ModelSpace.AddRegion(_dispatch_array([temporary_profile]))
             regions = list(raw_regions or [])
-        except Exception:
+        except Exception as creation_error:
             try:
-                temporary_profile.Delete()
-            except Exception:
-                pass
+                self._delete_com_object_document_verified(
+                    temporary_profile,
+                    doc,
+                    context="solid profile temporary profile",
+                    known_handle=temporary_handle,
+                )
+            except StateConflictError as cleanup_error:
+                raise cleanup_error from creation_error
             raise
-        finally:
-            # AddRegion normally consumes the copied source curve. If the COM
-            # implementation leaves it alive, delete only the temporary copy.
-            try:
-                temporary_profile.Delete()
-            except Exception:
-                pass
 
-        if len(regions) != 1:
+        try:
+            # AddRegion may consume and invalidate the copied COM object. Verify
+            # absence using the handle captured before dispatch rather than by
+            # trusting Delete() or re-reading the invalidated wrapper.
+            self._delete_com_object_document_verified(
+                temporary_profile,
+                doc,
+                context="solid profile temporary profile",
+                known_handle=temporary_handle,
+            )
+        except StateConflictError as cleanup_error:
             for region in regions:
                 try:
-                    region.Delete()
-                except Exception:
+                    self._delete_com_object_document_verified(
+                        region, doc, context="solid profile compensating region"
+                    )
+                except StateConflictError:
                     pass
-            raise ValueError(
+            raise cleanup_error
+
+        if len(regions) != 1:
+            cleanup_error: StateConflictError | None = None
+            for region in regions:
+                try:
+                    self._delete_com_object_document_verified(
+                        region, doc, context="solid profile rejected region"
+                    )
+                except StateConflictError as exc:
+                    cleanup_error = cleanup_error or exc
+            mismatch = ValueError(
                 f"profile {profile_handle} must produce exactly one closed planar region; "
                 f"AutoCAD produced {len(regions)}"
             )
+            if cleanup_error is not None:
+                raise cleanup_error from mismatch
+            raise mismatch
         return regions[0]
 
     async def document_new(self) -> dict[str, Any]:
@@ -1566,9 +1807,19 @@ class ComBackend(AutoCADBackend):
         self, object_id: str, dx: float, dy: float, dz: float = 0.0
     ) -> EntityInfo:
         def _sync() -> EntityInfo:
+            doc = self._doc()
             duplicate = self._entity_by_id(object_id).Copy()
-            duplicate.Move(_point(0, 0, 0), _point(dx, dy, dz))
-            return _entity_info(duplicate)
+            try:
+                duplicate.Move(_point(0, 0, 0), _point(dx, dy, dz))
+                return _entity_info(duplicate)
+            except Exception as creation_error:
+                try:
+                    self._delete_com_object_document_verified(
+                        duplicate, doc, context="object_copy"
+                    )
+                except StateConflictError as cleanup_error:
+                    raise cleanup_error from creation_error
+                raise
 
         return await self._run(_sync)
 
@@ -1618,12 +1869,18 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().AddLine(_point(x1, y1, z1), _point(x2, y2, z2))
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            if normalized_color is not None:
-                _com_set_attr(entity, "Color", normalized_color)
-            return _entity_info(entity)
+            space = self._space()
+            entity = space.AddLine(_point(x1, y1, z1), _point(x2, y2, z2))
+
+            def _configure() -> None:
+                if canonical_layer is not None:
+                    _com_set_attr(entity, "Layer", canonical_layer)
+                if normalized_color is not None:
+                    _com_set_attr(entity, "Color", normalized_color)
+
+            return self._finalize_created_entity(
+                entity, space, context="entity_create_line", configure=_configure
+            )
 
         return await self._run(_sync)
 
@@ -1641,12 +1898,18 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().AddCircle(_point(cx, cy), float(radius))
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            if normalized_color is not None:
-                _com_set_attr(entity, "Color", normalized_color)
-            return _entity_info(entity)
+            space = self._space()
+            entity = space.AddCircle(_point(cx, cy), float(radius))
+
+            def _configure() -> None:
+                if canonical_layer is not None:
+                    _com_set_attr(entity, "Layer", canonical_layer)
+                if normalized_color is not None:
+                    _com_set_attr(entity, "Color", normalized_color)
+
+            return self._finalize_created_entity(
+                entity, space, context="entity_create_circle", configure=_configure
+            )
 
         return await self._run(_sync)
 
@@ -1666,17 +1929,23 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().AddArc(
+            space = self._space()
+            entity = space.AddArc(
                 _point(cx, cy),
                 float(radius),
                 math.radians(start_angle),
                 math.radians(end_angle),
             )
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            if normalized_color is not None:
-                _com_set_attr(entity, "Color", normalized_color)
-            return _entity_info(entity)
+
+            def _configure() -> None:
+                if canonical_layer is not None:
+                    _com_set_attr(entity, "Layer", canonical_layer)
+                if normalized_color is not None:
+                    _com_set_attr(entity, "Color", normalized_color)
+
+            return self._finalize_created_entity(
+                entity, space, context="entity_create_arc", configure=_configure
+            )
 
         return await self._run(_sync)
 
@@ -1711,18 +1980,24 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().AddLightWeightPolyline(_double_array(flat))
-            entity.Closed = bool(closed)
-            entity.Elevation = float(elevation)
-            for index, bulge in enumerate(normalized_bulges):
-                entity.SetBulge(index, bulge)
-            for index, (start_width, end_width) in enumerate(width_pairs):
-                entity.SetWidth(index, start_width, end_width)
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            if normalized_color is not None:
-                _com_set_attr(entity, "Color", normalized_color)
-            return _entity_info(entity)
+            space = self._space()
+            entity = space.AddLightWeightPolyline(_double_array(flat))
+
+            def _configure() -> None:
+                _com_set_attr(entity, "Closed", bool(closed))
+                _com_set_attr(entity, "Elevation", float(elevation))
+                for index, bulge in enumerate(normalized_bulges):
+                    entity.SetBulge(index, bulge)
+                for index, (start_width, end_width) in enumerate(width_pairs):
+                    entity.SetWidth(index, start_width, end_width)
+                if canonical_layer is not None:
+                    _com_set_attr(entity, "Layer", canonical_layer)
+                if normalized_color is not None:
+                    _com_set_attr(entity, "Color", normalized_color)
+
+            return self._finalize_created_entity(
+                entity, space, context="entity_create_polyline", configure=_configure
+            )
 
         return await self._run(_sync)
 
@@ -1742,13 +2017,19 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().AddText(str(text), _point(x, y), float(height))
-            entity.Rotation = math.radians(rotation)
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            if normalized_color is not None:
-                _com_set_attr(entity, "Color", normalized_color)
-            return _entity_info(entity)
+            space = self._space()
+            entity = space.AddText(str(text), _point(x, y), float(height))
+
+            def _configure() -> None:
+                _com_set_attr(entity, "Rotation", math.radians(rotation))
+                if canonical_layer is not None:
+                    _com_set_attr(entity, "Layer", canonical_layer)
+                if normalized_color is not None:
+                    _com_set_attr(entity, "Color", normalized_color)
+
+            return self._finalize_created_entity(
+                entity, space, context="entity_create_text", configure=_configure
+            )
 
         return await self._run(_sync)
 
@@ -1776,30 +2057,47 @@ class ComBackend(AutoCADBackend):
             try:
                 hatch = space.AddHatch(0, str(pattern), False)
                 if str(pattern).upper() != "SOLID":
-                    hatch.PatternScale = float(scale)
-                    hatch.PatternAngle = math.radians(angle)
+                    _com_set_attr(hatch, "PatternScale", float(scale))
+                    _com_set_attr(hatch, "PatternAngle", math.radians(angle))
                 boundary = space.AddLightWeightPolyline(_double_array(flat))
-                boundary.Closed = True
+                _com_set_attr(boundary, "Closed", True)
                 hatch.AppendOuterLoop(_dispatch_array([boundary]))
                 hatch.Evaluate()
                 if canonical_layer is not None:
-                    hatch.Layer = canonical_layer
+                    _com_set_attr(hatch, "Layer", canonical_layer)
                 if normalized_color is not None:
                     _com_set_attr(hatch, "Color", normalized_color)
-                return _entity_info(hatch)
-            except Exception:
-                if hatch is not None:
+                result = _entity_info(hatch)
+            except Exception as creation_error:
+                cleanup_error: StateConflictError | None = None
+                for created, context in (
+                    (boundary, "hatch_create boundary"),
+                    (hatch, "hatch_create hatch"),
+                ):
+                    if created is None:
+                        continue
                     try:
-                        hatch.Delete()
-                    except Exception:
-                        pass
+                        self._delete_com_object_verified(created, space, context=context)
+                    except StateConflictError as exc:
+                        cleanup_error = cleanup_error or exc
+                if cleanup_error is not None:
+                    raise cleanup_error from creation_error
                 raise
-            finally:
-                if boundary is not None:
-                    try:
-                        boundary.Delete()
-                    except Exception:
-                        pass
+
+            assert boundary is not None and hatch is not None
+            try:
+                self._delete_com_object_verified(
+                    boundary, space, context="hatch_create boundary"
+                )
+            except StateConflictError as boundary_error:
+                try:
+                    self._delete_com_object_verified(
+                        hatch, space, context="hatch_create hatch"
+                    )
+                except StateConflictError:
+                    pass
+                raise boundary_error
+            return result
 
         return await self._run(_sync)
 
@@ -1816,15 +2114,23 @@ class ComBackend(AutoCADBackend):
     ) -> EntityInfo:
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().AddDimRotated(
+            space = self._space()
+            entity = space.AddDimRotated(
                 _point(x1, y1),
                 _point(x2, y2),
                 _point(dim_x, dim_y),
                 math.radians(rotation),
             )
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            return _entity_info(entity)
+            return self._finalize_created_entity(
+                entity,
+                space,
+                context="dimension_linear",
+                configure=(
+                    (lambda: _com_set_attr(entity, "Layer", canonical_layer))
+                    if canonical_layer is not None
+                    else None
+                ),
+            )
 
         return await self._run(_sync)
 
@@ -1843,14 +2149,22 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().AddDimAligned(
+            space = self._space()
+            entity = space.AddDimAligned(
                 _point(x1, y1),
                 _point(x2, y2),
                 _point(dim_x, dim_y),
             )
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            return _entity_info(entity)
+            return self._finalize_created_entity(
+                entity,
+                space,
+                context="dimension_aligned",
+                configure=(
+                    (lambda: _com_set_attr(entity, "Layer", canonical_layer))
+                    if canonical_layer is not None
+                    else None
+                ),
+            )
 
         return await self._run(_sync)
 
@@ -1872,15 +2186,23 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().AddDimAngular(
+            space = self._space()
+            entity = space.AddDimAngular(
                 _point(vertex_x, vertex_y),
                 _point(first_x, first_y),
                 _point(second_x, second_y),
                 _point(text_x, text_y),
             )
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            return _entity_info(entity)
+            return self._finalize_created_entity(
+                entity,
+                space,
+                context="dimension_angular",
+                configure=(
+                    (lambda: _com_set_attr(entity, "Layer", canonical_layer))
+                    if canonical_layer is not None
+                    else None
+                ),
+            )
 
         return await self._run(_sync)
 
@@ -1897,14 +2219,22 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().AddDimRadial(
+            space = self._space()
+            entity = space.AddDimRadial(
                 _point(center_x, center_y),
                 _point(chord_x, chord_y),
                 float(leader_length),
             )
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            return _entity_info(entity)
+            return self._finalize_created_entity(
+                entity,
+                space,
+                context="dimension_radial",
+                configure=(
+                    (lambda: _com_set_attr(entity, "Layer", canonical_layer))
+                    if canonical_layer is not None
+                    else None
+                ),
+            )
 
         return await self._run(_sync)
 
@@ -1923,14 +2253,22 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().AddDimDiametric(
+            space = self._space()
+            entity = space.AddDimDiametric(
                 _point(chord_x, chord_y),
                 _point(far_chord_x, far_chord_y),
                 float(leader_length),
             )
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            return _entity_info(entity)
+            return self._finalize_created_entity(
+                entity,
+                space,
+                context="dimension_diametric",
+                configure=(
+                    (lambda: _com_set_attr(entity, "Layer", canonical_layer))
+                    if canonical_layer is not None
+                    else None
+                ),
+            )
 
         return await self._run(_sync)
 
@@ -1949,14 +2287,22 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> EntityInfo:
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().AddDimOrdinate(
+            space = self._space()
+            entity = space.AddDimOrdinate(
                 _point(definition_x, definition_y),
                 _point(leader_x, leader_y),
                 normalized_axis == "x",
             )
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            return _entity_info(entity)
+            return self._finalize_created_entity(
+                entity,
+                space,
+                context="dimension_ordinate",
+                configure=(
+                    (lambda: _com_set_attr(entity, "Layer", canonical_layer))
+                    if canonical_layer is not None
+                    else None
+                ),
+            )
 
         return await self._run(_sync)
 
@@ -1980,11 +2326,22 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> LayerInfo:
             doc = self._doc()
-            if self._find_name(doc.Layers, wanted) is not None:
+            layers = _com_get_attr(doc, "Layers")
+            if self._find_name(layers, wanted) is not None:
                 raise ValueError(f"layer already exists: {wanted}")
-            layer = doc.Layers.Add(wanted)
-            _com_set_attr(layer, "Color", normalized_color)
-            return _layer_info(layer, str(doc.ActiveLayer.Name))
+            layer = layers.Add(wanted)
+            try:
+                _com_set_attr(layer, "Color", normalized_color)
+                active_layer = _com_get_attr(doc, "ActiveLayer")
+                return _layer_info(layer, str(_com_get_attr(active_layer, "Name")))
+            except Exception as creation_error:
+                try:
+                    self._delete_named_object_verified(
+                        layer, layers, wanted, context="layer_create"
+                    )
+                except StateConflictError as cleanup_error:
+                    raise cleanup_error from creation_error
+                raise
 
         return await self._run(_sync)
 
@@ -2173,14 +2530,17 @@ class ComBackend(AutoCADBackend):
             if self._find_name(doc.Blocks, wanted) is not None:
                 raise ValueError(f"block already exists: {wanted}")
             entities = [self._entity_by_id(object_id) for object_id in object_ids]
-            block = doc.Blocks.Add(_point(base_x, base_y), wanted)
+            blocks = _com_get_attr(doc, "Blocks")
+            block = blocks.Add(_point(base_x, base_y), wanted)
             try:
                 doc.CopyObjects(_dispatch_array(entities), block)
-            except Exception:
+            except Exception as creation_error:
                 try:
-                    block.Delete()
-                except Exception:
-                    pass
+                    self._delete_named_object_verified(
+                        block, blocks, wanted, context="block_create"
+                    )
+                except StateConflictError as cleanup_error:
+                    raise cleanup_error from creation_error
                 raise
             return BlockInfo(
                 name=wanted,
@@ -2211,7 +2571,8 @@ class ComBackend(AutoCADBackend):
             if canonical is None:
                 raise ValueError(f"block does not exist: {name}")
             canonical_layer = self._validate_layer(layer)
-            entity = self._space().InsertBlock(
+            space = self._space()
+            entity = space.InsertBlock(
                 _point(x, y),
                 canonical,
                 float(scale_x),
@@ -2219,9 +2580,14 @@ class ComBackend(AutoCADBackend):
                 1.0,
                 math.radians(rotation),
             )
-            if canonical_layer is not None:
-                entity.Layer = canonical_layer
-            return _entity_info(entity)
+
+            def _configure() -> None:
+                if canonical_layer is not None:
+                    _com_set_attr(entity, "Layer", canonical_layer)
+
+            return self._finalize_created_entity(
+                entity, space, context="block_insert", configure=_configure
+            )
 
         return await self._run(_sync)
 
@@ -2229,9 +2595,10 @@ class ComBackend(AutoCADBackend):
         def _sync() -> list[dict[str, Any]]:
             doc = self._doc()
             rows: list[dict[str, Any]] = []
-            for index in range(int(doc.Blocks.Count)):
-                block = doc.Blocks.Item(index)
-                if not bool(_optional_com_property(block, "IsXRef")):
+            blocks = _com_get_attr(doc, "Blocks")
+            for index in range(int(_com_get_attr(blocks, "Count"))):
+                block = _com_call_with_busy_retry(lambda index=index: blocks.Item(index))
+                if not bool(_com_get_attr(block, "IsXRef")):
                     continue
                 name = str(_com_get_attr(block, "Name"))
                 raw_path = str(_optional_com_property(block, "Path") or "")
@@ -2262,8 +2629,7 @@ class ComBackend(AutoCADBackend):
                 source_size = None
                 if resolved and safe_path is not None:
                     source_path = Path(safe_path)
-                    source_sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
-                    source_size = source_path.stat().st_size
+                    source_sha256, source_size = _file_sha256_size(source_path)
                 rows.append(
                     {
                         "name": name,
@@ -2304,15 +2670,15 @@ class ComBackend(AutoCADBackend):
             raise ValueError("xref transform values must be finite")
         if float(scale_x) == 0 or float(scale_y) == 0 or float(scale_z) == 0:
             raise ValueError("xref scales must be non-zero")
-        source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
-        source_size = source.stat().st_size
+        source_sha256, source_size = _file_sha256_size(source)
 
         def _sync() -> dict[str, Any]:
             doc = self._doc()
             if self._find_name(doc.Blocks, wanted) is not None:
                 raise ValueError(f"block/xref name already exists: {wanted}")
             canonical_layer = self._validate_layer(layer)
-            reference = self._space().AttachExternalReference(
+            space = self._space()
+            reference = space.AttachExternalReference(
                 str(source),
                 wanted,
                 _point(x, y, z),
@@ -2322,18 +2688,39 @@ class ComBackend(AutoCADBackend):
                 math.radians(rotation),
                 bool(overlay),
             )
-            if canonical_layer is not None:
-                reference.Layer = canonical_layer
-            return {
-                "ok": True,
-                "name": wanted,
-                "path": str(source),
-                "overlay": bool(overlay),
-                "handle": str(reference.Handle),
-                "layer": str(reference.Layer),
-                "source_sha256": source_sha256,
-                "source_size": source_size,
-            }
+            try:
+                if canonical_layer is not None:
+                    _com_set_attr(reference, "Layer", canonical_layer)
+                current_sha256, current_size = _file_sha256_size(source)
+                if current_sha256 != source_sha256 or current_size != source_size:
+                    reason = (
+                        "XREF source changed during attach; provenance is uncertain; "
+                        f"path={source}; before=({source_sha256},{source_size}); "
+                        f"after=({current_sha256},{current_size})"
+                    )
+                    self._quarantine_integrity(reason)
+                    raise StateConflictError(reason)
+                return {
+                    "ok": True,
+                    "name": wanted,
+                    "path": str(source),
+                    "overlay": bool(overlay),
+                    "handle": str(_com_get_attr(reference, "Handle")),
+                    "layer": str(_com_get_attr(reference, "Layer")),
+                    "source_sha256": source_sha256,
+                    "source_size": source_size,
+                }
+            except Exception as creation_error:
+                try:
+                    self._delete_com_object_verified(
+                        reference, space, context="xref_attach reference"
+                    )
+                    self._detach_xref_definition_verified(
+                        doc, wanted, context="xref_attach definition"
+                    )
+                except StateConflictError as cleanup_error:
+                    raise cleanup_error from creation_error
+                raise
 
         return await self._run(_sync)
 
@@ -2567,6 +2954,8 @@ class ComBackend(AutoCADBackend):
             if previous != canonical:
                 _com_set_attr(doc, "ActiveLayout", target_layout)
             viewport = None
+            result: dict[str, Any] | None = None
+            creation_error: Exception | None = None
             try:
                 paper_space = _com_get_attr(doc, "PaperSpace")
                 viewport = _com_call_with_busy_retry(
@@ -2577,18 +2966,45 @@ class ComBackend(AutoCADBackend):
                 _com_call_with_busy_retry(lambda: viewport.Display(True))
                 _com_set_attr(viewport, "CustomScale", float(scale))
                 _com_set_attr(viewport, "Target", _point(view_center_x, view_center_y))
-                return {"ok": True, **self._viewport_row(viewport, canonical, True)}
-            except Exception:
+                result = {"ok": True, **self._viewport_row(viewport, canonical, True)}
+            except Exception as exc:
+                creation_error = exc
                 if viewport is not None:
                     try:
-                        _com_call_with_busy_retry(lambda: viewport.Delete())
-                    except Exception:
-                        pass
-                raise
+                        viewport_collection = _com_get_attr(target_layout, "Block")
+                        self._delete_com_object_verified(
+                            viewport,
+                            viewport_collection,
+                            context="viewport_create",
+                        )
+                    except StateConflictError as cleanup_error:
+                        raise cleanup_error from exc
             finally:
                 if previous != canonical:
-                    previous_layout = _com_call_with_busy_retry(lambda: layouts.Item(previous))
-                    _com_set_attr(doc, "ActiveLayout", previous_layout)
+                    try:
+                        previous_layout = _com_call_with_busy_retry(lambda: layouts.Item(previous))
+                        _com_set_attr(doc, "ActiveLayout", previous_layout)
+                    except Exception as restore_error:
+                        if creation_error is None and viewport is not None:
+                            try:
+                                viewport_collection = _com_get_attr(target_layout, "Block")
+                                self._delete_com_object_verified(
+                                    viewport,
+                                    viewport_collection,
+                                    context="viewport_create restore failure",
+                                )
+                            except StateConflictError as cleanup_error:
+                                raise cleanup_error from restore_error
+                        reason = (
+                            "viewport_create failed to restore the previous active layout; "
+                            f"previous={previous!r}; target={canonical!r}; error={restore_error}"
+                        )
+                        self._quarantine_integrity(reason)
+                        raise StateConflictError(reason) from restore_error
+            if creation_error is not None:
+                raise creation_error
+            assert result is not None
+            return result
 
         result = await self._run(_sync)
         self._created_viewport_handles.add(str(result["handle"]).upper())
@@ -2676,9 +3092,18 @@ class ComBackend(AutoCADBackend):
             )
 
         def _sync() -> dict[str, Any]:
-            viewport, layout_name = self._resolve_viewport(self._doc(), key)
+            doc = self._doc()
+            viewport, layout_name = self._resolve_viewport(doc, key)
             actual = str(_com_get_attr(viewport, "Handle")).upper()
-            _com_call_with_busy_retry(lambda: viewport.Delete())
+            if layout_name is None:
+                reason = f"viewport_delete cannot resolve owning layout for handle={actual}"
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason)
+            layout = _com_call_with_busy_retry(lambda: doc.Layouts.Item(layout_name))
+            viewport_collection = _com_get_attr(layout, "Block")
+            self._delete_com_object_verified(
+                viewport, viewport_collection, context="viewport_delete"
+            )
             return {
                 "ok": True,
                 "handle": actual,
@@ -2935,16 +3360,26 @@ class ComBackend(AutoCADBackend):
         flat = [value for point in normalized for value in point]
 
         def _sync() -> dict[str, Any]:
-            entity = self._doc().ModelSpace.Add3DPoly(_double_array(flat))
-            entity.Closed = bool(closed)
-            return {
-                "ok": True,
-                "handle": str(entity.Handle),
-                "type": "3DPOLYLINE",
-                "points": normalized,
-                "closed": bool(entity.Closed),
-                "coordinate_frame": "wcs",
-            }
+            model_space = _com_get_attr(self._doc(), "ModelSpace")
+            entity = model_space.Add3DPoly(_double_array(flat))
+            try:
+                _com_set_attr(entity, "Closed", bool(closed))
+                return {
+                    "ok": True,
+                    "handle": str(_com_get_attr(entity, "Handle")),
+                    "type": "3DPOLYLINE",
+                    "points": normalized,
+                    "closed": bool(_com_get_attr(entity, "Closed")),
+                    "coordinate_frame": "wcs",
+                }
+            except Exception as creation_error:
+                try:
+                    self._delete_com_object_verified(
+                        entity, model_space, context="entity_create_3d_polyline"
+                    )
+                except StateConflictError as cleanup_error:
+                    raise cleanup_error from creation_error
+                raise
 
         return await self._run(_sync)
 
@@ -2954,33 +3389,57 @@ class ComBackend(AutoCADBackend):
         solid: Any,
         canonical_layer: str | None,
     ) -> dict[str, Any]:
-        handle_value = _optional_com_property(solid, "Handle")
-        handle = str(handle_value) if handle_value is not None else None
         try:
             if canonical_layer is not None:
                 _com_set_attr(solid, "Layer", canonical_layer)
             return self._solid_info(solid)
         except Exception as creation_error:
-            cleanup_errors: list[str] = []
             try:
-                solid.Delete()
-            except Exception as delete_error:
-                cleanup_errors.append(f"delete: {delete_error}")
-            if handle is not None and not cleanup_errors:
-                try:
-                    doc.HandleToObject(handle)
-                except Exception:
-                    pass
-                else:
-                    cleanup_errors.append("read-back: created solid still resolves after Delete")
-            if cleanup_errors:
-                reason = (
-                    "created solid cleanup verification failed; "
-                    f"handle={handle}; errors={cleanup_errors}"
+                model_space = _com_get_attr(doc, "ModelSpace")
+                self._delete_com_object_verified(
+                    solid, model_space, context="solid_create"
                 )
-                self._quarantine_integrity(reason)
-                raise StateConflictError(reason) from creation_error
+            except StateConflictError as cleanup_error:
+                raise cleanup_error from creation_error
             raise
+
+    def _create_solid_from_temporary_region(
+        self,
+        doc: Any,
+        region: Any,
+        create_solid,
+        canonical_layer: str | None,
+        *,
+        context: str,
+    ) -> dict[str, Any]:
+        solid = None
+        try:
+            solid = create_solid()
+            result = self._finalize_created_solid(doc, solid, canonical_layer)
+        except Exception as creation_error:
+            try:
+                self._delete_com_object_document_verified(
+                    region, doc, context=f"{context} temporary region"
+                )
+            except StateConflictError as cleanup_error:
+                raise cleanup_error from creation_error
+            raise
+
+        try:
+            self._delete_com_object_document_verified(
+                region, doc, context=f"{context} temporary region"
+            )
+        except StateConflictError as cleanup_error:
+            if solid is not None:
+                try:
+                    model_space = _com_get_attr(doc, "ModelSpace")
+                    self._delete_com_object_verified(
+                        solid, model_space, context=f"{context} compensating solid"
+                    )
+                except StateConflictError:
+                    pass
+            raise cleanup_error
+        return result
 
     async def solid_box(
         self,
@@ -3143,21 +3602,15 @@ class ComBackend(AutoCADBackend):
             doc = self._doc()
             canonical_layer = self._validate_layer(layer)
             region = self._region_from_profile(doc, profile_handle)
-            failed = False
-            try:
-                solid = doc.ModelSpace.AddExtrudedSolid(
+            return self._create_solid_from_temporary_region(
+                doc,
+                region,
+                lambda: doc.ModelSpace.AddExtrudedSolid(
                     region, float(height), math.radians(float(taper_angle))
-                )
-                return self._finalize_created_solid(doc, solid, canonical_layer)
-            except Exception:
-                failed = True
-                raise
-            finally:
-                try:
-                    region.Delete()
-                except Exception:
-                    if not failed:
-                        raise
+                ),
+                canonical_layer,
+                context="solid_extrude",
+            )
 
         return await self._run(_sync)
 
@@ -3177,38 +3630,32 @@ class ComBackend(AutoCADBackend):
         def _sync() -> dict[str, Any]:
             doc = self._doc()
             canonical_layer = self._validate_layer(layer)
-            region = self._region_from_profile(doc, profile_key)
-            failed = False
             try:
-                try:
-                    path = doc.HandleToObject(path_key)
-                except Exception as exc:
-                    raise KeyError(f"path not found: {path_handle}") from exc
-                path_type = str(getattr(path, "ObjectName", ""))
-                allowed_path_types = {
-                    "AcDbArc",
-                    "AcDbCircle",
-                    "AcDbEllipse",
-                    "AcDbPolyline",
-                    "AcDb2dPolyline",
-                    "AcDb3dPolyline",
-                    "AcDbSpline",
-                }
-                if path_type not in allowed_path_types:
-                    raise ValueError(
-                        "sweep path must be an Arc, Circle, Ellipse, Polyline or Spline"
-                    )
-                solid = doc.ModelSpace.AddExtrudedSolidAlongPath(region, path)
-                return self._finalize_created_solid(doc, solid, canonical_layer)
-            except Exception:
-                failed = True
-                raise
-            finally:
-                try:
-                    region.Delete()
-                except Exception:
-                    if not failed:
-                        raise
+                path = doc.HandleToObject(path_key)
+            except Exception as exc:
+                raise KeyError(f"path not found: {path_handle}") from exc
+            path_type = str(getattr(path, "ObjectName", ""))
+            allowed_path_types = {
+                "AcDbArc",
+                "AcDbCircle",
+                "AcDbEllipse",
+                "AcDbPolyline",
+                "AcDb2dPolyline",
+                "AcDb3dPolyline",
+                "AcDbSpline",
+            }
+            if path_type not in allowed_path_types:
+                raise ValueError(
+                    "sweep path must be an Arc, Circle, Ellipse, Polyline or Spline"
+                )
+            region = self._region_from_profile(doc, profile_key)
+            return self._create_solid_from_temporary_region(
+                doc,
+                region,
+                lambda: doc.ModelSpace.AddExtrudedSolidAlongPath(region, path),
+                canonical_layer,
+                context="solid_sweep",
+            )
 
         return await self._run(_sync)
 
@@ -3238,24 +3685,18 @@ class ComBackend(AutoCADBackend):
             doc = self._doc()
             canonical_layer = self._validate_layer(layer)
             region = self._region_from_profile(doc, profile_handle)
-            failed = False
-            try:
-                solid = doc.ModelSpace.AddRevolvedSolid(
+            return self._create_solid_from_temporary_region(
+                doc,
+                region,
+                lambda: doc.ModelSpace.AddRevolvedSolid(
                     region,
                     _point(axis_x1, axis_y1, axis_z1),
                     _point(*axis),
                     math.radians(float(angle_deg)),
-                )
-                return self._finalize_created_solid(doc, solid, canonical_layer)
-            except Exception:
-                failed = True
-                raise
-            finally:
-                try:
-                    region.Delete()
-                except Exception:
-                    if not failed:
-                        raise
+                ),
+                canonical_layer,
+                context="solid_revolve",
+            )
 
         return await self._run(_sync)
 
@@ -3309,10 +3750,14 @@ class ComBackend(AutoCADBackend):
                 self._quarantine_integrity(reason)
                 raise StateConflictError(reason) from inspect_error
             try:
-                _com_call_with_busy_retry(lambda: doc.HandleToObject(tool_key))
-                tool_exists_after = True
-            except Exception:
-                tool_exists_after = False
+                tool_exists_after = self._document_contains_handle(doc, tool_key)
+            except Exception as readback_error:
+                reason = (
+                    "Boolean tool-existence read-back failed; completion is uncertain; "
+                    f"target={target_key}; tool={tool_key}; operation={canonical}"
+                )
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason) from readback_error
             result.update(
                 {
                     "operation": canonical,
@@ -3412,13 +3857,23 @@ class ComBackend(AutoCADBackend):
             raise ValueError("Mirror3D plane points must be distinct and non-collinear")
 
         def _sync() -> dict[str, Any]:
+            doc = self._doc()
             solid = self._solid_by_id(handle)
             mirrored = solid.Mirror3D(_point(*p1), _point(*p2), _point(*p3))
-            if _object_type(_entity_property_view(mirrored)) != "3DSOLID":
-                raise RuntimeError("Mirror3D did not return a 3DSOLID")
-            result = self._solid_info(mirrored)
-            result["source_handle"] = str(handle)
-            return result
+            try:
+                if _object_type(_entity_property_view(mirrored)) != "3DSOLID":
+                    raise RuntimeError("Mirror3D did not return a 3DSOLID")
+                result = self._solid_info(mirrored)
+                result["source_handle"] = str(handle)
+                return result
+            except Exception as creation_error:
+                try:
+                    self._delete_com_object_document_verified(
+                        mirrored, doc, context="solid_mirror3d"
+                    )
+                except StateConflictError as cleanup_error:
+                    raise cleanup_error from creation_error
+                raise
 
         return await self._run(_sync)
 
@@ -3544,8 +3999,11 @@ class ComBackend(AutoCADBackend):
         return {
             "ok": True,
             "transaction_depth": self._transaction_depth,
-            "rolled_back": True,
+            "rolled_back": False,
+            "rollback_verified": False,
+            "rollback_command_queued": True,
             "queued": True,
+            "note": "ActiveX queues UNDO; exact predecessor restore is not verified by this COM lane.",
         }
 
     async def undo(self) -> dict[str, Any]:
