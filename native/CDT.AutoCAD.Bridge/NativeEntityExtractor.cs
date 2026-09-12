@@ -175,6 +175,29 @@ internal static class NativeEntityExtractor
                 catch { metrics["area"] = null; }
                 break;
 
+            case Solid3d solid:
+                entityType = "3DSOLID";
+                Solid3dMassProperties mass = solid.MassProperties;
+                geometry = new Dictionary<string, object?>
+                {
+                    ["solid_fingerprint_schema_version"] = 1,
+                    ["centroid"] = SemanticValue.Point(mass.Centroid),
+                    ["volume"] = mass.Volume,
+                    ["mass_extents"] = new Dictionary<string, object?>
+                    {
+                        ["min"] = SemanticValue.Point(mass.Extents.MinPoint),
+                        ["max"] = SemanticValue.Point(mass.Extents.MaxPoint),
+                    },
+                    ["moments_of_inertia"] = SemanticValue.Vector(mass.MomentsOfIntertia),
+                    ["products_of_inertia"] = SemanticValue.Vector(mass.ProductsOfIntertia),
+                    ["principal_moments"] = SemanticValue.Vector(mass.PrincipalMoments),
+                    ["radii_of_gyration"] = SemanticValue.Vector(mass.RadiiOfGyration),
+                };
+                metrics["volume"] = mass.Volume;
+                metrics["verification_scope"] = "mass-properties-v1";
+                metrics["topology_verified"] = false;
+                break;
+
             default:
                 throw new BridgeServiceException(
                     "UNSUPPORTED_ENTITY_TYPE",
