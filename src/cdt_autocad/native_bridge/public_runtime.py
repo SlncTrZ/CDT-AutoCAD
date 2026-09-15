@@ -74,20 +74,26 @@ class NativePublicFacade:
     def feature_execute(
         self,
         *,
+        document_pid: str,
+        expected_parent_fp: str,
         feature_id: str,
         feature_sequence: int,
         correlation_id: str,
         actions: Sequence[Mapping[str, Any]],
     ) -> dict[str, Any]:
         client = self._client()
-        active = self._active_document(client)
+        active = self._bind_expected_document(
+            client,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
+        )
         self.journal_root.mkdir(parents=True, exist_ok=True)
         journal = self.journal_root / f"feature-{uuid4()}.jsonl"
         executor = FeatureStreamExecutor(client, journal)
         result = executor.execute(
             active.runtime_document_id,
-            document_pid=active.document_pid,
-            expected_parent_fp=active.document_fp,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
             feature_id=feature_id,
             feature_sequence=feature_sequence,
             correlation_id=correlation_id,
@@ -112,26 +118,46 @@ class NativePublicFacade:
             "journal_path": str(journal),
         }
 
-    def batch_create_entities(self, entities: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    def batch_create_entities(
+        self,
+        entities: Sequence[Mapping[str, Any]],
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+    ) -> dict[str, Any]:
         client = self._client()
-        active = self._active_document(client)
+        active = self._bind_expected_document(
+            client,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
+        )
         executor, journal = self._logical_executor(client)
         result = executor.create_entities(
             active.runtime_document_id,
-            document_pid=active.document_pid,
-            expected_parent_fp=active.document_fp,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
             entities=entities,
         )
         return self._logical_result(result, journal)
 
-    def batch_insert_blocks(self, inserts: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    def batch_insert_blocks(
+        self,
+        inserts: Sequence[Mapping[str, Any]],
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+    ) -> dict[str, Any]:
         client = self._client()
-        active = self._active_document(client)
+        active = self._bind_expected_document(
+            client,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
+        )
         executor, journal = self._logical_executor(client)
         result = executor.insert_blocks(
             active.runtime_document_id,
-            document_pid=active.document_pid,
-            expected_parent_fp=active.document_fp,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
             inserts=inserts,
         )
         return self._logical_result(result, journal)
@@ -140,14 +166,21 @@ class NativePublicFacade:
         self,
         semantic_pids: Sequence[str],
         transform: Mapping[str, Any],
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
     ) -> dict[str, Any]:
         client = self._client()
-        active = self._active_document(client)
+        active = self._bind_expected_document(
+            client,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
+        )
         executor, journal = self._logical_executor(client)
         result = executor.transform_entities(
             active.runtime_document_id,
-            document_pid=active.document_pid,
-            expected_parent_fp=active.document_fp,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
             semantic_pids=semantic_pids,
             transform=transform,
         )
@@ -209,14 +242,26 @@ class NativePublicFacade:
             limit=limit,
         )
 
-    def metadata_set(self, semantic_pid: str, namespace: str, value: Any) -> dict[str, Any]:
+    def metadata_set(
+        self,
+        semantic_pid: str,
+        namespace: str,
+        value: Any,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+    ) -> dict[str, Any]:
         client = self._client()
-        active = self._active_document(client)
+        active = self._bind_expected_document(
+            client,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
+        )
         try:
             receipt = client.metadata_set(
                 active.runtime_document_id,
-                document_pid=active.document_pid,
-                expected_parent_fp=active.document_fp,
+                document_pid=document_pid,
+                expected_parent_fp=expected_parent_fp,
                 semantic_pid=semantic_pid,
                 namespace=namespace,
                 value=value,
@@ -463,6 +508,30 @@ class NativePublicFacade:
             document_fp=document_fp,
             entity_count=entity_count,
         )
+
+    @classmethod
+    def _bind_expected_document(
+        cls,
+        client: NativeBridgeClient,
+        *,
+        document_pid: str,
+        expected_parent_fp: str,
+    ) -> ActiveNativeDocument:
+        """Bind one concrete runtime document to the caller's planned predecessor state."""
+        if not isinstance(document_pid, str) or not document_pid.strip():
+            raise ValueError("document_pid must not be empty")
+        if not isinstance(expected_parent_fp, str) or not expected_parent_fp.strip():
+            raise ValueError("expected_parent_fp must not be empty")
+        active = cls._active_document(client)
+        if active.document_pid != document_pid:
+            raise StateConflictError(
+                "active native AutoCAD document does not match caller document PID"
+            )
+        if active.document_fp != expected_parent_fp:
+            raise StateConflictError(
+                "active native AutoCAD state does not match caller parent fingerprint"
+            )
+        return active
 
     def _logical_executor(
         self, client: NativeBridgeClient

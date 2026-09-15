@@ -351,29 +351,29 @@ _TOOL_DESCRIPTIONS = {
         "persistent document PID and semantic fingerprint; this route never falls back to ordinary COM mutation."
     ),
     "feature_execute": (
-        "Execute one complete generic feature as a feature-local logical transaction. The feature may mix typed create, "
-        "block-insert, and transform actions; native micro-chunks remain bounded and only the current feature rolls back "
-        "on failure. Domain meaning stays outside CDT-AutoCAD and successful receipts recommend 300 ms presentation pacing."
+        "Execute one complete generic feature as a feature-local logical transaction bound to the caller-supplied document "
+        "PID and predecessor fingerprint. Typed create/block-insert/transform micro-chunks remain bounded; wrong-document or "
+        "stale-parent state refuses before mutation, and only the current feature rolls back on later failure."
     ),
     "batch_create_entities": (
-        "Create 1..10000 generic typed CAD primitives through the managed native bridge using bounded chunks, one "
-        "AutoCAD Idle yield between chunks, and one logical predecessor checkpoint for all-or-nothing G3 recovery."
+        "Create 1..10000 generic typed CAD primitives through the managed native bridge using caller-supplied document PID "
+        "and predecessor fingerprint binding, bounded chunks, Idle yields, and one logical recovery checkpoint."
     ),
     "batch_insert_blocks": (
-        "Insert 1..10000 persistent-PID-bound block references through the managed native bridge using bounded chunks "
-        "and one G3 logical predecessor checkpoint; no weaker COM fallback is permitted."
+        "Insert 1..10000 persistent-PID-bound block references through the managed native bridge only when caller document "
+        "PID and predecessor fingerprint still match; bounded chunks share one G3 logical checkpoint and no COM fallback."
     ),
     "batch_transform_entities": (
-        "Transform 1..10000 persistent semantic PIDs with one typed translate, rotate-Z, or uniform-scale operation through "
-        "the managed native bridge; bounded chunks remain logically atomic through exact predecessor recovery."
+        "Transform 1..10000 persistent semantic PIDs with typed translate, rotate-Z, or uniform scale after caller document "
+        "PID and predecessor fingerprint binding; bounded chunks remain atomic through exact predecessor recovery."
     ),
     "metadata_get": (
         "Read one schema-agnostic metadata namespace from a persistent semantic PID through the native bridge. Provider "
         "identity/recovery namespaces are reserved and domain schemas remain outside CDT-AutoCAD."
     ),
     "metadata_set": (
-        "Set one bounded schema-agnostic JSON metadata namespace on a persistent semantic PID with fingerprint guard, "
-        "provisional validation, independent read-back, and exact recovery; no COM fallback is used."
+        "Set one bounded schema-agnostic JSON metadata namespace only when caller document PID and predecessor fingerprint "
+        "still match, with independent read-back and exact recovery; no weaker COM fallback is used."
     ),
     "metadata_query": (
         "Query a bounded schema-agnostic metadata namespace across the active native document, optionally matching one "
@@ -645,6 +645,8 @@ def create_mcp(
 
     @provider_tool(tags={"native", "feature", "write"})
     async def feature_execute(
+        document_pid: str,
+        expected_parent_fp: str,
         feature_id: str,
         feature_sequence: int,
         correlation_id: str,
@@ -652,6 +654,8 @@ def create_mcp(
     ) -> dict[str, Any]:
         return await asyncio.to_thread(
             native_facade.feature_execute,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
             feature_id=feature_id,
             feature_sequence=feature_sequence,
             correlation_id=correlation_id,
@@ -659,15 +663,35 @@ def create_mcp(
         )
 
     @provider_tool(tags={"native", "entity", "write"})
-    async def batch_create_entities(entities: list[dict[str, Any]]) -> dict[str, Any]:
-        return await asyncio.to_thread(native_facade.batch_create_entities, entities)
+    async def batch_create_entities(
+        document_pid: str,
+        expected_parent_fp: str,
+        entities: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            native_facade.batch_create_entities,
+            entities,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
+        )
 
     @provider_tool(tags={"native", "block", "write"})
-    async def batch_insert_blocks(inserts: list[dict[str, Any]]) -> dict[str, Any]:
-        return await asyncio.to_thread(native_facade.batch_insert_blocks, inserts)
+    async def batch_insert_blocks(
+        document_pid: str,
+        expected_parent_fp: str,
+        inserts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            native_facade.batch_insert_blocks,
+            inserts,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
+        )
 
     @provider_tool(tags={"native", "entity", "write"})
     async def batch_transform_entities(
+        document_pid: str,
+        expected_parent_fp: str,
         semantic_pids: list[str],
         transform: dict[str, Any],
     ) -> dict[str, Any]:
@@ -675,6 +699,8 @@ def create_mcp(
             native_facade.batch_transform_entities,
             semantic_pids,
             transform,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
         )
 
     @provider_tool(tags={"native", "metadata", "read"})
@@ -683,6 +709,8 @@ def create_mcp(
 
     @provider_tool(tags={"native", "metadata", "write"})
     async def metadata_set(
+        document_pid: str,
+        expected_parent_fp: str,
         semantic_pid: str,
         namespace: str,
         value: Any,
@@ -692,6 +720,8 @@ def create_mcp(
             semantic_pid,
             namespace,
             value,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
         )
 
     @provider_tool(tags={"native", "metadata", "read"})

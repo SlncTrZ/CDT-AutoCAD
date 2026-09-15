@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from cdt_autocad.errors import UnsupportedCapabilityError
+from cdt_autocad.errors import StateConflictError, UnsupportedCapabilityError
 from cdt_autocad.native_bridge.public_runtime import NativePublicFacade
 
 RUNTIME = "11111111-1111-4111-8111-111111111111"
@@ -236,6 +236,108 @@ def test_native_status_binds_exactly_active_document(settings, tmp_path):
     assert status["active_document"]["document_fp"] == PRE
 
 
+def test_public_feature_refuses_wrong_caller_document_before_journal_or_mutation(settings, tmp_path):
+    client = FakeNativeClient()
+    facade = NativePublicFacade(
+        replace(settings, backend="com"),
+        client_factory=lambda: client,
+        journal_root=tmp_path,
+    )
+
+    with pytest.raises(StateConflictError, match="caller document PID"):
+        facade.feature_execute(
+            document_pid="pid:99999999-9999-4999-8999-999999999999",
+            expected_parent_fp=PRE,
+            feature_id="plaza.centerline.01",
+            feature_sequence=1,
+            correlation_id="showcase-01",
+            actions=[
+                {
+                    "operation": "create_entities",
+                    "entities": [
+                        {"kind": "line", "start": [0, 0, 0], "end": [1, 0, 0]}
+                    ],
+                }
+            ],
+        )
+
+    assert client.begin_calls == []
+    assert client.chunk_calls == []
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        "feature_execute",
+        "batch_create_entities",
+        "batch_insert_blocks",
+        "batch_transform_entities",
+        "metadata_set",
+    ],
+)
+def test_public_strong_integrity_writes_refuse_stale_caller_parent_before_dispatch(
+    settings, tmp_path, operation
+):
+    client = FakeNativeClient()
+    facade = NativePublicFacade(
+        replace(settings, backend="com"),
+        client_factory=lambda: client,
+        journal_root=tmp_path,
+    )
+    stale = "sha256:" + "9" * 64
+
+    with pytest.raises(StateConflictError, match="caller parent fingerprint"):
+        if operation == "feature_execute":
+            facade.feature_execute(
+                document_pid=DOC,
+                expected_parent_fp=stale,
+                feature_id="plaza.centerline.01",
+                feature_sequence=1,
+                correlation_id="showcase-01",
+                actions=[
+                    {
+                        "operation": "create_entities",
+                        "entities": [
+                            {"kind": "line", "start": [0, 0, 0], "end": [1, 0, 0]}
+                        ],
+                    }
+                ],
+            )
+        elif operation == "batch_create_entities":
+            facade.batch_create_entities(
+                ({"kind": "line", "start": [0, 0, 0], "end": [1, 0, 0]},),
+                document_pid=DOC,
+                expected_parent_fp=stale,
+            )
+        elif operation == "batch_insert_blocks":
+            facade.batch_insert_blocks(
+                ({"block_pid": ENTITY, "insertion_point": [0, 0, 0]},),
+                document_pid=DOC,
+                expected_parent_fp=stale,
+            )
+        elif operation == "batch_transform_entities":
+            facade.batch_transform_entities(
+                (ENTITY,),
+                {"kind": "translate", "dx": 1.0, "dy": 0.0, "dz": 0.0},
+                document_pid=DOC,
+                expected_parent_fp=stale,
+            )
+        else:
+            facade.metadata_set(
+                ENTITY,
+                "customer.mechanical.v1",
+                {"part_no": "P-100"},
+                document_pid=DOC,
+                expected_parent_fp=stale,
+            )
+
+    assert client.begin_calls == []
+    assert client.chunk_calls == []
+    assert client.metadata == {}
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_visual_style_facade_allows_runtime_bound_unsaved_document_and_guarded_restore(settings, tmp_path):
     class UnsavedViewClient(FakeNativeClient):
         def documents_list(self):
@@ -277,7 +379,9 @@ def test_public_batch_create_uses_g3_logical_checkpoint_and_durable_journal(sett
     )
 
     result = facade.batch_create_entities(
-        ({"kind": "line", "start": [0, 0, 0], "end": [1, 0, 0]},)
+        ({"kind": "line", "start": [0, 0, 0], "end": [1, 0, 0]},),
+        document_pid=DOC,
+        expected_parent_fp=PRE,
     )
 
     assert result["status"] == "COMMITTED"
@@ -301,6 +405,8 @@ def test_public_metadata_set_independently_reads_back_and_finalizes(settings, tm
         ENTITY,
         "customer.mechanical.v1",
         {"part_no": "P-100", "revision": 3},
+        document_pid=DOC,
+        expected_parent_fp=PRE,
     )
 
     assert result["outcome"] == "COMMITTED_VERIFIED"
@@ -325,7 +431,13 @@ def test_public_metadata_set_recovers_exact_predecessor_on_readback_mismatch(set
         journal_root=tmp_path,
     )
 
-    result = facade.metadata_set(ENTITY, "customer.mechanical.v1", {"part_no": "P-100"})
+    result = facade.metadata_set(
+        ENTITY,
+        "customer.mechanical.v1",
+        {"part_no": "P-100"},
+        document_pid=DOC,
+        expected_parent_fp=PRE,
+    )
 
     assert result["outcome"] == "ROLLED_BACK_VERIFIED"
     assert result["post_document_fp"] == PRE
@@ -347,7 +459,13 @@ def test_public_metadata_unknown_completion_discovers_checkpoint_and_recovers(se
         journal_root=tmp_path,
     )
 
-    result = facade.metadata_set(ENTITY, "customer.mechanical.v1", {"part_no": "P-100"})
+    result = facade.metadata_set(
+        ENTITY,
+        "customer.mechanical.v1",
+        {"part_no": "P-100"},
+        document_pid=DOC,
+        expected_parent_fp=PRE,
+    )
 
     assert result["outcome"] == "ROLLED_BACK_VERIFIED"
     assert result["post_document_fp"] == PRE
@@ -364,6 +482,8 @@ def test_public_feature_execute_returns_feature_local_receipt_and_pacing(setting
     )
 
     result = facade.feature_execute(
+        document_pid=DOC,
+        expected_parent_fp=PRE,
         feature_id="plaza.centerline.01",
         feature_sequence=1,
         correlation_id="showcase-01",

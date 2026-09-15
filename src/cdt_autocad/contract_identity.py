@@ -9,9 +9,9 @@ from importlib import resources
 from pathlib import Path
 
 PROTOCOL_VERSION = "MCP"
-CONTRACT_VERSION = "autocad-generic-v1-rc1"
+CONTRACT_VERSION = "autocad-generic-v1-rc2"
 COMMON_CONTRACT_VERSION = "cdt-common-v1-draft"
-UPDATED_AT = "2026-09-11"
+UPDATED_AT = "2026-09-15"
 PUBLIC_TOOL_COUNT = 86
 EXECUTION_MODEL = "feature-based-chunks-streaming-v1"
 

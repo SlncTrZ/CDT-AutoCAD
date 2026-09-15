@@ -1,5 +1,5 @@
 """Marketing integrity demo — synthetic public-MCP feature-streaming showcase.
-Wing: ops | Topic: marketing-demo | Updated: 2026-09-11 21:54
+Wing: ops | Topic: marketing-demo | Updated: 2026-09-15 15:00
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from cdt_autocad.contract_identity import CONTRACT_VERSION, EXECUTION_MODEL, PUB
 from cdt_autocad.server import create_mcp
 
 EXPECTED_BRIDGE_VERSION = "0.8.2-mp7"
-EXPECTED_PROVIDER_VERSION = "0.4.0rc1"
+EXPECTED_PROVIDER_VERSION = "0.4.0rc2"
 PRODUCT_PRESENTATION_DELAY_MS = 300
 DEFAULT_RECORDING_DELAY_MS = 900
 SCENE_BOUNDS = (950.0, 950.0, 1850.0, 1450.0)
@@ -390,6 +390,8 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 await client.call_tool(
                     "feature_execute",
                     {
+                        "document_pid": document_pid,
+                        "expected_parent_fp": baseline_fp,
                         "feature_id": "marketing.integrity.lattice",
                         "feature_sequence": 1,
                         "correlation_id": run_id,
@@ -414,6 +416,8 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 await client.call_tool(
                     "feature_execute",
                     {
+                        "document_pid": document_pid,
+                        "expected_parent_fp": feature_1["final_document_fp"],
                         "feature_id": "marketing.integrity.injected-failure",
                         "feature_sequence": 2,
                         "correlation_id": run_id,
@@ -443,6 +447,8 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 await client.call_tool(
                     "feature_execute",
                     {
+                        "document_pid": document_pid,
+                        "expected_parent_fp": feature_2["final_document_fp"],
                         "feature_id": "marketing.integrity.recovery-nodes",
                         "feature_sequence": 3,
                         "correlation_id": run_id,

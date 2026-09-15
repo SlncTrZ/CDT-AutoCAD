@@ -56,6 +56,25 @@ async def test_generic_rc_tool_surface_is_bounded_and_explicit(settings):
 
 
 @pytest.mark.asyncio
+async def test_strong_integrity_native_write_schema_requires_caller_state_binding(settings):
+    app = create_mcp(settings)
+    async with Client(app) as client:
+        tools = {tool.name: tool for tool in await client.list_tools()}
+
+    for name in {
+        "feature_execute",
+        "batch_create_entities",
+        "batch_insert_blocks",
+        "batch_transform_entities",
+        "metadata_set",
+    }:
+        schema = tools[name].inputSchema
+        assert {"document_pid", "expected_parent_fp"} <= set(schema["required"])
+        assert schema["properties"]["document_pid"]["type"] == "string"
+        assert schema["properties"]["expected_parent_fp"]["type"] == "string"
+
+
+@pytest.mark.asyncio
 async def test_public_tool_catalog_has_unique_semantic_descriptions_and_read_only_hints(settings):
     app = create_mcp(settings)
     async with Client(app) as client:
@@ -181,7 +200,7 @@ async def test_help_and_basic_workflow_over_real_mcp_client(settings, tmp_path: 
         help_result = await client.call_tool("help", {})
         help_payload = help_result.structured_content or {}
         assert help_payload["provider_name"] == "autocad"
-        assert help_payload["provider_version"] == "0.4.0rc1"
+        assert help_payload["provider_version"] == __version__
         assert help_payload["contract_version"] == CONTRACT_VERSION
         assert help_payload["public_tool_count"] == PUBLIC_TOOL_COUNT
         assert help_payload["execution_model"] == EXECUTION_MODEL

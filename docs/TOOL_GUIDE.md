@@ -1,6 +1,6 @@
 # CDT-AutoCAD Tool Guide
 
-> Contract: `autocad-generic-v1-rc1` · Provider: `0.4.0rc1` · Public tools: `86` · Updated: 2026-09-11
+> Contract: `autocad-generic-v1-rc2` · Provider: `0.4.0rc2` · Public tools: `86` · Updated: 2026-09-15
 
 CDT-AutoCAD is a generic CAD execution engine for AutoCAD workflows. It owns CAD execution,
 document state, persistent identity, fingerprints, transaction/recovery mechanics and bounded
@@ -16,10 +16,10 @@ current feature fails, only that feature is restored; previously accepted featur
 For a normal live AutoCAD workflow:
 
 1. call `system_status` and `system_capabilities`;
-2. call `native_integrity_status` before using strong-integrity native tools;
-3. open or create the drawing;
-4. configure units/layers as needed;
-5. execute production work with `feature_execute`;
+2. open or create the drawing and configure units/layers as needed;
+3. call `native_integrity_status` and retain the active `document_pid` + `document_fp` as the caller's planned predecessor;
+4. execute each strong-integrity write with that `document_pid` and `document_fp` as `expected_parent_fp`;
+5. after each accepted mutation, advance the caller predecessor to the returned final document fingerprint before the next write;
 6. inspect state with query/measurement tools;
 7. save, seal or export the accepted artifact.
 
@@ -32,8 +32,8 @@ on screen.
 
 ### `feature_execute`
 
-`feature_execute(feature_id, feature_sequence, correlation_id, actions)` is the preferred production
-entry point for Domain Agents.
+`feature_execute(document_pid, expected_parent_fp, feature_id, feature_sequence, correlation_id, actions)`
+is the preferred production entry point for Domain Agents.
 
 A feature may mix these generic action families:
 
@@ -45,6 +45,8 @@ Example shape:
 
 ```json
 {
+  "document_pid": "pid:...",
+  "expected_parent_fp": "sha256:...",
   "feature_id": "plaza.centerline.001",
   "feature_sequence": 1,
   "correlation_id": "job-2026-09-11-001",
@@ -61,6 +63,12 @@ Example shape:
 
 `feature_id` is correlation data only. CDT-AutoCAD does not interpret names such as road, kiosk,
 manhole, beam or pipe and does not contain TCVN/ISO/ASME/domain rules.
+
+`document_pid` and `expected_parent_fp` are mandatory caller-state bindings for native strong-integrity
+writes. They must come from the state the caller actually planned against, normally the preceding
+`native_integrity_status` or accepted mutation receipt. CDT-AutoCAD does **not** fill them from current
+state at dispatch time. Wrong-document or stale-parent requests fail before journal/checkpoint creation
+or CAD mutation; after binding, the same caller fingerprint remains the native executor drift guard.
 
 Each feature may contain up to 10,000 generic items. Internally the native bridge keeps bounded
 micro-chunks of at most 32 items and yields between chunks. On success the receipt includes feature
@@ -90,8 +98,9 @@ The three `batch_*` tools expose the underlying logical-batch primitive directly
 infrastructure and tests; production Domain Agents should normally prefer `feature_execute`.
 
 Native state uses persistent document/entity PIDs, fingerprint schema v3 and parent-fingerprint drift
-protection. A mutation must end as `COMMITTED_VERIFIED` or `ROLLED_BACK_VERIFIED`; uncertain state
-blocks dependent work.
+protection. `feature_execute`, the three `batch_*` write tools and `metadata_set` require caller-supplied
+`document_pid` + `expected_parent_fp`; read tools do not. A mutation must end as `COMMITTED_VERIFIED`
+or `ROLLED_BACK_VERIFIED`; uncertain state blocks dependent work.
 
 ## Schema-agnostic metadata
 
@@ -99,7 +108,7 @@ Metadata is stored in AutoCAD entity ExtensionDictionary/XRecord storage and par
 fingerprinting.
 
 - `metadata_get(semantic_pid, namespace)`
-- `metadata_set(semantic_pid, namespace, value)`
+- `metadata_set(document_pid, expected_parent_fp, semantic_pid, namespace, value)`
 - `metadata_query(namespace, path?, equals?, limit=200)`
 
 Namespaces such as `customer.mechanical.v1` are allowed. Provider-owned prefixes `slnctrz.*`,
