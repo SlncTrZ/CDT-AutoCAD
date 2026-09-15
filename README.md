@@ -12,7 +12,7 @@ It deliberately does **not** own engineering-domain rules. Civil, structural, me
 
 As of 2026-09-15, CDT-AutoCAD is **launch-ready for its intended execution-engine mission** with B0 document provenance and B4 caller-state binding re-certified on AutoCAD 2027.
 
-Native strong-integrity writes now require the caller's planned `document_pid` + predecessor fingerprint and refuse wrong-document/stale-state requests before mutation. Filesystem containment remains a bounded hardening area rather than a race-free guarantee. Future CAD capability is added only from a concrete blocked workflow plus its postcondition and verification invariant.
+Native strong-integrity writes require the caller's planned `document_pid` + predecessor fingerprint and refuse wrong-document/stale-state requests before mutation. B1 filesystem containment is now closed with a split guarantee: provider-owned file I/O uses descriptor/handle-bound actual-I/O primitives against concurrent descendant namespace mutation, while AutoCAD APIs that accept pathname strings only remain explicitly bounded by pre/post verification rather than advertised as race-free. Future CAD capability is added only from a concrete blocked workflow plus its postcondition and verification invariant.
 
 This is not a claim of full AutoCAD API parity, and the project is not pursuing parity as an independent roadmap.
 

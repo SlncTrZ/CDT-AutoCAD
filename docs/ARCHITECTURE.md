@@ -131,7 +131,7 @@ The current runtime status of a capability is reported by provider status/capabi
 
 ## 8. Security boundary
 
-The provider does not expose arbitrary shell, AutoLISP, macro, caller-supplied C# or free-text AutoCAD command execution surfaces. Filesystem access and runtime side effects remain bounded by configured policy and typed tool contracts.
+The provider does not expose arbitrary shell, AutoLISP, macro, caller-supplied C# or free-text AutoCAD command execution surfaces. Filesystem access remains bounded by configured policy and typed tool contracts. Provider-owned filesystem I/O uses descriptor/handle-bound primitives at the actual I/O boundary against concurrent descendant namespace mutation beneath a trusted configured root; AutoCAD COM operations that accept pathname strings only are a separate bounded-assurance lane with pre/post verification, not a race-free guarantee.
 
 Threats and mitigations are maintained in [`THREAT_MODEL.md`](THREAT_MODEL.md).
 

@@ -39,7 +39,7 @@ Reports are especially important when they involve:
 - secret or private drawing-data disclosure;
 - unbounded request, metadata, queue, snapshot or artifact growth.
 
-The active threat model is `docs/THREAT_MODEL.md`. Materially new risky capabilities require a threat-model delta before public promotion.
+The active threat model is `docs/THREAT_MODEL.md`. For filesystem containment, provider-owned I/O is protected at the descriptor/handle-bound actual-I/O boundary under the documented trusted-root attacker model; AutoCAD pathname-only APIs remain explicitly bounded rather than race-free. Materially new risky capabilities require a threat-model delta before public promotion.
 
 ## Disclosure and test-data rules
 

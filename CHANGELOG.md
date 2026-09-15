@@ -11,6 +11,7 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 
 ### Changed
 
+- Closed B1 filesystem containment at implementation checkpoint `abeb9d9` under an explicit split-assurance threat model: provider-owned file I/O now uses descriptor/handle-bound actual-I/O primitives with adversarial descendant namespace-swap coverage on Linux and Windows; AutoCAD pathname-only COM operations remain bounded by pre/post verification and are not advertised as race-free. Closure tree measured Linux **405 / 11 skipped** with Ruff PASS and Windows `.171` **404 / 12 skipped**.
 - Declared CDT-AutoCAD launch-ready for its Generic CAD Execution Engine mission; no known top-level AutoCAD blocker remains before CDT-Engineer work begins.
 - Standardized documentation authority so provider architecture, current status, live evidence, roadmap, technical debt and session notes no longer compete as sources of truth.
 - Added `docs/ARCHITECTURE.md` as the canonical provider-local architecture authority; `specs/**` remains a frozen upstream CDT-Engineer baseline.

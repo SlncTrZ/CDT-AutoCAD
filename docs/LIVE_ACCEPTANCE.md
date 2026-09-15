@@ -1,9 +1,9 @@
 # AutoCAD Live Acceptance Runbook
 
 > Updated: 2026-09-15 16:05 +07:00
-> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0 document provenance + B4 caller-state binding
+> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0 document provenance + B1 filesystem containment + B4 caller-state binding
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Public identity: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools` · current runtime/code checkpoint **`872da68`** · historical promotion commit `0516fe3`
+> Public identity: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools` · current runtime/code checkpoint **`abeb9d9`** · historical promotion commit `0516fe3`
 
 ## 0. Current production live gate
 
@@ -22,6 +22,7 @@ Current live native requirements already measured PASS on `.171` AutoCAD 2027 Se
 - MP-G05 bounded native `3DSOLID` translation: persistent PID + `solid-semantic-v2`, stale-parent `STATE_DRIFT` refusal, `COMMITTED_VERIFIED`, exact R0 abort, post-commit integrity-failure detection and exact R2 predecessor restore; rotate/scale/Boolean/topology are not implied;
 - no arbitrary C#/AutoLISP/shell/macro/free-text command surface;
 - B0 document provenance re-certification: SaveAs + artifact sealing live fixtures PASS with verified renamed-document cleanup and no leaked basetemp/task residue;
+- B1 provider-owned filesystem I/O closure is verified at the actual OS I/O boundary on Linux and Windows `.171` using descriptor/handle-bound adversarial namespace-swap fixtures; AutoCAD COM calls that accept pathname strings only retain bounded pre/post verification and inherit the prior B0 live provenance evidence rather than a new race-free claim;
 - B4 caller-state binding live acceptance PASS on a disposable PID-bearing DWG: wrong document PID refused with exact fingerprint/entity-count preservation, stale parent refused with zero mutation, valid caller predecessor committed, and replaying the old predecessor after commit refused without changing accepted state.
 
 Canonical current evidence (machine-readable artifacts retained with the internal acceptance record

@@ -1,8 +1,8 @@
 # Current Checkpoint — CDT-AutoCAD
 
 > Updated: 2026-09-15
-> Status: **LAUNCH-READY / OPERATIONAL RC — B0 + B4 RE-CERTIFIED**
-> Current runtime/code checkpoint: `872da68` (`fix: bind native writes to caller state`)
+> Status: **LAUNCH-READY / OPERATIONAL RC — B0 + B1 + B4 CLOSED**
+> Current runtime/code checkpoint: `abeb9d9` (`fix: harden provider filesystem containment`)
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
 
 This file is the canonical **public current-state authority**. It reports what is true now. It does not define architecture or future roadmap.
@@ -11,7 +11,7 @@ This file is the canonical **public current-state authority**. It reports what i
 
 CDT-AutoCAD is sufficiently complete to launch in its intended role as a **Generic CAD Execution Engine** for CDT-Engineer and other higher-level production domains.
 
-There is no known top-level caller-state, document-provenance, semantic-recovery or CAD-execution integrity blocker that must be closed before downstream engineering-domain work begins. Filesystem containment remains a bounded hardening area and is not advertised as race-free against a concurrent namespace attacker.
+There is no known top-level caller-state, document-provenance, filesystem-containment, semantic-recovery or CAD-execution integrity blocker that must be closed before downstream engineering-domain work begins. B1 is closed with split assurance: provider-owned file I/O is descriptor/handle-bound at the actual I/O boundary against concurrent descendant namespace mutation beneath a trusted configured root, while AutoCAD COM methods that accept pathname strings only remain a bounded lane with pre/post verification and are not advertised as race-free.
 
 From this checkpoint forward, AutoCAD capability expansion is **demand-driven**:
 
@@ -50,6 +50,7 @@ The following major programs/scopes are closed within their documented boundarie
 | Feature-based Chunks Streaming | **CLOSED / LIVE PASS** | Feature-local commit/rollback while preserving earlier accepted features |
 | Integrity Maintenance P0 | **CLOSED** | Late-writer fencing, destructive postconditions, create atomicity, XREF completeness and rollback-receipt honesty |
 | B0 document provenance | **CLOSED / LIVE PASS** | SaveAs and artifact sealing bind/verify the same canonical document path after mutation before success/provenance acceptance |
+| B1 filesystem containment | **CLOSED / SPLIT ASSURANCE** | Provider-owned file I/O is descriptor/handle-bound at actual I/O against concurrent descendant namespace mutation beneath a trusted configured root; AutoCAD pathname-only APIs remain bounded by pre/post verification |
 | B4 caller-state binding | **CLOSED / LIVE PASS** | Five native strong-integrity write tools require caller document PID + predecessor fingerprint; wrong-document/stale-parent requests refuse before journal/checkpoint/CAD mutation |
 | Mixed PID P1 | **CLOSED / LIVE PASS** | Unmanaged entities refuse deterministically as `UNMANAGED_ENTITY_PRESENT`; read paths do not auto-adopt PID |
 | MP-G05 bounded native solid loop | **CLOSED / LIVE PASS** | Provider PID + `solid-semantic-v2` + drift guard + persisted read-back + R0/R2 for planar `3DSOLID` translation |
@@ -69,18 +70,18 @@ Normative behavior is defined in [`SEMANTIC_STATE_PROTOCOL.md`](SEMANTIC_STATE_P
 
 ## 5. Latest measured gates
 
-At current runtime/code checkpoint `872da68`:
+At current runtime/code checkpoint `abeb9d9`:
 
-- Linux full regression: **398 passed / 9 skipped**.
-- Windows `.171` full regression: **397 passed / 10 skipped**.
-- Focused public-native/schema regression: **32/32 passed**.
-- Python syntax/compile gate: **PASS**.
+- Linux full regression from the canonical Linux locked environment: **405 passed / 11 skipped**.
+- Windows `.171` full regression: **404 passed / 12 skipped**.
+- B1 actual-I/O containment fixtures exercise descriptor/handle-bound read, atomic write/replace, contained directory creation and adversarial parent namespace swap on both platforms.
+- Canonical Linux locked-environment Ruff gate: **PASS**.
 - `git diff --check`: **PASS**.
-- B0 SaveAs + artifact-seal AutoCAD 2027 Session-1 closure: **2/2 passed** with cleanup/residue verification.
-- B4 caller-state AutoCAD 2027 Session-1 acceptance: **PASS** — wrong document PID, stale parent and stale replay all refuse with zero state change; valid caller predecessor commits and independently reads back the new fingerprint/entity count.
-- C# bridge source was unchanged by B4; accepted bridge remains `0.8.2-mp7` and no new native build claim is made.
-- Ruff is unavailable in the prepared Linux/Windows verification environments and is **not claimed as PASS**.
-- Exact-head GitHub CI for `872da68` has not been used as B4 closure evidence; the older `911ba09` 4/4 matrix remains historical evidence only.
+- B0 SaveAs + artifact-seal AutoCAD 2027 Session-1 closure remains **2/2 passed** historical/current capability evidence; B1 does not retroactively turn AutoCAD pathname-only APIs into race-free primitives.
+- B4 caller-state AutoCAD 2027 Session-1 acceptance remains **PASS** — wrong document PID, stale parent and stale replay all refuse with zero state change; valid caller predecessor commits and independently reads back the new fingerprint/entity count.
+- A current B1 artifact-seal live retry reached Session 1/COM but AutoCAD rejected `Documents.Add` with `RPC_E_CALL_REJECTED` before B1 filesystem code executed; it is therefore recorded as non-evidence, not a B1 pass/fail.
+- C# bridge source was unchanged by B1; accepted bridge remains `0.8.2-mp7` and no new native build claim is made.
+- Windows exact-lock Ruff/release reproducibility is tracked by B2/B3 rather than inferred from the existing Windows venv.
 
 Detailed evidence scope remains in [`LIVE_ACCEPTANCE.md`](LIVE_ACCEPTANCE.md) and retained machine evidence under ignored `artifacts/internal-evidence/`.
 
