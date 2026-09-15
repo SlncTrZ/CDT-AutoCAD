@@ -10,13 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import ctypes
-import hashlib
 import io
 import json
 import math
 import os
 import re
-import shutil
 import sys
 import threading
 import time
@@ -27,6 +25,13 @@ from typing import Any, TypeVar
 from ..command_presets import VIEW_PRESETS as _VIEW_PRESETS
 from ..command_presets import visual_style_command
 from ..config import Settings
+from ..contained_io import (
+    contained_sha256_metadata,
+    copy_contained_file,
+    ensure_contained_directory,
+    replace_contained_file,
+    write_contained_text_atomic,
+)
 from ..errors import (
     BackendQuarantinedError,
     BackendTimeoutError,
@@ -35,11 +40,11 @@ from ..errors import (
 )
 from ..models import BlockInfo, Capability, EntityInfo, LayerInfo
 from ..security import (
-    revalidate_side_effect_path,
     resolve_allowed_directory,
     resolve_autocad_document_path,
     resolve_autocad_export_path,
     resolve_pdf_path,
+    revalidate_side_effect_path,
 )
 from .base import AutoCADBackend
 
@@ -342,16 +347,6 @@ def _com_vector_property(entity: Any, name: str) -> list[float]:
         return _xyz(_com_get_attr(entity, name))
     except Exception as exc:
         raise RuntimeError(f"AutoCAD property unavailable: {name}") from exc
-
-
-def _file_sha256_size(path: Path) -> tuple[str, int]:
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            size += len(chunk)
-            digest.update(chunk)
-    return digest.hexdigest(), size
 
 
 def _com_bounding_box(entity: Any) -> dict[str, list[float]]:
@@ -1652,34 +1647,33 @@ class ComBackend(AutoCADBackend):
         destination = (
             resolve_allowed_directory(destination_dir, self.settings)
             if destination_dir is not None
-            else source.parent / ".cdt-accepted"
+            else ensure_contained_directory(source.parent / ".cdt-accepted", self.settings)
         )
-        if destination_dir is None:
-            destination.mkdir(parents=True, exist_ok=True)
-            destination = resolve_allowed_directory(str(destination), self.settings)
-        source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-        sealed_name = f"{source.stem}.{source_hash[:16]}{source.suffix.lower()}"
-        sealed = revalidate_side_effect_path(
-            destination / sealed_name,
+        source_hash, source_size, source_mtime_ns = contained_sha256_metadata(
+            source,
             self.settings,
-            must_exist=False,
-            for_write=True,
         )
-        if sealed.exists():
-            existing_hash = hashlib.sha256(sealed.read_bytes()).hexdigest()
+        sealed_name = f"{source.stem}.{source_hash[:16]}{source.suffix.lower()}"
+        sealed = destination / sealed_name
+        try:
+            existing_hash, _existing_size, _existing_mtime_ns = contained_sha256_metadata(
+                sealed,
+                self.settings,
+            )
+        except FileNotFoundError:
+            copy_contained_file(source, sealed, self.settings)
+        else:
             if existing_hash != source_hash:
                 raise StateConflictError("existing sealed artifact has the same name but different bytes")
-        else:
-            source = revalidate_side_effect_path(
-                source,
-                self.settings,
-                must_exist=True,
-            )
-            shutil.copy2(source, sealed)
-        sealed_hash = hashlib.sha256(sealed.read_bytes()).hexdigest()
+        sealed_hash, sealed_size, _sealed_mtime_ns = contained_sha256_metadata(
+            sealed,
+            self.settings,
+        )
         if sealed_hash != source_hash:
             raise StateConflictError("sealed artifact hash does not match saved source")
-        post_copy_source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+        post_copy_source_hash, post_copy_source_size, post_copy_source_mtime_ns = (
+            contained_sha256_metadata(source, self.settings)
+        )
         if post_copy_source_hash != source_hash:
             raise StateConflictError("source changed while sealing; refusing a stale acceptance manifest")
         manifest = {
@@ -1688,20 +1682,19 @@ class ComBackend(AutoCADBackend):
             "source_path": str(source),
             "sealed_path": str(sealed),
             "sha256": sealed_hash,
-            "size": sealed.stat().st_size,
+            "size": sealed_size,
             "source_sha256": post_copy_source_hash,
-            "source_size": source.stat().st_size,
-            "source_mtime_ns": source.stat().st_mtime_ns,
+            "source_size": post_copy_source_size,
+            "source_mtime_ns": post_copy_source_mtime_ns,
             "document_state": document_state,
         }
-        manifest_path = revalidate_side_effect_path(
-            sealed.with_suffix(sealed.suffix + ".manifest.json"),
+        if source_size != post_copy_source_size or source_mtime_ns != post_copy_source_mtime_ns:
+            raise StateConflictError("source metadata changed while sealing; refusing stale evidence")
+        manifest_path = sealed.with_suffix(sealed.suffix + ".manifest.json")
+        write_contained_text_atomic(
+            manifest_path,
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
             self.settings,
-            must_exist=False,
-            for_write=True,
-        )
-        manifest_path.write_text(
-            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         return {**manifest, "manifest_path": str(manifest_path)}
 
@@ -2729,7 +2722,10 @@ class ComBackend(AutoCADBackend):
                 source_size = None
                 if resolved and safe_path is not None:
                     source_path = Path(safe_path)
-                    source_sha256, source_size = _file_sha256_size(source_path)
+                    source_sha256, source_size, _source_mtime_ns = contained_sha256_metadata(
+                        source_path,
+                        self.settings,
+                    )
                 rows.append(
                     {
                         "name": name,
@@ -2781,7 +2777,10 @@ class ComBackend(AutoCADBackend):
                 self.settings,
                 must_exist=True,
             )
-            source_sha256, source_size = _file_sha256_size(verified_source)
+            source_sha256, source_size, _source_mtime_ns = contained_sha256_metadata(
+                verified_source,
+                self.settings,
+            )
             reference = space.AttachExternalReference(
                 str(verified_source),
                 wanted,
@@ -2795,7 +2794,10 @@ class ComBackend(AutoCADBackend):
             try:
                 if canonical_layer is not None:
                     _com_set_attr(reference, "Layer", canonical_layer)
-                current_sha256, current_size = _file_sha256_size(verified_source)
+                current_sha256, current_size, _current_mtime_ns = contained_sha256_metadata(
+                    verified_source,
+                    self.settings,
+                )
                 if current_sha256 != source_sha256 or current_size != source_size:
                     reason = (
                         "XREF source changed during attach; provenance is uncertain; "
@@ -4057,33 +4059,26 @@ class ComBackend(AutoCADBackend):
             for_write=True,
         )
         if actual != target:
-            target = revalidate_side_effect_path(
-                target,
-                self.settings,
-                must_exist=False,
-                for_write=True,
-            )
-            actual.replace(target)
-            actual = target
-        digest = hashlib.sha256(actual.read_bytes()).hexdigest()
+            actual = replace_contained_file(actual, target, self.settings)
+        digest, actual_size, _actual_mtime_ns = contained_sha256_metadata(
+            actual,
+            self.settings,
+            enforce_size_limit=False,
+        )
         manifest = {
             "schema_version": 1,
             "status": "EXPORTED",
             "format": "sat",
             "path": str(actual),
             "sha256": digest,
-            "size": actual.stat().st_size,
+            "size": actual_size,
             "solid_handles": keys,
         }
-        manifest_path = revalidate_side_effect_path(
-            actual.with_suffix(actual.suffix + ".manifest.json"),
-            self.settings,
-            must_exist=False,
-            for_write=True,
-        )
-        manifest_path.write_text(
+        manifest_path = actual.with_suffix(actual.suffix + ".manifest.json")
+        write_contained_text_atomic(
+            manifest_path,
             json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+            self.settings,
         )
         return {**manifest, "ok": True, "manifest_path": str(manifest_path)}
 

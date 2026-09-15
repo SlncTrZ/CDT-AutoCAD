@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from cdt_autocad.security import revalidate_side_effect_path, resolve_dxf_path
+from cdt_autocad.security import resolve_dxf_path, revalidate_side_effect_path
 
 
 def test_relative_path_resolves_inside_first_allowed_root(settings, tmp_path: Path):

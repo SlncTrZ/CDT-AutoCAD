@@ -11,8 +11,6 @@ import asyncio
 import gzip
 import io
 import math
-import os
-import tempfile
 from collections.abc import Callable
 from importlib.util import find_spec
 from pathlib import Path
@@ -23,6 +21,7 @@ import ezdxf.bbox as ezdxf_bbox
 from ezdxf.math import Matrix44, arc_angle_span_rad, bulge_to_arc
 
 from ..config import Settings
+from ..contained_io import open_contained_atomic_writer, open_contained_reader
 from ..errors import (
     BackendQuarantinedError,
     BackendTimeoutError,
@@ -30,7 +29,7 @@ from ..errors import (
     UnsupportedCapabilityError,
 )
 from ..models import BlockInfo, Capability, EntityInfo, LayerInfo
-from ..security import revalidate_side_effect_path, resolve_dxf_path, resolve_pdf_path
+from ..security import resolve_dxf_path, resolve_pdf_path, revalidate_side_effect_path
 from .base import AutoCADBackend
 
 _T = TypeVar("_T")
@@ -383,31 +382,13 @@ class EzdxfBackend(AutoCADBackend):
             self._undo_stack.pop(0)
 
     def _atomic_write_dxf(self, doc: Any, target: Path) -> None:
-        target = revalidate_side_effect_path(
+        with open_contained_atomic_writer(
             target,
             self.settings,
-            must_exist=False,
-            for_write=True,
-        )
-        fd, temp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
-                doc.write(stream)
-                stream.flush()
-                os.fsync(stream.fileno())
-            target = revalidate_side_effect_path(
-                target,
-                self.settings,
-                must_exist=False,
-                for_write=True,
-            )
-            os.replace(temp_name, target)
-        except Exception:
-            try:
-                os.unlink(temp_name)
-            except OSError:
-                pass
-            raise
+            binary=False,
+            encoding="utf-8",
+        ) as stream:
+            doc.write(stream)
 
     async def _run(
         self,
@@ -482,12 +463,13 @@ class EzdxfBackend(AutoCADBackend):
         resolved = resolve_dxf_path(path, self.settings, must_exist=True)
 
         def _open_sync():
-            verified = revalidate_side_effect_path(
+            with open_contained_reader(
                 resolved,
                 self.settings,
-                must_exist=True,
-            )
-            return ezdxf.readfile(verified)
+                binary=False,
+                encoding="utf-8",
+            ) as stream:
+                return ezdxf.read(stream)
 
         doc = await self._run(_open_sync, quarantine_exit=True)
         self._doc = doc
@@ -577,42 +559,21 @@ class EzdxfBackend(AutoCADBackend):
                 else doc.layouts.get(resolved_layout)
             )
 
-            verified_target = revalidate_side_effect_path(
+            figure = Figure()
+            FigureCanvasAgg(figure)
+            axis = figure.add_axes([0, 0, 1, 1])
+            context = RenderContext(doc)
+            output = MatplotlibBackend(axis)
+            Frontend(context, output).draw_layout(drawing_layout, finalize=True)
+            with open_contained_atomic_writer(
                 target,
                 self.settings,
-                must_exist=False,
-                for_write=True,
-            )
-            fd, temp_name = tempfile.mkstemp(
-                prefix=f".{verified_target.name}.",
-                suffix=".tmp.pdf",
-                dir=verified_target.parent,
-            )
-            os.close(fd)
-            try:
-                figure = Figure()
-                FigureCanvasAgg(figure)
-                axis = figure.add_axes([0, 0, 1, 1])
-                context = RenderContext(doc)
-                output = MatplotlibBackend(axis)
-                Frontend(context, output).draw_layout(drawing_layout, finalize=True)
-                figure.savefig(temp_name, dpi=150, format="pdf")
-                verified_target = revalidate_side_effect_path(
-                    verified_target,
-                    self.settings,
-                    must_exist=False,
-                    for_write=True,
-                )
-                os.replace(temp_name, verified_target)
-            except Exception:
-                try:
-                    os.unlink(temp_name)
-                except OSError:
-                    pass
-                raise
+                binary=True,
+            ) as stream:
+                figure.savefig(stream, dpi=150, format="pdf")
             return {
                 "ok": True,
-                "path": str(verified_target),
+                "path": str(target),
                 "layout": resolved_layout or self._current_space,
             }
 

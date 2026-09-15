@@ -581,13 +581,13 @@ async def test_artifact_seal_refuses_if_source_drifts_during_copy(settings, monk
         def Save(self):
             self.Saved = True
 
-    def drifting_copy(source, destination):
+    def drifting_copy(source, destination, _settings):
         Path(destination).write_bytes(Path(source).read_bytes())
         drawing.write_bytes(b"after")
 
     backend = ComBackend(replace(settings, backend="com", allowed_paths=(tmp_path.resolve(),)))
     monkeypatch.setattr(backend, "_doc", lambda: Doc())
-    monkeypatch.setattr(cb.shutil, "copy2", drifting_copy)
+    monkeypatch.setattr(cb, "copy_contained_file", drifting_copy)
     _run_inline(monkeypatch, backend)
 
     with pytest.raises(StateConflictError, match="source changed while sealing"):
