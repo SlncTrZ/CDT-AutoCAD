@@ -427,6 +427,7 @@ async def test_xref_attach_quarantines_if_source_changes_during_attach(
             blocks.items.append(XrefBlock(name))
             reference = Reference(name, self)
             self.items.append(reference)
+            source.write_bytes(b"after")
             return reference
 
     space = Space()
@@ -437,16 +438,13 @@ async def test_xref_attach_quarantines_if_source_changes_during_attach(
     monkeypatch.setattr(backend, "_space", lambda: space)
     monkeypatch.setattr(backend, "_doc", lambda: doc)
     monkeypatch.setattr(cb, "_point", lambda x, y, z=0.0: (x, y, z))
-
-    async def _run_with_source_drift(func, **_kwargs):
-        source.write_bytes(b"after")
-        return func()
-
-    monkeypatch.setattr(backend, "_run", _run_with_source_drift)
+    _run_inline(monkeypatch, backend)
 
     with pytest.raises(StateConflictError, match="source changed during attach"):
         await backend.xref_attach(str(source), name="REF_DRIFT")
     assert backend.status()["integrity_uncertain"] is True
+    assert space.items == []
+    assert blocks.items == []
 
 
 @pytest.mark.asyncio

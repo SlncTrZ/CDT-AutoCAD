@@ -1,5 +1,5 @@
 """Live AutoCAD backend using the Windows ActiveX/COM automation API.
-Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-09 22:58
+Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-14 22:49
 
 This backend intentionally implements only the existing A0/A1 provider contract. It does not
 copy the much larger reference server surface. All COM work is serialized through one STA worker
@@ -35,6 +35,7 @@ from ..errors import (
 )
 from ..models import BlockInfo, Capability, EntityInfo, LayerInfo
 from ..security import (
+    revalidate_side_effect_path,
     resolve_allowed_directory,
     resolve_autocad_document_path,
     resolve_autocad_export_path,
@@ -998,6 +999,39 @@ class ComBackend(AutoCADBackend):
         self._application_metadata = None
         self._created_viewport_handles.clear()
 
+    def _bound_document_path(
+        self,
+        doc: Any,
+        *,
+        operation: str,
+        must_exist: bool,
+        for_write: bool = False,
+        expected: Path | None = None,
+        quarantine_on_failure: bool = False,
+    ) -> Path:
+        """Resolve one bound document path and optionally verify a post-mutation identity."""
+        try:
+            raw_path = str(_com_property_with_busy_retry(doc, "FullName") or "").strip()
+            if not raw_path or not Path(raw_path).is_absolute():
+                raise StateConflictError(f"AutoCAD document path unavailable during {operation}")
+            resolved = resolve_autocad_document_path(
+                raw_path,
+                self.settings,
+                must_exist=must_exist,
+                for_write=for_write,
+            )
+            if expected is not None and resolved != expected:
+                raise StateConflictError(f"AutoCAD document path changed during {operation}")
+            return resolved
+        except Exception as exc:
+            if not quarantine_on_failure:
+                raise
+            reason = f"AutoCAD document path changed during {operation}"
+            self._quarantine_integrity(reason)
+            if isinstance(exc, StateConflictError) and str(exc) == reason:
+                raise
+            raise StateConflictError(reason) from exc
+
     async def _run(
         self,
         func,
@@ -1256,12 +1290,24 @@ class ComBackend(AutoCADBackend):
         target = resolve_autocad_document_path(path, self.settings, must_exist=True)
 
         def _sync() -> dict[str, Any]:
+            verified_target = revalidate_side_effect_path(
+                target,
+                self.settings,
+                must_exist=False,
+            )
             documents = _com_property_with_busy_retry(self._app(), "Documents")
-            doc = documents.Open(str(target))
+            doc = documents.Open(str(verified_target))
+            verified_bound = self._bound_document_path(
+                doc,
+                operation="open",
+                must_exist=True,
+                expected=verified_target,
+                quarantine_on_failure=True,
+            )
             return {
                 "ok": True,
                 "name": str(_com_property_with_busy_retry(doc, "Name")),
-                "path": str(_optional_com_property(doc, "FullName") or target),
+                "path": str(verified_bound),
                 "backend": self.name,
             }
 
@@ -1315,28 +1361,28 @@ class ComBackend(AutoCADBackend):
 
         def _sync() -> dict[str, Any]:
             doc = self._doc()
-            raw_path = str(_optional_com_property(doc, "FullName") or "")
-            if not raw_path or not Path(raw_path).is_absolute():
+            try:
+                target = self._bound_document_path(
+                    doc,
+                    operation="save precondition",
+                    must_exist=False,
+                    for_write=True,
+                )
+            except StateConflictError as exc:
                 raise StateConflictError(
                     "Unsaved live AutoCAD document requires an explicit save path"
-                )
-            target = resolve_autocad_document_path(
-                raw_path, self.settings, must_exist=False, for_write=True
-            )
+                ) from exc
 
             doc.Save()
 
-            verified_raw_path = str(_optional_com_property(doc, "FullName") or "")
-            if not verified_raw_path or not Path(verified_raw_path).is_absolute():
-                raise StateConflictError("AutoCAD document path changed during save")
-            verified_target = resolve_autocad_document_path(
-                verified_raw_path,
-                self.settings,
+            verified_target = self._bound_document_path(
+                doc,
+                operation="save",
                 must_exist=False,
                 for_write=True,
+                expected=target,
+                quarantine_on_failure=True,
             )
-            if verified_target != target:
-                raise StateConflictError("AutoCAD document path changed during save")
 
             name = str(_com_property_with_busy_retry(doc, "Name"))
             self._document_scope_key = (name, str(verified_target))
@@ -1349,19 +1395,30 @@ class ComBackend(AutoCADBackend):
         return await self._run(_sync)
 
     async def document_save_as(self, path: str) -> dict[str, Any]:
-        target = resolve_autocad_document_path(path, self.settings, must_exist=False, for_write=True)
-        file_type = _AC2018_DWG if target.suffix.lower() == ".dwg" else _AC2018_DXF
-
         def _sync() -> dict[str, Any]:
             doc = self._doc()
+            target = resolve_autocad_document_path(
+                path,
+                self.settings,
+                must_exist=False,
+                for_write=True,
+            )
+            file_type = _AC2018_DWG if target.suffix.lower() == ".dwg" else _AC2018_DXF
             doc.SaveAs(str(target), file_type)
+            verified_target = self._bound_document_path(
+                doc,
+                operation="save as",
+                must_exist=False,
+                for_write=True,
+                expected=target,
+                quarantine_on_failure=True,
+            )
             name = str(_com_property_with_busy_retry(doc, "Name"))
-            full_name = str(_optional_com_property(doc, "FullName") or target)
-            self._document_scope_key = (name, full_name)
+            self._document_scope_key = (name, str(verified_target))
             return {
                 "ok": True,
-                "path": str(target),
-                "format": target.suffix.lower().lstrip("."),
+                "path": str(verified_target),
+                "format": verified_target.suffix.lower().lstrip("."),
             }
 
         return await self._run(_sync)
@@ -1389,15 +1446,27 @@ class ComBackend(AutoCADBackend):
                     lambda: doc.GetVariable("BACKGROUNDPLOT")
                 )
                 _com_call_with_busy_retry(lambda: doc.SetVariable("BACKGROUNDPLOT", 0))
+                verified_target = revalidate_side_effect_path(
+                    target,
+                    self.settings,
+                    must_exist=False,
+                    for_write=True,
+                )
                 plot = _com_property_with_busy_retry(doc, "Plot")
                 ok = bool(
                     _com_call_with_busy_retry(
-                        lambda: plot.PlotToFile(str(target), "DWG To PDF.pc3")
+                        lambda: plot.PlotToFile(str(verified_target), "DWG To PDF.pc3")
                     )
                 )
                 if not ok:
                     raise RuntimeError("AutoCAD PlotToFile returned false")
-                return {"ok": True, "path": str(target), "layout": selected}
+                verified_target = revalidate_side_effect_path(
+                    verified_target,
+                    self.settings,
+                    must_exist=False,
+                    for_write=True,
+                )
+                return {"ok": True, "path": str(verified_target), "layout": selected}
             finally:
                 try:
                     if background_plot is not None:
@@ -1539,11 +1608,22 @@ class ComBackend(AutoCADBackend):
     async def artifact_seal(self, destination_dir: str | None = None) -> dict[str, Any]:
         def _save_and_resolve() -> tuple[Path, dict[str, Any]]:
             doc = self._doc()
-            raw_path = str(_optional_com_property(doc, "FullName") or "")
-            if not raw_path or not Path(raw_path).is_absolute():
-                raise StateConflictError("artifact sealing requires a saved AutoCAD document")
-            source = resolve_autocad_document_path(raw_path, self.settings, must_exist=True)
+            try:
+                source = self._bound_document_path(
+                    doc,
+                    operation="artifact seal precondition",
+                    must_exist=True,
+                )
+            except (StateConflictError, ValueError, FileNotFoundError) as exc:
+                raise StateConflictError("artifact sealing requires a saved AutoCAD document") from exc
             doc.Save()
+            source = self._bound_document_path(
+                doc,
+                operation="artifact seal save",
+                must_exist=True,
+                expected=source,
+                quarantine_on_failure=True,
+            )
             saved = bool(_optional_com_property(doc, "Saved"))
             if not saved:
                 raise StateConflictError("AutoCAD still reports the document as dirty after Save")
@@ -1564,6 +1644,11 @@ class ComBackend(AutoCADBackend):
             }
 
         source, document_state = await self._run(_save_and_resolve)
+        source = revalidate_side_effect_path(
+            source,
+            self.settings,
+            must_exist=True,
+        )
         destination = (
             resolve_allowed_directory(destination_dir, self.settings)
             if destination_dir is not None
@@ -1574,12 +1659,22 @@ class ComBackend(AutoCADBackend):
             destination = resolve_allowed_directory(str(destination), self.settings)
         source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
         sealed_name = f"{source.stem}.{source_hash[:16]}{source.suffix.lower()}"
-        sealed = destination / sealed_name
+        sealed = revalidate_side_effect_path(
+            destination / sealed_name,
+            self.settings,
+            must_exist=False,
+            for_write=True,
+        )
         if sealed.exists():
             existing_hash = hashlib.sha256(sealed.read_bytes()).hexdigest()
             if existing_hash != source_hash:
                 raise StateConflictError("existing sealed artifact has the same name but different bytes")
         else:
+            source = revalidate_side_effect_path(
+                source,
+                self.settings,
+                must_exist=True,
+            )
             shutil.copy2(source, sealed)
         sealed_hash = hashlib.sha256(sealed.read_bytes()).hexdigest()
         if sealed_hash != source_hash:
@@ -1599,7 +1694,12 @@ class ComBackend(AutoCADBackend):
             "source_mtime_ns": source.stat().st_mtime_ns,
             "document_state": document_state,
         }
-        manifest_path = sealed.with_suffix(sealed.suffix + ".manifest.json")
+        manifest_path = revalidate_side_effect_path(
+            sealed.with_suffix(sealed.suffix + ".manifest.json"),
+            self.settings,
+            must_exist=False,
+            for_write=True,
+        )
         manifest_path.write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
@@ -2670,16 +2770,20 @@ class ComBackend(AutoCADBackend):
             raise ValueError("xref transform values must be finite")
         if float(scale_x) == 0 or float(scale_y) == 0 or float(scale_z) == 0:
             raise ValueError("xref scales must be non-zero")
-        source_sha256, source_size = _file_sha256_size(source)
-
         def _sync() -> dict[str, Any]:
             doc = self._doc()
             if self._find_name(doc.Blocks, wanted) is not None:
                 raise ValueError(f"block/xref name already exists: {wanted}")
             canonical_layer = self._validate_layer(layer)
             space = self._space()
+            verified_source = revalidate_side_effect_path(
+                source,
+                self.settings,
+                must_exist=True,
+            )
+            source_sha256, source_size = _file_sha256_size(verified_source)
             reference = space.AttachExternalReference(
-                str(source),
+                str(verified_source),
                 wanted,
                 _point(x, y, z),
                 float(scale_x),
@@ -2691,11 +2795,11 @@ class ComBackend(AutoCADBackend):
             try:
                 if canonical_layer is not None:
                     _com_set_attr(reference, "Layer", canonical_layer)
-                current_sha256, current_size = _file_sha256_size(source)
+                current_sha256, current_size = _file_sha256_size(verified_source)
                 if current_sha256 != source_sha256 or current_size != source_size:
                     reason = (
                         "XREF source changed during attach; provenance is uncertain; "
-                        f"path={source}; before=({source_sha256},{source_size}); "
+                        f"path={verified_source}; before=({source_sha256},{source_size}); "
                         f"after=({current_sha256},{current_size})"
                     )
                     self._quarantine_integrity(reason)
@@ -2703,7 +2807,7 @@ class ComBackend(AutoCADBackend):
                 return {
                     "ok": True,
                     "name": wanted,
-                    "path": str(source),
+                    "path": str(verified_source),
                     "overlay": bool(overlay),
                     "handle": str(_com_get_attr(reference, "Handle")),
                     "layer": str(_com_get_attr(reference, "Layer")),
@@ -3920,7 +4024,13 @@ class ComBackend(AutoCADBackend):
             try:
                 selection = doc.SelectionSets.Add(selection_name)
                 selection.AddItems(_dispatch_array(solids))
-                base_name = str(target.with_suffix(""))
+                verified_target = revalidate_side_effect_path(
+                    target,
+                    self.settings,
+                    must_exist=False,
+                    for_write=True,
+                )
+                base_name = str(verified_target.with_suffix(""))
                 doc.Export(base_name, "SAT", selection)
             finally:
                 if selection is not None:
@@ -3930,11 +4040,29 @@ class ComBackend(AutoCADBackend):
                         pass
 
         await self._run(_sync, may_mutate_document=False)
+        target = revalidate_side_effect_path(
+            target,
+            self.settings,
+            must_exist=False,
+            for_write=True,
+        )
         candidates = [target, target.with_suffix(".SAT")]
         actual = next((candidate for candidate in candidates if candidate.is_file()), None)
         if actual is None:
             raise RuntimeError("AutoCAD SAT export completed without producing the requested artifact")
+        actual = revalidate_side_effect_path(
+            actual,
+            self.settings,
+            must_exist=False,
+            for_write=True,
+        )
         if actual != target:
+            target = revalidate_side_effect_path(
+                target,
+                self.settings,
+                must_exist=False,
+                for_write=True,
+            )
             actual.replace(target)
             actual = target
         digest = hashlib.sha256(actual.read_bytes()).hexdigest()
@@ -3947,7 +4075,12 @@ class ComBackend(AutoCADBackend):
             "size": actual.stat().st_size,
             "solid_handles": keys,
         }
-        manifest_path = actual.with_suffix(actual.suffix + ".manifest.json")
+        manifest_path = revalidate_side_effect_path(
+            actual.with_suffix(actual.suffix + ".manifest.json"),
+            self.settings,
+            must_exist=False,
+            for_write=True,
+        )
         manifest_path.write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",

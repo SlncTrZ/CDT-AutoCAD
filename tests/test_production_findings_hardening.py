@@ -1,10 +1,12 @@
 """Production findings closure — artifact, preset, DXF parity and 3D export hardening.
-Wing: code | Topic: production-findings | Updated: 2026-09-11 17:25
+Wing: code | Topic: production-findings | Updated: 2026-09-14 22:46
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -20,6 +22,12 @@ from cdt_autocad.errors import (
     BackendQuarantinedError,
     StateConflictError,
     UnsupportedCapabilityError,
+)
+
+_LIVE_COM_ENABLED = sys.platform == "win32" and os.environ.get("CDT_AUTOCAD_LIVE_TEST") == "1"
+_LIVE_COM_PROGID = (
+    os.environ.get("CDT_AUTOCAD_COM_PROGID", "AutoCAD.Application").strip()
+    or "AutoCAD.Application"
 )
 
 
@@ -585,6 +593,101 @@ async def test_artifact_seal_refuses_if_source_drifts_during_copy(settings, monk
     with pytest.raises(StateConflictError, match="source changed while sealing"):
         await backend.artifact_seal()
     assert not list((tmp_path / ".cdt-accepted").glob("*.manifest.json"))
+
+
+@pytest.mark.asyncio
+async def test_artifact_seal_refuses_if_document_path_drifts_during_save(
+    settings, monkeypatch, tmp_path: Path
+):
+    before = tmp_path / "before.dwg"
+    after = tmp_path / "after.dwg"
+    before.write_bytes(b"before-bytes")
+    after.write_bytes(b"after-bytes")
+
+    class Doc:
+        Saved = True
+
+        def __init__(self):
+            self._saved = False
+
+        @property
+        def FullName(self):
+            return str(after if self._saved else before)
+
+        def Save(self):
+            self._saved = True
+            self.Saved = True
+
+        def GetVariable(self, name):
+            return {
+                "DBMOD": 0,
+                "INSUNITS": 4,
+                "MEASUREMENT": 1,
+                "LUNITS": 2,
+                "LUPREC": 3,
+            }[name]
+
+    backend = ComBackend(replace(settings, backend="com", allowed_paths=(tmp_path.resolve(),)))
+    monkeypatch.setattr(backend, "_doc", lambda: Doc())
+    _run_inline(monkeypatch, backend)
+
+    with pytest.raises(StateConflictError, match="path changed during artifact seal save"):
+        await backend.artifact_seal()
+
+    assert not list((tmp_path / ".cdt-accepted").glob("*.manifest.json"))
+    assert backend.status()["integrity_uncertain"] is True
+
+
+@pytest.mark.skipif(
+    not _LIVE_COM_ENABLED,
+    reason="requires Windows + running AutoCAD + CDT_AUTOCAD_LIVE_TEST=1",
+)
+@pytest.mark.asyncio
+async def test_live_artifact_seal_binds_saved_document_and_emits_verified_manifest(
+    settings, tmp_path: Path
+):
+    backend = ComBackend(
+        replace(
+            settings,
+            backend="com",
+            com_attach_policy="attach_only",
+            com_progid=_LIVE_COM_PROGID,
+            com_call_timeout_seconds=60.0,
+        )
+    )
+    created_name = None
+    target = tmp_path / "b0-live-artifact-seal.dwg"
+    try:
+        created = await backend.document_new()
+        created_name = created["name"]
+        saved_as = await backend.document_save_as(str(target))
+        assert saved_as["path"] == str(target)
+        assert target.is_file()
+        created_name = target.name
+
+        sealed = await backend.artifact_seal()
+        sealed_path = Path(sealed["sealed_path"])
+        manifest_path = Path(sealed["manifest_path"])
+        expected_sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
+
+        assert sealed["status"] == "SEALED"
+        assert sealed["source_path"] == str(target)
+        assert sealed["sha256"] == expected_sha256
+        assert sealed["source_sha256"] == expected_sha256
+        assert sealed_path.is_file()
+        assert manifest_path.is_file()
+        assert hashlib.sha256(sealed_path.read_bytes()).hexdigest() == expected_sha256
+        assert sealed["document_state"]["saved"] is True
+        assert backend.status()["integrity_uncertain"] is False
+    finally:
+        if created_name and backend._executor is not None:
+            try:
+                await backend._run(
+                    lambda: backend._app().Documents.Item(created_name).Close(False)
+                )
+            except Exception:
+                pass
+        backend.shutdown()
 
 
 @pytest.mark.asyncio

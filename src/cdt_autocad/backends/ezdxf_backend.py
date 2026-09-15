@@ -1,5 +1,5 @@
 """Headless DXF backend for the CDT_Engineer AutoCAD provider.
-Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-12 11:00
+Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-14 23:00
 
 Implemented for the CDT-AutoCAD provider contract using ezdxf through its public
 API, with provider behavior normalized to CDT project invariants and schemas.
@@ -30,7 +30,7 @@ from ..errors import (
     UnsupportedCapabilityError,
 )
 from ..models import BlockInfo, Capability, EntityInfo, LayerInfo
-from ..security import resolve_dxf_path, resolve_pdf_path
+from ..security import revalidate_side_effect_path, resolve_dxf_path, resolve_pdf_path
 from .base import AutoCADBackend
 
 _T = TypeVar("_T")
@@ -382,14 +382,25 @@ class EzdxfBackend(AutoCADBackend):
         while len(self._undo_stack) > self.settings.undo_depth + 1:
             self._undo_stack.pop(0)
 
-    @staticmethod
-    def _atomic_write_dxf(doc: Any, target: Path) -> None:
+    def _atomic_write_dxf(self, doc: Any, target: Path) -> None:
+        target = revalidate_side_effect_path(
+            target,
+            self.settings,
+            must_exist=False,
+            for_write=True,
+        )
         fd, temp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
         try:
             with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
                 doc.write(stream)
                 stream.flush()
                 os.fsync(stream.fileno())
+            target = revalidate_side_effect_path(
+                target,
+                self.settings,
+                must_exist=False,
+                for_write=True,
+            )
             os.replace(temp_name, target)
         except Exception:
             try:
@@ -469,7 +480,16 @@ class EzdxfBackend(AutoCADBackend):
                 "Native DWG reading requires the live AutoCAD backend or an explicit converter",
             )
         resolved = resolve_dxf_path(path, self.settings, must_exist=True)
-        doc = await self._run(lambda: ezdxf.readfile(resolved), quarantine_exit=True)
+
+        def _open_sync():
+            verified = revalidate_side_effect_path(
+                resolved,
+                self.settings,
+                must_exist=True,
+            )
+            return ezdxf.readfile(verified)
+
+        doc = await self._run(_open_sync, quarantine_exit=True)
         self._doc = doc
         self._generation += 1
         self._doc_path = resolved
@@ -517,7 +537,13 @@ class EzdxfBackend(AutoCADBackend):
         )
 
         def _sync() -> None:
-            self._atomic_write_dxf(self._require_doc(), target)
+            verified = revalidate_side_effect_path(
+                target,
+                self.settings,
+                must_exist=False,
+                for_write=True,
+            )
+            self._atomic_write_dxf(self._require_doc(), verified)
 
         await self._run(_sync, integrity_sensitive=True)
         self._doc_path = target
@@ -551,8 +577,16 @@ class EzdxfBackend(AutoCADBackend):
                 else doc.layouts.get(resolved_layout)
             )
 
+            verified_target = revalidate_side_effect_path(
+                target,
+                self.settings,
+                must_exist=False,
+                for_write=True,
+            )
             fd, temp_name = tempfile.mkstemp(
-                prefix=f".{target.name}.", suffix=".tmp.pdf", dir=target.parent
+                prefix=f".{verified_target.name}.",
+                suffix=".tmp.pdf",
+                dir=verified_target.parent,
             )
             os.close(fd)
             try:
@@ -563,7 +597,13 @@ class EzdxfBackend(AutoCADBackend):
                 output = MatplotlibBackend(axis)
                 Frontend(context, output).draw_layout(drawing_layout, finalize=True)
                 figure.savefig(temp_name, dpi=150, format="pdf")
-                os.replace(temp_name, target)
+                verified_target = revalidate_side_effect_path(
+                    verified_target,
+                    self.settings,
+                    must_exist=False,
+                    for_write=True,
+                )
+                os.replace(temp_name, verified_target)
             except Exception:
                 try:
                     os.unlink(temp_name)
@@ -572,7 +612,7 @@ class EzdxfBackend(AutoCADBackend):
                 raise
             return {
                 "ok": True,
-                "path": str(target),
+                "path": str(verified_target),
                 "layout": resolved_layout or self._current_space,
             }
 

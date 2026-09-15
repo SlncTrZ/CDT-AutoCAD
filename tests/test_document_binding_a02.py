@@ -1,5 +1,5 @@
 """A-02 document binding — validate and save the same live COM document instance.
-Wing: code | Topic: mp0-a02-document-binding | Updated: 2026-09-11 11:15
+Wing: code | Topic: mp0-a02-document-binding | Updated: 2026-09-14 22:46
 """
 
 from __future__ import annotations
@@ -99,6 +99,41 @@ async def test_document_save_refuses_success_if_bound_doc_path_changes_during_sa
 
 
 @pytest.mark.asyncio
+async def test_document_save_as_refuses_success_if_bound_doc_path_drifts_after_save_as(
+    settings, monkeypatch, tmp_path
+):
+    backend = ComBackend(replace(settings, backend="com"))
+    target = tmp_path / "target.dwg"
+    drifted = tmp_path / "drifted.dwg"
+
+    class DriftingDoc:
+        Name = "target.dwg"
+
+        def __init__(self):
+            self.save_as_calls = 0
+            self._saved = False
+
+        @property
+        def FullName(self):
+            return str(drifted if self._saved else target)
+
+        def SaveAs(self, _path, _file_type):
+            self.save_as_calls += 1
+            self._saved = True
+
+    doc = DriftingDoc()
+    monkeypatch.setattr(backend, "_run", _inline_run)
+    monkeypatch.setattr(backend, "_doc", lambda: doc)
+
+    with pytest.raises(StateConflictError, match="path changed during save as"):
+        await backend.document_save_as(str(target))
+
+    assert doc.save_as_calls == 1
+    assert backend.status()["integrity_uncertain"] is True
+    assert "save as" in backend.status()["integrity_uncertain_reason"]
+
+
+@pytest.mark.asyncio
 async def test_document_save_rejects_bound_doc_outside_allowed_root_before_save(
     settings, monkeypatch, tmp_path
 ):
@@ -134,6 +169,7 @@ async def test_live_document_save_keeps_verified_fixture_path(settings, tmp_path
         created = await backend.document_new()
         created_name = created["name"]
         saved_as = await backend.document_save_as(str(target))
+        created_name = target.name
         assert saved_as["path"] == str(target)
         assert target.is_file()
 
