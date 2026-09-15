@@ -1,7 +1,7 @@
 # Marketing Demo Runbook — CDT-AutoCAD
 
-> Updated: 2026-09-12 17:30 +07:00
-> Product identity: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`
+> Updated: 2026-09-15 16:09 +07:00
+> Product identity: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools`
 > Positioning: **RC/preview — Generic CAD Execution Engine for AI agents**
 > Primary demo target: AutoCAD 2027 full / Windows x64 / Interactive Session 1
 > Current runner bridge identity: `0.8.2-mp7`; the evidence table in §4 intentionally preserves the older bridge identity of the recorded historical demo run.
@@ -125,7 +125,7 @@ Use claims narrowly and literally supported by evidence:
 - **AutoCAD 2027 / Windows x64** is the primary certified live lane.
 - Feature-based Chunks Streaming uses bounded native micro-chunks of at most **32 items**.
 - A failed current feature can be restored to its exact predecessor while earlier committed features remain intact.
-- Native execution uses persistent document/entity PIDs and versioned semantic fingerprints.
+- Native execution uses persistent document/entity PIDs and versioned semantic fingerprints; strong-integrity writes bind the caller-planned document PID + predecessor fingerprint before mutation.
 - Scale graduation has live evidence at **100 / 1,000 / 5,000 / 10,000 entities**.
 - The accepted 10,000-entity run used **313 native chunks**, beginning/middle/end fault injection, exact predecessor recovery and zero pending recovery.
 - Content-addressed accepted-artifact sealing records SHA-256 provenance.
@@ -143,7 +143,7 @@ Recommended proof line:
 
 Do **not** say:
 
-- “production GA” — current product version is `0.4.0rc1`; say **RC/preview**;
+- “production GA” — current product version is `0.4.0rc2`; say **RC/preview**;
 - “supports every AutoCAD version” — only the documented target is certified;
 - “understands civil/mechanical/architectural standards” — domain rules belong to Domain Agents;
 - “10,000 entities instantly” or “no freeze at 10k” — the scale evidence proves bounded execution/recovery, not instantaneous completion;

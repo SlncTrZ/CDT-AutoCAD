@@ -1,9 +1,9 @@
 # Operations Runbook — CDT-AutoCAD
 
 > Operational start: 2026-09-12
-> Updated: 2026-09-12 17:30 +07:00
-> Current product identity: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools`
-> Current native bridge candidate: `0.8.2-mp7` · current runtime/code checkpoint `911ba09`
+> Updated: 2026-09-15 16:05 +07:00
+> Current product identity: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools`
+> Current native bridge candidate: `0.8.2-mp7` · current runtime/code checkpoint `872da68`
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
 
 ## 1. Operating boundary
@@ -18,14 +18,15 @@ Before starting a production/live session:
 
 1. AutoCAD 2027 is already running in the intended interactive Windows user/session.
 2. The required Managed .NET bridge is loaded, reports ready and matches the bridge identity expected by the workflow; current maintenance baseline is `0.8.2-mp7`.
-3. `CDT_AUTOCAD_BACKEND=com`.
-4. `CDT_AUTOCAD_COM_PROGID=AutoCAD.Application.26`.
-5. `CDT_AUTOCAD_COM_ATTACH_POLICY=attach_only` unless an explicitly reviewed workflow requires otherwise.
-6. `CDT_AUTOCAD_ALLOWED_PATHS` contains only approved working roots.
-7. HTTP/supervisor transport has a non-empty `CDT_AUTOCAD_AUTH_TOKEN`.
-8. Non-loopback HTTP remains disabled unless `CDT_AUTOCAD_ALLOW_REMOTE_HTTP=true` was explicitly approved.
-9. No unresolved timeout uncertainty or pending recovery is present.
-10. The intended DWG/document is identified before the first mutation.
+3. Before any native strong-integrity write, call `native_integrity_status` and retain the caller-planned `document_pid` + `document_fp`; pass them to the write as `document_pid` + `expected_parent_fp`. Do not refresh them implicitly at dispatch if the workflow intended to mutate the earlier planned state.
+4. `CDT_AUTOCAD_BACKEND=com`.
+5. `CDT_AUTOCAD_COM_PROGID=AutoCAD.Application.26`.
+6. `CDT_AUTOCAD_COM_ATTACH_POLICY=attach_only` unless an explicitly reviewed workflow requires otherwise.
+7. `CDT_AUTOCAD_ALLOWED_PATHS` contains only approved working roots.
+8. HTTP/supervisor transport has a non-empty `CDT_AUTOCAD_AUTH_TOKEN`.
+9. Non-loopback HTTP remains disabled unless `CDT_AUTOCAD_ALLOW_REMOTE_HTTP=true` was explicitly approved.
+10. No unresolved timeout uncertainty or pending recovery is present.
+11. The intended DWG/document is identified before the first mutation.
 
 Never store real auth tokens in the repository.
 

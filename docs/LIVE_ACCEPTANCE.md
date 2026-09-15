@@ -1,9 +1,9 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-12 17:30 +07:00
-> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop
+> Updated: 2026-09-15 16:05 +07:00
+> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0 document provenance + B4 caller-state binding
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Public identity: `0.4.0rc1 / autocad-generic-v1-rc1 / 86 tools` · current runtime/code checkpoint **`911ba09`** · historical promotion commit `0516fe3`
+> Public identity: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools` · current runtime/code checkpoint **`872da68`** · historical promotion commit `0516fe3`
 
 ## 0. Current production live gate
 
@@ -20,7 +20,9 @@ Current live native requirements already measured PASS on `.171` AutoCAD 2027 Se
 - Feature-based Chunks Streaming: Feature 1 commit, Feature 2 failure at native chunk 1 restores only Feature 2 predecessor, Feature 1 remains exact, Feature 3 continues successfully;
 - feature presentation pacing recommendation 300 ms; live measured pause 300.295 ms;
 - MP-G05 bounded native `3DSOLID` translation: persistent PID + `solid-semantic-v2`, stale-parent `STATE_DRIFT` refusal, `COMMITTED_VERIFIED`, exact R0 abort, post-commit integrity-failure detection and exact R2 predecessor restore; rotate/scale/Boolean/topology are not implied;
-- no arbitrary C#/AutoLISP/shell/macro/free-text command surface.
+- no arbitrary C#/AutoLISP/shell/macro/free-text command surface;
+- B0 document provenance re-certification: SaveAs + artifact sealing live fixtures PASS with verified renamed-document cleanup and no leaked basetemp/task residue;
+- B4 caller-state binding live acceptance PASS on a disposable PID-bearing DWG: wrong document PID refused with exact fingerprint/entity-count preservation, stale parent refused with zero mutation, valid caller predecessor committed, and replaying the old predecessor after commit refused without changing accepted state.
 
 Canonical current evidence (machine-readable artifacts retained with the internal acceptance record
 under these file names; not part of the published tree):
@@ -36,9 +38,10 @@ mp-g07-visual-style-live-2026-09-12.json
 mp2-hot-reload-current-identity-2026-09-12-isolated.json
 mp-g10-acis-soak-live-2026-09-12.json
 bridge-0.8.2-mp7-runtime-binding-2026-09-12.json
+b4-caller-binding-live-2026-09-15.json (ephemeral acceptance report; result summarized in this runbook)
 ```
 
-Final close-gate result on the original promotion tree remains: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**. The current maintenance tree has now independently passed Linux **386 / 6 skipped**, Windows `.171` **385 / 7 skipped**, Ruff + compile, C# Release/x64 **0 errors / 3 inherited warning families**, current-identity MP-2 **20 success + 10 injected failure**, visual-style round-trip/restore, ACIS 10/100-part adversarial soak and the bounded MP-G05 native solid translation/recovery gate. Older sections below retain historical wording such as “50 tools” where that wording records the state of an earlier acceptance run.
+Final close-gate result on the original promotion tree remains: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**. The current RC2 caller-binding tree at `872da68` independently passed Linux **398 / 9 skipped**, Windows `.171` **397 / 10 skipped**, focused public-native/schema **32/32**, B4 AutoCAD 2027 Session-1 live acceptance PASS, plus the preceding B0 live SaveAs/artifact-seal **2/2** closure. No C# source changed in B4, so the native bridge remained the already accepted `0.8.2-mp7` build. Ruff remains unavailable in the prepared Linux/Windows verification environments and is not claimed as PASS. Older sections below preserve their historical identities and wording.
 
 ## 1. Certification policy
 
@@ -150,7 +153,7 @@ The A3 live lane exercises a second disposable drawing and checks:
 - arbitrary normalized 3D view direction;
 - native window PNG capture.
 
-This lane was the required live evidence before A3 promotion. The current `0.4.0rc1` contract has since published the reviewed A3 surface; this section records the original acceptance boundary.
+This lane was the required live evidence before A3 promotion. The then-current `0.4.0rc1` contract subsequently published the reviewed A3 surface; this section records that original acceptance boundary and is not a statement of current RC2 identity.
 
 ## 7. A3.2 advanced-dimension live evidence covered
 
@@ -209,7 +212,7 @@ For every newly accepted strong-integrity family, live AutoCAD 2027 evidence mus
 1. **Data Integrity / Rollback** — injected failures/timeout uncertainty cannot advance state; native abort or recovery must be followed by read-back proving the exact predecessor fingerprint.
 2. **Precise Identity / PID + Fingerprinting** — document/entity PID persistence, clone/remap behavior, duplicate detection, deterministic content fingerprints and `expected_parent_fp` state-drift blocking.
 
-The .NET bridge is not promoted merely because an internal native gate passes. Selected strong-integrity tools are public in `0.4.0rc1`; the broader COM lane may remain in place indefinitely where its bounded-integrity contract is sufficient. There is no standing requirement to replace it for parity. **MP-2 Python MCP hot reload is CLOSED / LIVE PASS**: stable supervisor/process/stable-URL, protocol/contract-hash promotion and `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge acceptance all passed. Historical evidence remains `mp2-hot-reload-2026-09-11.json`; the current 86-tool/`0.8.2-mp7` identity was re-proven with one isolated Session-1 owner at **20 successful reloads + 10 injected startup failures**, zero pending recovery and verified task/process cleanup in `mp2-hot-reload-current-identity-2026-09-12-isolated.json`.
+The .NET bridge is not promoted merely because an internal native gate passes. Selected strong-integrity tools were first published in `0.4.0rc1`; RC2 strengthens caller-state binding without expanding that native capability family. The broader COM lane may remain in place indefinitely where its bounded-integrity contract is sufficient; there is no standing requirement to replace it for parity. **MP-2 Python MCP hot reload is CLOSED / LIVE PASS**: stable supervisor/process/stable-URL, protocol/contract-hash promotion and `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge acceptance all passed. Historical evidence remains `mp2-hot-reload-2026-09-11.json`; the 86-tool/`0.8.2-mp7` identity was re-proven on 2026-09-12 with one isolated Session-1 owner at **20 successful reloads + 10 injected startup failures**, zero pending recovery and verified task/process cleanup in `mp2-hot-reload-current-identity-2026-09-12-isolated.json`.
 
 AutoCAD 2027 installs Microsoft .NET 10 when needed; the bridge build/runtime target must follow the AutoCAD 2027 Managed .NET compatibility requirements and secure loading policy.
 

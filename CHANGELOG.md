@@ -26,6 +26,25 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 - Final maintenance gates: Linux **365 passed / 6 skipped**, Windows `.171` **364 passed / 7 skipped**, targeted live suite **5/5 twice consecutively**, C# Release/x64 **0 errors / 3 inherited warning families**. Ruff was unavailable in the prepared Linux environment and is not claimed as PASS.
 
 
+## [0.4.0rc2] - 2026-09-15
+
+### Integrity / contract
+
+- Closed B0 document provenance gaps: `document_save_as` verifies the bound document's canonical post-SaveAs path before success, and artifact sealing re-binds the same saved source before hashing/copy/manifest acceptance.
+- Closed B4 caller-state binding at implementation checkpoint `872da68`: `feature_execute`, `batch_create_entities`, `batch_insert_blocks`, `batch_transform_entities` and `metadata_set` now require caller-supplied `document_pid` + `expected_parent_fp`.
+- Wrong-document and stale-parent requests fail before logical journal/checkpoint creation or CAD mutation; the caller predecessor remains the native executor drift guard after binding.
+- Public identity advanced intentionally to provider `0.4.0rc2` / contract `autocad-generic-v1-rc2`; public tool count remains 86 and the execution model remains `feature-based-chunks-streaming-v1`.
+
+### Verification
+
+- Focused public native/schema regression: **32/32 passed**.
+- Full Linux regression: **398 passed / 9 skipped**.
+- Full Windows `.171` regression: **397 passed / 10 skipped**.
+- B0 AutoCAD 2027 Session-1 SaveAs + artifact-seal closure: **2/2 passed**.
+- B4 AutoCAD 2027 Session-1 disposable-DWG acceptance: wrong document PID, stale parent and stale replay refused with zero mutation; valid caller predecessor committed and independently read back.
+- C# bridge source did not change; accepted native bridge remains `0.8.2-mp7`. Ruff was unavailable in the prepared Linux/Windows environments and is not claimed as PASS.
+
+
 ## [0.4.0rc1] - 2026-09-12
 
 ### Operational baseline

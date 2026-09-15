@@ -1,6 +1,6 @@
 # CDT-AutoCAD
 
-> Provider `0.4.0rc1` · Contract `autocad-generic-v1-rc1` · 86 public MCP tools · AutoCAD 2027 primary certification lane · **Launch-ready / Operational RC**
+> Provider `0.4.0rc2` · Contract `autocad-generic-v1-rc2` · 86 public MCP tools · AutoCAD 2027 primary certification lane · **Launch-ready / Operational RC**
 
 CDT-AutoCAD is a **Generic CAD Execution Engine** for reliable automation of real AutoCAD drawings.
 
@@ -10,9 +10,9 @@ It deliberately does **not** own engineering-domain rules. Civil, structural, me
 
 ## Current position
 
-As of 2026-09-12, CDT-AutoCAD is **launch-ready for its intended execution-engine mission**.
+As of 2026-09-15, CDT-AutoCAD is **launch-ready for its intended execution-engine mission** with B0 document provenance and B4 caller-state binding re-certified on AutoCAD 2027.
 
-There is no known top-level architecture or integrity blocker that must be closed before CDT-Engineer work begins. Future AutoCAD capability is added only when CDT-Engineer or another production domain identifies a concrete blocked workflow plus the postcondition and verification invariant required to prove success.
+Native strong-integrity writes now require the caller's planned `document_pid` + predecessor fingerprint and refuse wrong-document/stale-state requests before mutation. Filesystem containment remains a bounded hardening area rather than a race-free guarantee. Future CAD capability is added only from a concrete blocked workflow plus its postcondition and verification invariant.
 
 This is not a claim of full AutoCAD API parity, and the project is not pursuing parity as an independent roadmap.
 
@@ -31,8 +31,8 @@ This README is a product landing page and summary, not a competing architecture 
 ## Public identity
 
 ```text
-provider_version: 0.4.0rc1
-contract_version: autocad-generic-v1-rc1
+provider_version: 0.4.0rc2
+contract_version: autocad-generic-v1-rc2
 public MCP tools: 86
 execution_model: feature-based-chunks-streaming-v1
 native bridge candidate: 0.8.2-mp7
@@ -171,14 +171,17 @@ Current accepted scale tiers on real AutoCAD 2027:
 | 5,000 | PASS | beginning / middle / end | 0 |
 | 10,000 | PASS | beginning / middle / end | 0 |
 
-At current runtime/code checkpoint `911ba09`:
+At current runtime/code checkpoint `872da68`:
 
-- Linux full regression: **386 passed / 6 skipped**;
-- Windows `.171` full regression: **385 passed / 7 skipped**;
-- GitHub Headless CI exact-head: **4/4 matrix jobs PASS**;
-- Ruff and Python compile: **PASS**;
-- C# Release/x64: **0 errors / 3 inherited warning families**;
-- MP-G05 AutoCAD 2027 live commit/drift/R0/post-commit-fault/R2 gate: **PASS**.
+- Linux full regression: **398 passed / 9 skipped**;
+- Windows `.171` full regression: **397 passed / 10 skipped**;
+- focused public native/schema regression: **32/32 passed**;
+- B0 SaveAs + artifact-seal AutoCAD 2027 live closure: **2/2 passed**;
+- B4 caller-state AutoCAD 2027 Session-1 acceptance: **PASS** with wrong-document/stale-parent/stale-replay zero-mutation refusal plus valid commit/read-back;
+- Python syntax/compile gate and `git diff --check`: **PASS**;
+- C# bridge source was unchanged by B4; accepted bridge remains `0.8.2-mp7`;
+- Ruff is unavailable in the prepared Linux/Windows verification environments and is **not claimed as PASS**;
+- exact-head GitHub CI for `872da68` has not been used as closure evidence.
 
 See [`docs/CURRENT_CHECKPOINT.md`](docs/CURRENT_CHECKPOINT.md) and [`docs/LIVE_ACCEPTANCE.md`](docs/LIVE_ACCEPTANCE.md) for authoritative status/evidence scope.
 

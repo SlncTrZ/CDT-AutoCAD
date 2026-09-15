@@ -61,19 +61,19 @@ To prevent source-of-truth drift:
 
 ## 4. Current product position
 
-As of 2026-09-12, CDT-AutoCAD is **launch-ready / operational RC** for its intended role as a Generic CAD Execution Engine.
+As of 2026-09-15, CDT-AutoCAD is **launch-ready / operational RC** for its intended role as a Generic CAD Execution Engine, with B0 document provenance and B4 caller-state binding re-certified on AutoCAD 2027.
 
 Current public identity remains:
 
 ```text
-provider_version: 0.4.0rc1
-contract_version: autocad-generic-v1-rc1
+provider_version: 0.4.0rc2
+contract_version: autocad-generic-v1-rc2
 public_tools: 86
 execution_model: feature-based-chunks-streaming-v1
 native_bridge: 0.8.2-mp7
 ```
 
-There is no known top-level blocker that requires further AutoCAD breadth before CDT-Engineer work begins. New AutoCAD capability is opened only from a concrete downstream engineering need plus a verification invariant. See [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) for the current measured state and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the stable boundary.
+There is no known top-level caller-state, document-provenance, semantic-recovery or CAD-execution integrity blocker requiring more AutoCAD breadth before CDT-Engineer work begins. Filesystem containment remains explicitly bounded rather than race-free. New capability is opened only from a concrete downstream engineering need plus a verification invariant. See [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) for current measured state and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the stable boundary.
 
 ## 5. Change routing
 

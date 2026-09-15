@@ -1,8 +1,8 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-12
-> Status: **LAUNCH-READY / OPERATIONAL RC**
-> Current runtime/code checkpoint: `911ba09` (`feat: close native solid integrity loop`)
+> Updated: 2026-09-15
+> Status: **LAUNCH-READY / OPERATIONAL RC — B0 + B4 RE-CERTIFIED**
+> Current runtime/code checkpoint: `872da68` (`fix: bind native writes to caller state`)
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
 
 This file is the canonical **public current-state authority**. It reports what is true now. It does not define architecture or future roadmap.
@@ -11,7 +11,7 @@ This file is the canonical **public current-state authority**. It reports what i
 
 CDT-AutoCAD is sufficiently complete to launch in its intended role as a **Generic CAD Execution Engine** for CDT-Engineer and other higher-level production domains.
 
-There is no known top-level architecture or integrity blocker that must be closed before downstream engineering-domain work begins.
+There is no known top-level caller-state, document-provenance, semantic-recovery or CAD-execution integrity blocker that must be closed before downstream engineering-domain work begins. Filesystem containment remains a bounded hardening area and is not advertised as race-free against a concurrent namespace attacker.
 
 From this checkpoint forward, AutoCAD capability expansion is **demand-driven**:
 
@@ -24,14 +24,14 @@ Launch-ready does not mean “every AutoCAD feature exists.” It means the prov
 ## 2. Current public identity
 
 ```text
-provider_version: 0.4.0rc1
-contract_version: autocad-generic-v1-rc1
+provider_version: 0.4.0rc2
+contract_version: autocad-generic-v1-rc2
 public MCP tools: 86
 execution_model: feature-based-chunks-streaming-v1
 native bridge candidate: 0.8.2-mp7
 ```
 
-The public tool count and contract identity remain unchanged by the latest native solid integrity work.
+The public tool count remains 86. The contract advanced to RC2 because the five native strong-integrity write entrypoints now require caller-supplied `document_pid` + `expected_parent_fp`; this is an intentional schema-strengthening change, not a new CAD capability family.
 
 Canonical architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
@@ -49,6 +49,8 @@ The following major programs/scopes are closed within their documented boundarie
 | Scale graduation | **CLOSED / LIVE PASS** | 100 / 1,000 / 5,000 / 10,000 entity tiers with injected-failure recovery |
 | Feature-based Chunks Streaming | **CLOSED / LIVE PASS** | Feature-local commit/rollback while preserving earlier accepted features |
 | Integrity Maintenance P0 | **CLOSED** | Late-writer fencing, destructive postconditions, create atomicity, XREF completeness and rollback-receipt honesty |
+| B0 document provenance | **CLOSED / LIVE PASS** | SaveAs and artifact sealing bind/verify the same canonical document path after mutation before success/provenance acceptance |
+| B4 caller-state binding | **CLOSED / LIVE PASS** | Five native strong-integrity write tools require caller document PID + predecessor fingerprint; wrong-document/stale-parent requests refuse before journal/checkpoint/CAD mutation |
 | Mixed PID P1 | **CLOSED / LIVE PASS** | Unmanaged entities refuse deterministically as `UNMANAGED_ENTITY_PRESENT`; read paths do not auto-adopt PID |
 | MP-G05 bounded native solid loop | **CLOSED / LIVE PASS** | Provider PID + `solid-semantic-v2` + drift guard + persisted read-back + R0/R2 for planar `3DSOLID` translation |
 
@@ -67,16 +69,18 @@ Normative behavior is defined in [`SEMANTIC_STATE_PROTOCOL.md`](SEMANTIC_STATE_P
 
 ## 5. Latest measured gates
 
-At current runtime/code checkpoint `911ba09`:
+At current runtime/code checkpoint `872da68`:
 
-- Linux full regression: **386 passed / 6 skipped**.
-- Windows `.171` full regression: **385 passed / 7 skipped**.
-- Ruff: **PASS**.
-- Python compile: **PASS**.
-- C# Release/x64 with SDK `10.0.401`: **0 errors / 3 inherited warning families**.
-- GitHub Headless CI exact-head `911ba09`: **4/4 matrix jobs PASS** across Ubuntu/Windows × Python 3.11/3.12.
-- AutoCAD 2027 Session-1 MP-G05 live acceptance: **PASS** for commit, stale-parent refusal, R0 abort, post-commit integrity failure detection, exact R2 restore and unsupported-rotate refusal.
-- Deployed bridge SHA-256 for that live gate: `18740fc6cc35a4e9117efed29fc98bd9c2d4836b77140d751e8d1628abd75a43`.
+- Linux full regression: **398 passed / 9 skipped**.
+- Windows `.171` full regression: **397 passed / 10 skipped**.
+- Focused public-native/schema regression: **32/32 passed**.
+- Python syntax/compile gate: **PASS**.
+- `git diff --check`: **PASS**.
+- B0 SaveAs + artifact-seal AutoCAD 2027 Session-1 closure: **2/2 passed** with cleanup/residue verification.
+- B4 caller-state AutoCAD 2027 Session-1 acceptance: **PASS** — wrong document PID, stale parent and stale replay all refuse with zero state change; valid caller predecessor commits and independently reads back the new fingerprint/entity count.
+- C# bridge source was unchanged by B4; accepted bridge remains `0.8.2-mp7` and no new native build claim is made.
+- Ruff is unavailable in the prepared Linux/Windows verification environments and is **not claimed as PASS**.
+- Exact-head GitHub CI for `872da68` has not been used as B4 closure evidence; the older `911ba09` 4/4 matrix remains historical evidence only.
 
 Detailed evidence scope remains in [`LIVE_ACCEPTANCE.md`](LIVE_ACCEPTANCE.md) and retained machine evidence under ignored `artifacts/internal-evidence/`.
 
