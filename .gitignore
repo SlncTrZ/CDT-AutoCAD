@@ -18,6 +18,13 @@ artifacts/
 .env
 .env.*
 
+# Agent-local configuration/instructions
+/AGENTS.md
+/.agents/
+/CLAUDE.md
+/.claude/
+/.mcp.json
+
 # OS/editor residue
 .DS_Store
 Thumbs.db
