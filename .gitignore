@@ -14,6 +14,9 @@ dist/
 htmlcov/
 artifacts/
 
+# Canonical dependency locks are pylock.*; uv.lock is local resolver residue only.
+uv.lock
+
 # Local secrets/configuration
 .env
 .env.*
