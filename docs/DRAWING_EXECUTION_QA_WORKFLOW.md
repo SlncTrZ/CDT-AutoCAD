@@ -1,8 +1,8 @@
 # Drawing Execution & QA Workflow
 
-> Updated: 2026-09-12 +07:00
+> Updated: 2026-09-15 +07:00
 > Scope: all CDT-AutoCAD user-facing drawing/reconstruction workflows
-> Status: Project execution invariant; N0–N7 + O1 + G1/G2/G3/Feature Streaming accepted for their documented bounded native scopes. Broad COM-only families do not inherit native PID/fingerprint/recovery guarantees.
+> Status: Project execution invariant; N0–N7 + O1 + G1/G2/G3/Feature Streaming + B4 caller-state binding accepted for their documented bounded native scopes. Broad COM-only families do not inherit native PID/fingerprint/recovery guarantees.
 
 ## 1. Purpose
 
@@ -38,7 +38,7 @@ VERIFY CURRENT PARENT STATE
   -> PASS ? NEXT STEP : STOP
 ```
 
-For native strong-integrity families, the next dependent step must include and verify the previous step's `post_state_fp` as `expected_parent_fp`. For families still on the COM lane, do not fabricate this guarantee; use the available typed read-back/checkpoint controls and classify the lower integrity scope explicitly.
+For native strong-integrity families, the next dependent step must carry the caller-planned document lineage PID plus the previous accepted `post_state_fp` as `document_pid` + `expected_parent_fp`. The provider must bind those values before journal/checkpoint/mutation and refuse wrong-document/stale-parent state; after binding, the same predecessor remains the native drift guard. For families still on the COM lane, do not fabricate this guarantee; use the available typed read-back/checkpoint controls and classify the lower integrity scope explicitly.
 
 ## 4. Atomic step definition
 
@@ -96,6 +96,7 @@ For target .NET execution, native database events may assist delta capture, but 
 
 At minimum validate:
 
+- caller `document_pid == current_document_pid` for the bound native document before mutation;
 - `expected_parent_fp == current_parent_fp` before mutation;
 - semantic PID uniqueness;
 - geometry/content fingerprint of the affected scope;

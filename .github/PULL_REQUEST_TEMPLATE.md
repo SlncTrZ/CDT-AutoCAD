@@ -18,6 +18,7 @@
 - [ ] No external implementation source was copied/adapted without provenance + license review
 - [ ] No arbitrary shell/AutoLISP/macro/C#/free-text AutoCAD command surface was introduced
 - [ ] PID/fingerprint/document-binding/recovery invariants remain intact where relevant
+- [ ] Native strong-integrity write changes preserve caller-supplied `document_pid` + `expected_parent_fp` binding and refuse wrong/stale state before side effects
 - [ ] Threat-model delta added for materially new risky authority
 
 ## Contract / docs

@@ -1,8 +1,8 @@
 # Drawing Quality Acceptance Standard
 
-> Updated: 2026-09-12 +07:00
+> Updated: 2026-09-15 +07:00
 > Scope: CDT-AutoCAD reference-driven drafting, architectural/site/landscape/technical drawings
-> Status: Project acceptance invariant · N4–N7 + O1/G1/G2/G3 semantic integrity accepted for documented bounded native families · Feature-based Chunks Streaming live-accepted · broad COM-only families retain their explicitly weaker guarantees
+> Status: Project acceptance invariant · N4–N7 + O1/G1/G2/G3 + B4 caller-state integrity accepted for documented bounded native families · Feature-based Chunks Streaming live-accepted · broad COM-only families retain their explicitly weaker guarantees
 
 ## 1. Purpose
 
@@ -39,7 +39,7 @@ Only `USER_ACCEPTED` is a completed checkpoint. Any missing stage leaves the che
 Before any drawing-quality stage can advance, the underlying engineering step must satisfy the Semantic State Protocol. The two mandatory prerequisites are:
 
 - **Data Integrity / Rollback:** current state is either `COMMITTED_VERIFIED` or a failed attempt has returned to `ROLLED_BACK_VERIFIED`; uncertain/failed rollback blocks acceptance.
-- **Precise Identity / PID + Fingerprinting:** affected objects/state are identified by managed PID/content fingerprints, predecessor drift is checked, and unexpected/duplicate mutations are rejected.
+- **Precise Identity / PID + Fingerprinting:** affected objects/state are identified by managed PID/content fingerprints; native strong-integrity writes bind the caller-planned document PID + predecessor fingerprint before mutation, reject wrong-document/stale-parent state, and continue only from the accepted successor fingerprint.
 
 A visually correct screenshot cannot override failed semantic integrity. Native PID/fingerprint/checkpoint guarantees apply only to the promoted strong-integrity families; a COM-only operation must not be represented as having the same proof unless independent evidence actually establishes it.
 

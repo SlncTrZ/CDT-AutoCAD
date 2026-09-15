@@ -38,8 +38,9 @@ mp-g07-visual-style-live-2026-09-12.json
 mp2-hot-reload-current-identity-2026-09-12-isolated.json
 mp-g10-acis-soak-live-2026-09-12.json
 bridge-0.8.2-mp7-runtime-binding-2026-09-12.json
-b4-caller-binding-live-2026-09-15.json (ephemeral acceptance report; result summarized in this runbook)
 ```
+
+The B4 caller-binding acceptance on 2026-09-15 intentionally used a transient JSON report under the Windows temp directory and deleted it during verified cleanup; its measured result is summarized here rather than presented as a retained artifact.
 
 Final close-gate result on the original promotion tree remains: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**. The current RC2 caller-binding tree at `872da68` independently passed Linux **398 / 9 skipped**, Windows `.171` **397 / 10 skipped**, focused public-native/schema **32/32**, B4 AutoCAD 2027 Session-1 live acceptance PASS, plus the preceding B0 live SaveAs/artifact-seal **2/2** closure. No C# source changed in B4, so the native bridge remained the already accepted `0.8.2-mp7` build. Ruff remains unavailable in the prepared Linux/Windows verification environments and is not claimed as PASS. Older sections below preserve their historical identities and wording.
 
@@ -210,7 +211,7 @@ The current runtime is intentionally hybrid: COM/ActiveX remains the broad compa
 For every newly accepted strong-integrity family, live AutoCAD 2027 evidence must prove both non-negotiable pillars:
 
 1. **Data Integrity / Rollback** — injected failures/timeout uncertainty cannot advance state; native abort or recovery must be followed by read-back proving the exact predecessor fingerprint.
-2. **Precise Identity / PID + Fingerprinting** — document/entity PID persistence, clone/remap behavior, duplicate detection, deterministic content fingerprints and `expected_parent_fp` state-drift blocking.
+2. **Precise Identity / PID + Fingerprinting** — document/entity PID persistence, clone/remap behavior, duplicate detection, deterministic content fingerprints, caller-planned `document_pid` + `expected_parent_fp` binding before mutation, and stale/wrong-state blocking with independent read-back.
 
 The .NET bridge is not promoted merely because an internal native gate passes. Selected strong-integrity tools were first published in `0.4.0rc1`; RC2 strengthens caller-state binding without expanding that native capability family. The broader COM lane may remain in place indefinitely where its bounded-integrity contract is sufficient; there is no standing requirement to replace it for parity. **MP-2 Python MCP hot reload is CLOSED / LIVE PASS**: stable supervisor/process/stable-URL, protocol/contract-hash promotion and `.171` AutoCAD 2027 Interactive Session 1 COM + required native bridge acceptance all passed. Historical evidence remains `mp2-hot-reload-2026-09-11.json`; the 86-tool/`0.8.2-mp7` identity was re-proven on 2026-09-12 with one isolated Session-1 owner at **20 successful reloads + 10 injected startup failures**, zero pending recovery and verified task/process cleanup in `mp2-hot-reload-current-identity-2026-09-12-isolated.json`.
 

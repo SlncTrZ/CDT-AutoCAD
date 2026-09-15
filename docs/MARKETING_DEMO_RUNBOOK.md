@@ -90,9 +90,9 @@ This is the primary marketing shot: circles appear, the feature fails, those cir
 
 The product recommendation remains **300 ms between completed features**. The marketing runner uses a separate **900 ms recording pause** so a human viewer can see state transitions. Never describe 900 ms as an engine requirement.
 
-## 4. Latest live smoke evidence
+## 4. Historical marketing live smoke evidence
 
-The production runner now requires current bridge identity `0.8.2-mp7`. The table below intentionally remains the historical marketing smoke `20260911-220855-712350`; its `0.8.1-g3` row is evidence for that run and must not be rewritten retroactively.
+The production runner now requires current RC2 caller-state binding and bridge identity `0.8.2-mp7`. The table below intentionally remains the historical marketing smoke `20260911-220855-712350`; its RC1 / `0.8.1-g3` identity is evidence for that run and must not be rewritten retroactively. Current acceptance status lives in `docs/CURRENT_CHECKPOINT.md` and `docs/LIVE_ACCEPTANCE.md`.
 
 Live Session-1 run `20260911-220855-712350` passed on AutoCAD 2027:
 

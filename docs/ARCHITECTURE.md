@@ -1,7 +1,7 @@
 # Architecture — CDT-AutoCAD
 
 > Canonical public architecture authority for the CDT-AutoCAD provider.
-> Updated: 2026-09-12
+> Updated: 2026-09-15
 
 ## 1. Mission
 
@@ -85,7 +85,7 @@ Uncertain completion, failed rollback or unverifiable state blocks dependent mut
 
 ### 4.2 Precise Identity / PID + Fingerprinting
 
-AutoCAD ObjectId and Handle are not sufficient semantic identity on their own. Strong-integrity state uses provider-owned persistent document/entity identity plus versioned semantic fingerprints and `expected_parent_fp` drift protection.
+AutoCAD ObjectId and Handle are not sufficient semantic identity on their own. Strong-integrity state uses provider-owned persistent document/entity identity plus versioned semantic fingerprints. Public native strong-integrity writes bind the caller-planned `document_pid` + `expected_parent_fp` before journal/checkpoint/mutation, then preserve that same predecessor as the native drift guard.
 
 Read paths do not silently adopt unmanaged entities into provider identity scope.
 
@@ -94,9 +94,10 @@ Read paths do not silently adopt unmanaged entities into provider identity scope
 New strong-integrity automation follows this model:
 
 ```text
-ActionSpec
-  -> bind runtime/document/predecessor state
-  -> native execution
+ActionSpec + caller-planned document_pid + expected_parent_fp
+  -> bind exactly one active runtime document to caller state
+  -> refuse wrong-document/stale-parent before journal/checkpoint/mutation
+  -> native execution with the same predecessor guard
   -> semantic extraction
   -> canonicalization + fingerprint/diff
   -> deterministic validation
