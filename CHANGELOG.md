@@ -9,6 +9,9 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 - Production-driven AutoCAD capability expansion only where a concrete CDT-Engineer/Domain workflow requires it and defines a verification invariant.
 - No standing COM-to-native parity program; existing COM/headless/native routes remain intentional according to their documented assurance scope.
 
+
+## [0.4.0rc2] - 2026-09-16
+
 ### Changed
 
 - Closed B1 filesystem containment at implementation checkpoint `abeb9d9` under an explicit split-assurance threat model: provider-owned file I/O now uses descriptor/handle-bound actual-I/O primitives with adversarial descendant namespace-swap coverage on Linux and Windows; AutoCAD pathname-only COM operations remain bounded by pre/post verification and are not advertised as race-free. Closure tree measured Linux **405 / 11 skipped** with Ruff PASS and Windows `.171` **404 / 12 skipped**.
@@ -27,9 +30,6 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 - Hardened XREF/source/artifact/solid provenance and cleanup paths covered by the maintenance test set.
 - Fixed a live `RPC_E_CALL_REJECTED` viewport regression by routing viewport create/read/scale/lock/delete through the shared bounded COM-busy primitives.
 - Final maintenance gates: Linux **365 passed / 6 skipped**, Windows `.171` **364 passed / 7 skipped**, targeted live suite **5/5 twice consecutively**, C# Release/x64 **0 errors / 3 inherited warning families**. Ruff was unavailable in the prepared Linux environment and is not claimed as PASS.
-
-
-## [0.4.0rc2] - 2026-09-15
 
 ### Integrity / contract
 
