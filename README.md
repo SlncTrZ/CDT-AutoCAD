@@ -171,17 +171,15 @@ Current accepted scale tiers on real AutoCAD 2027:
 | 5,000 | PASS | beginning / middle / end | 0 |
 | 10,000 | PASS | beginning / middle / end | 0 |
 
-At current runtime/code checkpoint `872da68`:
+At current release-provenance checkpoint `bcb5c66`:
 
-- Linux full regression: **398 passed / 9 skipped**;
-- Windows `.171` full regression: **397 passed / 10 skipped**;
-- focused public native/schema regression: **32/32 passed**;
-- B0 SaveAs + artifact-seal AutoCAD 2027 live closure: **2/2 passed**;
-- B4 caller-state AutoCAD 2027 Session-1 acceptance: **PASS** with wrong-document/stale-parent/stale-replay zero-mutation refusal plus valid commit/read-back;
-- Python syntax/compile gate and `git diff --check`: **PASS**;
-- C# bridge source was unchanged by B4; accepted bridge remains `0.8.2-mp7`;
-- Ruff is unavailable in the prepared Linux/Windows verification environments and is **not claimed as PASS**;
-- exact-head GitHub CI for `872da68` has not been used as closure evidence.
+- canonical exact-lock Linux reconstruction A/B: **405 passed / 11 skipped + Ruff PASS** in both fresh environments;
+- canonical exact-lock Windows `.171` reconstruction A/B: **404 passed / 12 skipped + Ruff PASS** in both fresh environments;
+- both reconstruction pairs bind the same clean Git HEAD and source-tree SHA-256 `3f4b45b13aa8ab4a60f92c02b99c97eff1aca8baf8a9ac84246b41e5d36db3d8`;
+- Linux lock SHA-256 `e7fe668b159c56233be4d008600fe80dd0778689a58b48ab55cecc670c45bf06` with 88 locked packages; Windows lock SHA-256 `acbbc28bc07d26c2e07c76ab5d24f2e474945ba10cc14a0c9e94cca29867869e` with 89 locked packages;
+- Windows provenance binds bridge DLL SHA-256 `18740fc6cc35a4e9117efed29fc98bd9c2d4836b77140d751e8d1628abd75a43` and observed AutoCAD PID 7888 / Session 1;
+- `uv.lock` is explicitly non-canonical local resolver residue and is ignored; `pylock.linux.toml` + `pylock.windows.toml` remain the exact dependency authorities;
+- B0/B1/B4 assurance evidence remains valid within its documented scope; `git diff --check` and clean release-tree verification pass.
 
 See [`docs/CURRENT_CHECKPOINT.md`](docs/CURRENT_CHECKPOINT.md) and [`docs/LIVE_ACCEPTANCE.md`](docs/LIVE_ACCEPTANCE.md) for authoritative status/evidence scope.
 

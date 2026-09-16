@@ -1,9 +1,9 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-15 16:05 +07:00
+> Updated: 2026-09-16 +07:00
 > Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0 document provenance + B1 filesystem containment + B4 caller-state binding
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Public identity: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools` · current runtime/code checkpoint **`abeb9d9`** · historical promotion commit `0516fe3`
+> Public identity: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools` · current release-provenance checkpoint **`bcb5c66`** · historical promotion commit `0516fe3`
 
 ## 0. Current production live gate
 
@@ -43,7 +43,7 @@ bridge-0.8.2-mp7-runtime-binding-2026-09-12.json
 
 The B4 caller-binding acceptance on 2026-09-15 intentionally used a transient JSON report under the Windows temp directory and deleted it during verified cleanup; its measured result is summarized here rather than presented as a retained artifact.
 
-Final close-gate result on the original promotion tree remains: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**. The current RC2 caller-binding tree at `872da68` independently passed Linux **398 / 9 skipped**, Windows `.171` **397 / 10 skipped**, focused public-native/schema **32/32**, B4 AutoCAD 2027 Session-1 live acceptance PASS, plus the preceding B0 live SaveAs/artifact-seal **2/2** closure. No C# source changed in B4, so the native bridge remained the already accepted `0.8.2-mp7` build. Ruff remains unavailable in the prepared Linux/Windows verification environments and is not claimed as PASS. Older sections below preserve their historical identities and wording.
+Final close-gate result on the original promotion tree remains: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**. The RC2 caller-binding tree at `872da68` independently passed Linux **398 / 9 skipped**, Windows `.171` **397 / 10 skipped**, focused public-native/schema **32/32**, B4 AutoCAD 2027 Session-1 live acceptance PASS, plus the preceding B0 live SaveAs/artifact-seal **2/2** closure. B1 later closed provider-owned actual-I/O containment at `abeb9d9`. B2/B3 then closed release reproducibility/tooling governance at clean checkpoint `bcb5c66`: two fresh exact-lock reconstructions per platform reproduced the same source/package identity, with Linux **405 / 11 + Ruff PASS** and Windows `.171` **404 / 12 + Ruff PASS** in both A/B environments. No C# source changed in B1/B2/B3, so the native bridge remains the already accepted `0.8.2-mp7` build. Older sections below preserve their historical identities and wording.
 
 ## 1. Certification policy
 

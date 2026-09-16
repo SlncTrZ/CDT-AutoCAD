@@ -1,6 +1,6 @@
 # Reproducible Baseline — CDT-AutoCAD
 
-> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-12 +07:00
+> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-16 +07:00
 > Canonical resolver workflow: **`cdt_autocad.dependency_lock` + pip 26.1.2 `pip lock` → LF-normalized PEP 751 platform lock → install from that lock**.
 
 ## 1. Decision
@@ -10,9 +10,9 @@
 - `pylock.windows.toml` — CPython 3.12 / Windows x64 primary AutoCAD runtime, generated with `.[com,render]` + dependency group `dev`;
 - `pylock.linux.toml` — CPython 3.12 / Linux x86_64 CI/gateway runtime, generated with the same extras/group; Windows-only markers are naturally absent.
 
-Two platform files are necessary because pip explicitly guarantees each generated lock only for the Python version/platform on which it was resolved. They are not separate dependency authorities: both are generated from the same `pyproject.toml` by the same pinned resolver command.
+Two platform files are necessary because pip explicitly guarantees each generated lock only for the Python version/platform on which it was resolved. They are not separate dependency authorities: both are generated from the same `pyproject.toml` by the same pinned resolver command. `uv.lock` is explicitly **not** a release dependency authority in this repository; it is local resolver residue and is ignored.
 
-Do not install project/runtime dependencies from ad-hoc `pip install -e .`, `.deps` contents, a global Python environment or an unpinned requirements list and then attach release evidence to that environment.
+Do not install project/runtime dependencies from ad-hoc `pip install -e .`, `.deps` contents, a global Python environment, `uv.lock` or an unpinned requirements list and then attach release evidence to that environment.
 
 ## 2. Resolver/tool version
 
@@ -116,3 +116,34 @@ MP0-T00 reproducibility is accepted only when:
 6. dependency updates are deliberate: change `pyproject.toml` → regenerate both locks → inspect diff → run locked smoke/regression gates → record evidence.
 
 MP-8 rechecks SBOM/license/dependency risk and release artifacts against these same lock/build identities. MP-8 is not the first point where dependency reproducibility is established.
+
+## 8. B2 measured closure — 2026-09-15/16
+
+B2 is **CLOSED / EXACT-LOCK PASS** at release-provenance checkpoint `bcb5c661bc6e01961525cd08c2ac5e0c0714b790`.
+
+Two independent fresh reconstructions were created per platform from the canonical lock only; each pair reproduced the same package map and `pip freeze --all` output and passed the same gates:
+
+| Platform | Canonical lock SHA-256 | Locked packages | Fresh A | Fresh B |
+| --- | --- | ---: | --- | --- |
+| Linux x86_64 / Python 3.12.3 | `e7fe668b159c56233be4d008600fe80dd0778689a58b48ab55cecc670c45bf06` | 88 | 405 passed / 11 skipped + Ruff PASS | 405 passed / 11 skipped + Ruff PASS |
+| Windows x64 `.171` / Python 3.12.0 | `acbbc28bc07d26c2e07c76ab5d24f2e474945ba10cc14a0c9e94cca29867869e` | 89 | 404 passed / 12 skipped + Ruff PASS | 404 passed / 12 skipped + Ruff PASS |
+
+Both platform manifests bind the same clean Git HEAD and source tree:
+
+```text
+git_head = bcb5c661bc6e01961525cd08c2ac5e0c0714b790
+git_dirty = false
+tracked_diff_sha256 = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+source_tree_sha256 = 3f4b45b13aa8ab4a60f92c02b99c97eff1aca8baf8a9ac84246b41e5d36db3d8
+provider_version = 0.4.0rc2
+```
+
+Windows provenance additionally binds the installed native bridge and observed AutoCAD process:
+
+```text
+bridge_sha256 = 18740fc6cc35a4e9117efed29fc98bd9c2d4836b77140d751e8d1628abd75a43
+autocad_pid = 7888
+autocad_session = 1
+```
+
+The machine-readable manifests used for this closure remain ignored local evidence under `artifacts/internal-evidence/`; the hashes and verdict above are the public audit summary. A future source, dependency, bridge or runtime identity change requires a fresh provenance run rather than reusing this closure record.

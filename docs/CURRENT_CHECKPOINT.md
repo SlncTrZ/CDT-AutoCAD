@@ -1,8 +1,8 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-15
-> Status: **LAUNCH-READY / OPERATIONAL RC — B0 + B1 + B4 CLOSED**
-> Current runtime/code checkpoint: `abeb9d9` (`fix: harden provider filesystem containment`)
+> Updated: 2026-09-16
+> Status: **LAUNCH-READY / OPERATIONAL RC — B0 + B1 + B2 + B3 + B4 CLOSED**
+> Current release-provenance checkpoint: `bcb5c66` (`chore: ignore non-canonical uv lock`)
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
 
 This file is the canonical **public current-state authority**. It reports what is true now. It does not define architecture or future roadmap.
@@ -51,6 +51,8 @@ The following major programs/scopes are closed within their documented boundarie
 | Integrity Maintenance P0 | **CLOSED** | Late-writer fencing, destructive postconditions, create atomicity, XREF completeness and rollback-receipt honesty |
 | B0 document provenance | **CLOSED / LIVE PASS** | SaveAs and artifact sealing bind/verify the same canonical document path after mutation before success/provenance acceptance |
 | B1 filesystem containment | **CLOSED / SPLIT ASSURANCE** | Provider-owned file I/O is descriptor/handle-bound at actual I/O against concurrent descendant namespace mutation beneath a trusted configured root; AutoCAD pathname-only APIs remain bounded by pre/post verification |
+| B2 reproducible release proof | **CLOSED / EXACT-LOCK PASS** | Fresh Linux/Windows A/B reconstructions from canonical platform `pylock.*` reproduce the same clean Git/source/package identity and pass full regression + Ruff |
+| B3 repo/tooling governance | **CLOSED** | `uv.lock` is explicitly non-canonical ignored residue, `pylock.*` is the exact dependency authority, Ruff is repeatable on both release platforms, and the release tree is clean |
 | B4 caller-state binding | **CLOSED / LIVE PASS** | Five native strong-integrity write tools require caller document PID + predecessor fingerprint; wrong-document/stale-parent requests refuse before journal/checkpoint/CAD mutation |
 | Mixed PID P1 | **CLOSED / LIVE PASS** | Unmanaged entities refuse deterministically as `UNMANAGED_ENTITY_PRESENT`; read paths do not auto-adopt PID |
 | MP-G05 bounded native solid loop | **CLOSED / LIVE PASS** | Provider PID + `solid-semantic-v2` + drift guard + persisted read-back + R0/R2 for planar `3DSOLID` translation |
@@ -70,18 +72,16 @@ Normative behavior is defined in [`SEMANTIC_STATE_PROTOCOL.md`](SEMANTIC_STATE_P
 
 ## 5. Latest measured gates
 
-At current runtime/code checkpoint `abeb9d9`:
+At current release-provenance checkpoint `bcb5c66`:
 
-- Linux full regression from the canonical Linux locked environment: **405 passed / 11 skipped**.
-- Windows `.171` full regression: **404 passed / 12 skipped**.
-- B1 actual-I/O containment fixtures exercise descriptor/handle-bound read, atomic write/replace, contained directory creation and adversarial parent namespace swap on both platforms.
-- Canonical Linux locked-environment Ruff gate: **PASS**.
-- `git diff --check`: **PASS**.
-- B0 SaveAs + artifact-seal AutoCAD 2027 Session-1 closure remains **2/2 passed** historical/current capability evidence; B1 does not retroactively turn AutoCAD pathname-only APIs into race-free primitives.
-- B4 caller-state AutoCAD 2027 Session-1 acceptance remains **PASS** — wrong document PID, stale parent and stale replay all refuse with zero state change; valid caller predecessor commits and independently reads back the new fingerprint/entity count.
-- A current B1 artifact-seal live retry reached Session 1/COM but AutoCAD rejected `Documents.Add` with `RPC_E_CALL_REJECTED` before B1 filesystem code executed; it is therefore recorded as non-evidence, not a B1 pass/fail.
-- C# bridge source was unchanged by B1; accepted bridge remains `0.8.2-mp7` and no new native build claim is made.
-- Windows exact-lock Ruff/release reproducibility is tracked by B2/B3 rather than inferred from the existing Windows venv.
+- Linux clean reconstruction A: **405 passed / 11 skipped + Ruff PASS**; Linux clean reconstruction B: **405 / 11 + Ruff PASS**.
+- Windows `.171` clean reconstruction A: **404 passed / 12 skipped + Ruff PASS**; Windows clean reconstruction B: **404 / 12 + Ruff PASS**.
+- Both Linux and Windows reconstruction pairs reproduce clean Git HEAD `bcb5c661bc6e01961525cd08c2ac5e0c0714b790`, source-tree SHA-256 `3f4b45b13aa8ab4a60f92c02b99c97eff1aca8baf8a9ac84246b41e5d36db3d8`, provider `0.4.0rc2`, the exact platform package map, and identical per-platform `pip freeze --all` output.
+- Linux lock: `pylock.linux.toml`, SHA-256 `e7fe668b159c56233be4d008600fe80dd0778689a58b48ab55cecc670c45bf06`, 88 locked packages. Windows lock: `pylock.windows.toml`, SHA-256 `acbbc28bc07d26c2e07c76ab5d24f2e474945ba10cc14a0c9e94cca29867869e`, 89 locked packages.
+- Windows provenance binds installed bridge DLL SHA-256 `18740fc6cc35a4e9117efed29fc98bd9c2d4836b77140d751e8d1628abd75a43` and observed AutoCAD PID 7888 / Session 1.
+- `uv.lock` is non-canonical local resolver residue and is ignored; canonical exact dependency authority remains the two platform `pylock.*` files.
+- B1 actual-I/O containment fixtures remain PASS on both platforms; B0/B4 accepted AutoCAD live evidence remains unchanged in scope.
+- `git diff --check` and clean release-tree checks pass. C# bridge source was unchanged by B1/B2/B3; accepted bridge remains `0.8.2-mp7`.
 
 Detailed evidence scope remains in [`LIVE_ACCEPTANCE.md`](LIVE_ACCEPTANCE.md) and retained machine evidence under ignored `artifacts/internal-evidence/`.
 

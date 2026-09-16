@@ -12,6 +12,8 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 ### Changed
 
 - Closed B1 filesystem containment at implementation checkpoint `abeb9d9` under an explicit split-assurance threat model: provider-owned file I/O now uses descriptor/handle-bound actual-I/O primitives with adversarial descendant namespace-swap coverage on Linux and Windows; AutoCAD pathname-only COM operations remain bounded by pre/post verification and are not advertised as race-free. Closure tree measured Linux **405 / 11 skipped** with Ruff PASS and Windows `.171` **404 / 12 skipped**.
+- Closed B2 reproducible release proof at clean checkpoint `bcb5c66`: two fresh exact-lock reconstructions per platform reproduce the same Git/source/package identity and pass full regression + Ruff; Linux lock SHA-256 `e7fe668b…bf06`, Windows lock SHA-256 `acbbc28b…869e`, common source-tree SHA-256 `3f4b45b1…db3d8`.
+- Closed B3 repo/tooling governance: `uv.lock` is explicitly non-canonical ignored residue, the two platform `pylock.*` files are the sole exact dependency authority, Ruff is repeatable on Linux + Windows locked environments, and the release tree is clean.
 - Declared CDT-AutoCAD launch-ready for its Generic CAD Execution Engine mission; no known top-level AutoCAD blocker remains before CDT-Engineer work begins.
 - Standardized documentation authority so provider architecture, current status, live evidence, roadmap, technical debt and session notes no longer compete as sources of truth.
 - Added `docs/ARCHITECTURE.md` as the canonical provider-local architecture authority; `specs/**` remains a frozen upstream CDT-Engineer baseline.
