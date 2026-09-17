@@ -119,6 +119,7 @@ internal static class NativeEntityExtractor
                     ["text"] = mtext.Contents,
                     ["location"] = SemanticValue.Point(mtext.Location),
                     ["height"] = mtext.TextHeight,
+                    ["width"] = mtext.Width,
                     ["rotation"] = mtext.Rotation,
                     ["normal"] = SemanticValue.Vector(mtext.Normal),
                     ["text_style"] = SemanticValue.SymbolName(mtext.TextStyleId, transaction),
@@ -157,6 +158,20 @@ internal static class NativeEntityExtractor
                     ["normal"] = SemanticValue.Vector(dimension.Normal),
                     ["dimension_style"] = SemanticValue.SymbolName(dimension.DimensionStyle, transaction),
                 };
+                switch (dimension)
+                {
+                    case AlignedDimension aligned:
+                        geometry["xline1"] = SemanticValue.Point(aligned.XLine1Point);
+                        geometry["xline2"] = SemanticValue.Point(aligned.XLine2Point);
+                        geometry["dim_line_point"] = SemanticValue.Point(aligned.DimLinePoint);
+                        break;
+                    case RotatedDimension rotated:
+                        geometry["xline1"] = SemanticValue.Point(rotated.XLine1Point);
+                        geometry["xline2"] = SemanticValue.Point(rotated.XLine2Point);
+                        geometry["dim_line_point"] = SemanticValue.Point(rotated.DimLinePoint);
+                        geometry["rotation"] = rotated.Rotation;
+                        break;
+                }
                 metrics["measurement"] = dimension.Measurement;
                 break;
 

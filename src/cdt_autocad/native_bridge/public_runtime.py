@@ -71,6 +71,32 @@ class NativePublicFacade:
             "active_document": self._context_payload(active),
         }
 
+    def bootstrap_document_identity(self) -> dict[str, Any]:
+        """Explicitly initialize provider lineage on one active empty current space."""
+
+        client = self._client()
+        documents = client.documents_list()
+        active_rows = [row for row in documents if row.get("is_active") is True]
+        if len(active_rows) != 1:
+            raise StateConflictError(
+                "document identity bootstrap requires exactly one bridge-reported active AutoCAD document"
+            )
+        row = active_rows[0]
+        runtime_id = row.get("runtime_document_id")
+        document_pid = row.get("document_pid")
+        if not isinstance(runtime_id, str) or not runtime_id:
+            raise StateConflictError("active native AutoCAD document has no runtime binding")
+        if document_pid is not None:
+            raise StateConflictError(
+                "active AutoCAD document already has persistent PID metadata; bootstrap is refused"
+            )
+        result = client.initialize_document_identity(runtime_id)
+        return {
+            **result,
+            "route": "native-managed-bridge",
+            "fallback": False,
+        }
+
     def feature_execute(
         self,
         *,

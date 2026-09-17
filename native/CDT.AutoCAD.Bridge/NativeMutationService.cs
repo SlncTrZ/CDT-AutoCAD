@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using AcApplication = Autodesk.AutoCAD.ApplicationServices.Core.Application;
@@ -654,6 +655,7 @@ internal sealed class NativeMutationService
                         transaction,
                         spec
                     );
+                    ValidateBatchCreatedEntity(transaction, created.ObjectId, spec);
                     affectedPids.Add(created.Pid);
                     affectedObjectIds.Add(created.ObjectId);
                 }
@@ -1925,48 +1927,65 @@ internal sealed class NativeMutationService
     )
     {
         BlockTableRecord space = CurrentSpace(database, transaction);
-        return spec.Kind switch
+        Entity entity = spec.Kind switch
         {
-            "line" => AppendBatchWithPid(
-                space,
-                new Line(Point(spec.Start, "start"), Point(spec.End, "end"))
-                {
-                    LayerId = database.Clayer,
-                },
-                transaction
+            "line" => new Line(Point(spec.Start, "start"), Point(spec.End, "end")),
+            "circle" => new Circle(
+                Point(spec.Center, "center"),
+                Vector3d.ZAxis,
+                Positive(spec.Radius, "radius")
             ),
-            "circle" => AppendBatchWithPid(
-                space,
-                new Circle(
-                    Point(spec.Center, "center"),
-                    Vector3d.ZAxis,
-                    Positive(spec.Radius, "radius")
-                )
-                {
-                    LayerId = database.Clayer,
-                },
-                transaction
+            "arc" => new Arc(
+                Point(spec.Center, "center"),
+                Vector3d.ZAxis,
+                Positive(spec.Radius, "radius"),
+                Angle(spec.StartAngle, "start_angle"),
+                Angle(spec.EndAngle, "end_angle")
             ),
-            "arc" => AppendBatchWithPid(
-                space,
-                new Arc(
-                    Point(spec.Center, "center"),
-                    Vector3d.ZAxis,
-                    Positive(spec.Radius, "radius"),
-                    Angle(spec.StartAngle, "start_angle"),
-                    Angle(spec.EndAngle, "end_angle")
-                )
-                {
-                    LayerId = database.Clayer,
-                },
-                transaction
+            "lwpolyline" => BuildBatchPolyline(spec),
+            "text" => new DBText
+            {
+                TextString = RequiredText(spec.Text, "text"),
+                Position = Point(spec.Position, "position"),
+                Height = Positive(spec.Height, "height"),
+                Rotation = BoundedRotation(spec.Rotation, "rotation"),
+            },
+            "mtext" => new MText
+            {
+                Contents = RequiredText(spec.Text, "text"),
+                Location = Point(spec.Position, "position"),
+                TextHeight = Positive(spec.Height, "height"),
+                Rotation = BoundedRotation(spec.Rotation, "rotation"),
+                Width = Positive(spec.Width, "width"),
+            },
+            "aligned_dimension" => new AlignedDimension(
+                Point(spec.Xline1, "xline1"),
+                Point(spec.Xline2, "xline2"),
+                Point(spec.DimLinePoint, "dim_line_point"),
+                string.Empty,
+                database.Dimstyle
             ),
-            "lwpolyline" => CreateBatchPolyline(space, transaction, spec),
+            "linear_dimension" => new RotatedDimension(
+                BoundedRotation(spec.Rotation, "rotation"),
+                Point(spec.Xline1, "xline1"),
+                Point(spec.Xline2, "xline2"),
+                Point(spec.DimLinePoint, "dim_line_point"),
+                string.Empty,
+                database.Dimstyle
+            ),
             _ => throw new BridgeServiceException(
                 "UNSUPPORTED_OPERATION",
                 "batch create family is not enabled"
             ),
         };
+        ApplyBatchEntityStyle(database, transaction, entity, spec);
+        NativeBatchCreatedEntity created = AppendBatchWithPid(space, entity, transaction);
+        if (entity is Dimension dimension)
+        {
+            dimension.GenerateLayout();
+            dimension.RecomputeDimensionBlock(true);
+        }
+        return created;
     }
 
     private static NativeBatchCreatedEntity AppendBatchWithPid(
@@ -1982,16 +2001,11 @@ internal sealed class NativeMutationService
         return new NativeBatchCreatedEntity(pid, objectId);
     }
 
-    private static NativeBatchCreatedEntity CreateBatchPolyline(
-        BlockTableRecord space,
-        Transaction transaction,
-        BatchCreateEntitySpec spec
-    )
+    private static Polyline BuildBatchPolyline(BatchCreateEntitySpec spec)
     {
         double[][] points = Points(spec.Points);
         Polyline polyline = new(points.Length)
         {
-            LayerId = space.Database.Clayer,
             Closed = Closed(spec.Closed),
             Elevation = 0.0,
             Normal = Vector3d.ZAxis,
@@ -2006,7 +2020,156 @@ internal sealed class NativeMutationService
                 0.0
             );
         }
-        return AppendBatchWithPid(space, polyline, transaction);
+        return polyline;
+    }
+
+    private static void ApplyBatchEntityStyle(
+        Database database,
+        Transaction transaction,
+        Entity entity,
+        BatchCreateEntitySpec spec
+    )
+    {
+        entity.LayerId = ResolveBatchLayer(database, transaction, spec.Layer);
+        if (spec.ColorIndex is not short colorIndex)
+        {
+            return;
+        }
+        entity.Color = colorIndex switch
+        {
+            0 => Color.FromColorIndex(ColorMethod.ByBlock, 0),
+            256 => Color.FromColorIndex(ColorMethod.ByLayer, 256),
+            _ => Color.FromColorIndex(ColorMethod.ByAci, colorIndex),
+        };
+    }
+
+    private static ObjectId ResolveBatchLayer(
+        Database database,
+        Transaction transaction,
+        string? layerName
+    )
+    {
+        if (string.IsNullOrWhiteSpace(layerName))
+        {
+            return database.Clayer;
+        }
+        LayerTable layers = (LayerTable)transaction.GetObject(database.LayerTableId, OpenMode.ForRead);
+        if (!layers.Has(layerName))
+        {
+            throw new BridgeServiceException(
+                "LAYER_NOT_FOUND",
+                "batch entity layer does not exist"
+            );
+        }
+        return layers[layerName];
+    }
+
+    private static void ValidateBatchCreatedEntity(
+        Transaction transaction,
+        ObjectId objectId,
+        BatchCreateEntitySpec spec
+    )
+    {
+        Entity entity = (Entity)transaction.GetObject(objectId, OpenMode.ForRead, false);
+        switch (spec.Kind)
+        {
+            case "mtext" when entity is MText mtext:
+                if (spec.Width is not double expectedWidth
+                    || Math.Abs(mtext.Width - expectedWidth) > 1e-9)
+                {
+                    throw new BridgeServiceException(
+                        "PROVISIONAL_VALIDATION_FAILED",
+                        "batch-created MTEXT width differs from requested width"
+                    );
+                }
+                break;
+            case "aligned_dimension" when entity is AlignedDimension aligned:
+                RequireDimensionGeometry(
+                    aligned.XLine1Point,
+                    aligned.XLine2Point,
+                    aligned.DimLinePoint,
+                    spec,
+                    aligned.XLine2Point.X - aligned.XLine1Point.X,
+                    aligned.XLine2Point.Y - aligned.XLine1Point.Y
+                );
+                break;
+            case "linear_dimension" when entity is RotatedDimension rotated:
+                if (spec.Rotation is not double expectedRotation
+                    || Math.Abs(rotated.Rotation - expectedRotation) > 1e-9)
+                {
+                    throw new BridgeServiceException(
+                        "PROVISIONAL_VALIDATION_FAILED",
+                        "batch-created rotated dimension angle differs from requested rotation"
+                    );
+                }
+                RequireDimensionGeometry(
+                    rotated.XLine1Point,
+                    rotated.XLine2Point,
+                    rotated.DimLinePoint,
+                    spec,
+                    Math.Cos(expectedRotation),
+                    Math.Sin(expectedRotation)
+                );
+                break;
+        }
+    }
+
+    private static void RequireDimensionGeometry(
+        Point3d xline1,
+        Point3d xline2,
+        Point3d dimLinePoint,
+        BatchCreateEntitySpec spec,
+        double directionX,
+        double directionY
+    )
+    {
+        Point3d expectedXline1 = Point(spec.Xline1, "xline1");
+        Point3d expectedXline2 = Point(spec.Xline2, "xline2");
+        Point3d expectedDimLinePoint = Point(spec.DimLinePoint, "dim_line_point");
+        double directionLength = Math.Sqrt(directionX * directionX + directionY * directionY);
+        double deltaX = dimLinePoint.X - expectedDimLinePoint.X;
+        double deltaY = dimLinePoint.Y - expectedDimLinePoint.Y;
+        double cross = deltaX * directionY - deltaY * directionX;
+        bool sameDimensionLine = directionLength > 1e-12
+            && Math.Abs(cross) / directionLength <= 1e-9
+            && Math.Abs(dimLinePoint.Z - expectedDimLinePoint.Z) <= 1e-9;
+        if (!PointsEqual(xline1, expectedXline1)
+            || !PointsEqual(xline2, expectedXline2)
+            || !sameDimensionLine)
+        {
+            throw new BridgeServiceException(
+                "PROVISIONAL_VALIDATION_FAILED",
+                "batch-created dimension defining geometry differs from requested geometry"
+            );
+        }
+    }
+
+    private static bool PointsEqual(Point3d left, Point3d right) =>
+        Math.Abs(left.X - right.X) <= 1e-9
+        && Math.Abs(left.Y - right.Y) <= 1e-9
+        && Math.Abs(left.Z - right.Z) <= 1e-9;
+
+    private static string RequiredText(string? value, string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new BridgeServiceException("INVALID_PARAMS", fieldName + " must not be empty");
+        }
+        return value;
+    }
+
+    private static double BoundedRotation(double? value, string fieldName)
+    {
+        double rotation = value
+            ?? throw new BridgeServiceException("INVALID_PARAMS", fieldName + " is required");
+        if (!double.IsFinite(rotation) || Math.Abs(rotation) > Math.PI * 2.0)
+        {
+            throw new BridgeServiceException(
+                "INVALID_PARAMS",
+                fieldName + " must be finite within [-2pi, 2pi]"
+            );
+        }
+        return rotation;
     }
 
     private static string CreateLine(Database database, Transaction transaction, EntityMutationParams parameters)

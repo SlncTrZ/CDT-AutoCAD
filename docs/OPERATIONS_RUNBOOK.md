@@ -1,9 +1,9 @@
 # Operations Runbook — CDT-AutoCAD
 
 > Operational start: 2026-09-12
-> Updated: 2026-09-15 16:05 +07:00
-> Current product identity: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools`
-> Current native bridge candidate: `0.8.2-mp7` · current runtime/code checkpoint `872da68`
+> Updated: 2026-09-17 +07:00
+> Current source product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools`
+> Current native bridge candidate: `0.8.3-u1` · last published/tagged release remains `v0.4.0rc2`
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
 
 ## 1. Operating boundary
@@ -17,16 +17,17 @@ The provider owns generic CAD execution, persistent identity, semantic state, bo
 Before starting a production/live session:
 
 1. AutoCAD 2027 is already running in the intended interactive Windows user/session.
-2. The required Managed .NET bridge is loaded, reports ready and matches the bridge identity expected by the workflow; current maintenance baseline is `0.8.2-mp7`.
-3. Before any native strong-integrity write, call `native_integrity_status` and retain the caller-planned `document_pid` + `document_fp`; pass them to the write as `document_pid` + `expected_parent_fp`. Do not refresh them implicitly at dispatch if the workflow intended to mutate the earlier planned state.
-4. `CDT_AUTOCAD_BACKEND=com`.
-5. `CDT_AUTOCAD_COM_PROGID=AutoCAD.Application.26`.
-6. `CDT_AUTOCAD_COM_ATTACH_POLICY=attach_only` unless an explicitly reviewed workflow requires otherwise.
-7. `CDT_AUTOCAD_ALLOWED_PATHS` contains only approved working roots.
-8. HTTP/supervisor transport has a non-empty `CDT_AUTOCAD_AUTH_TOKEN`.
-9. Non-loopback HTTP remains disabled unless `CDT_AUTOCAD_ALLOW_REMOTE_HTTP=true` was explicitly approved.
-10. No unresolved timeout uncertainty or pending recovery is present.
-11. The intended DWG/document is identified before the first mutation.
+2. The required Managed .NET bridge is loaded, reports ready and matches the bridge identity expected by the workflow; current U1 baseline is `0.8.3-u1`.
+3. After creating a new empty drawing that has no provider lineage, call `native_document_identity_initialize` once. It is intentionally limited to an empty current space, generates the PID internally, independently reads it back and returns the schema-v3 predecessor fingerprint. Never use it to imply adoption of legacy/non-empty geometry.
+4. Before any native strong-integrity write, call `native_integrity_status` and retain the caller-planned `document_pid` + `document_fp`; pass them to the write as `document_pid` + `expected_parent_fp`. Do not refresh them implicitly at dispatch if the workflow intended to mutate the earlier planned state.
+5. `CDT_AUTOCAD_BACKEND=com`.
+6. `CDT_AUTOCAD_COM_PROGID=AutoCAD.Application.26`.
+7. `CDT_AUTOCAD_COM_ATTACH_POLICY=attach_only` unless an explicitly reviewed workflow requires otherwise.
+8. `CDT_AUTOCAD_ALLOWED_PATHS` contains only approved working roots.
+9. HTTP/supervisor transport has a non-empty `CDT_AUTOCAD_AUTH_TOKEN`.
+10. Non-loopback HTTP remains disabled unless `CDT_AUTOCAD_ALLOW_REMOTE_HTTP=true` was explicitly approved.
+11. No unresolved timeout uncertainty or pending recovery is present.
+12. The intended DWG/document is identified before the first mutation.
 
 Never store real auth tokens in the repository.
 
@@ -64,7 +65,7 @@ Run these before mutation and after any reload/recovery event:
 
 Required live-mutation conditions include:
 
-- provider/contract identity matches the expected operational baseline;
+- provider/contract identity matches the expected operational baseline; after a bridge/provider upgrade, re-read the current schema-v3 predecessor before sending any stale fingerprint captured under the prior bridge;
 - runtime/backend is ready;
 - native route is ready for tools that require it;
 - transaction depth is zero before starting a new independent operation;
@@ -84,7 +85,7 @@ Preferred production sequence:
 4. require `COMMITTED_VERIFIED` or the documented successful receipt for that public surface;
 5. inspect/query/measure the result;
 6. use the recommended 300 ms delay between completed visual features only when presentation pacing is desired;
-7. save at meaningful checkpoints;
+7. save at meaningful checkpoints; `document_save` success means immediate verified persisted-clean state (`Saved=true`, `DBMOD=0`), not merely command acknowledgement;
 8. seal accepted artifacts when a durable content-addressed checkpoint is required.
 
 A feature failure must remain feature-local. Earlier committed features must not be discarded merely because the current feature fails.

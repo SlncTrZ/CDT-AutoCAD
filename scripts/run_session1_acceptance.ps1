@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('session-probe', 'visual-style', 'acis-soak', 'mp2-current-identity')]
+    [ValidateSet('session-probe', 'visual-style', 'acis-soak', 'mp2-current-identity', 'u1-floorplan', 'u1-reload')]
     [string]$Profile,
 
     [Parameter(Mandatory = $true)]
@@ -36,6 +36,7 @@ $runtimeEvidencePath = Join-Path $runtimeRoot ($runId + '.runtime.json')
 
 $scriptPath = $null
 $scriptArgs = @()
+$executor = 'python'
 switch ($Profile) {
     'session-probe' {
         $scriptPath = Join-Path $RepoRoot 'scripts\probe_autocad_session.py'
@@ -61,6 +62,15 @@ switch ($Profile) {
             '--com-progid', 'AutoCAD.Application.26'
         )
     }
+    'u1-floorplan' {
+        $scriptPath = Join-Path $RepoRoot 'scripts\run_u1_floorplan_acceptance.py'
+        $scriptArgs = @('--output', $OutputPath, '--com-progid', 'AutoCAD.Application.26')
+    }
+    'u1-reload' {
+        $scriptPath = Join-Path $RepoRoot 'scripts\run_u1_bridge_reload.ps1'
+        $scriptArgs = @('-OutputPath', $OutputPath)
+        $executor = 'powershell'
+    }
 }
 if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
     throw "Profile script does not exist: $scriptPath"
@@ -78,7 +88,11 @@ $runner = @"
 `$exitCode = 255
 try {
     `$arguments = @($argumentLiteral)
-    & $(Quote-PowerShellLiteral $PythonExe) $(Quote-PowerShellLiteral $scriptPath) @arguments 1> $(Quote-PowerShellLiteral $stdoutPath) 2> $(Quote-PowerShellLiteral $stderrPath)
+    if ($(Quote-PowerShellLiteral $executor) -eq 'powershell') {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $(Quote-PowerShellLiteral $scriptPath) @arguments 1> $(Quote-PowerShellLiteral $stdoutPath) 2> $(Quote-PowerShellLiteral $stderrPath)
+    } else {
+        & $(Quote-PowerShellLiteral $PythonExe) $(Quote-PowerShellLiteral $scriptPath) @arguments 1> $(Quote-PowerShellLiteral $stdoutPath) 2> $(Quote-PowerShellLiteral $stderrPath)
+    }
     `$exitCode = `$LASTEXITCODE
 } catch {
     (`$_ | Out-String) | Add-Content -LiteralPath $(Quote-PowerShellLiteral $stderrPath)

@@ -22,6 +22,7 @@ from .protocol import (
     BridgeRequest,
     CircleCreateParams,
     CircleTargetParams,
+    DocumentIdentityInitializeParams,
     DocumentIdentityParams,
     LineCreateParams,
     LineTargetParams,
@@ -151,6 +152,31 @@ class NativeBridgeClient:
             }
         )
         return self._request("bridge.document.identity", params.to_dict())
+
+    def initialize_document_identity(self, runtime_document_id: str) -> dict[str, Any]:
+        params = DocumentIdentityInitializeParams.from_dict(
+            {"runtime_document_id": runtime_document_id}
+        )
+        result = self._request("bridge.document.identity.initialize", params.to_dict())
+        document_pid = result.get("document_pid")
+        document_fp = result.get("document_fp")
+        if (
+            result.get("runtime_document_id") != runtime_document_id
+            or not isinstance(document_pid, str)
+            or not document_pid.startswith("doc:")
+            or result.get("readback_verified") is not True
+            or result.get("scope") != "empty-current-space-only"
+            or result.get("document_fp_schema_version") != 3
+            or not isinstance(document_fp, str)
+            or not document_fp.startswith("sha256:")
+            or not isinstance(result.get("entity_count"), int)
+            or int(result["entity_count"]) != 0
+        ):
+            raise BridgeClientProtocolError(
+                "INVALID_RESPONSE",
+                "bridge.document.identity.initialize returned invalid verified bootstrap state",
+            )
+        return result
 
     def document_state(
         self,

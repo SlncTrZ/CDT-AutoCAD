@@ -233,11 +233,7 @@ internal sealed class NativeSemanticExtractor
         string units = Convert.ToString(beforeDocument["units"]) ?? string.Empty;
         string currentSpace = Convert.ToString(beforeDocument["current_space"]) ?? string.Empty;
         object relations = before["relations"] ?? Array.Empty<object>();
-        object styles = before["styles"]
-            ?? throw new BridgeServiceException(
-                "INVALID_SNAPSHOT",
-                "semantic snapshot has invalid style collection"
-            );
+        List<Dictionary<string, object?>> styles = NativeStyleExtractor.Extract(database, transaction);
 
         Dictionary<string, object?> fingerprintPayload = new()
         {

@@ -10,6 +10,8 @@ namespace CDT.AutoCAD.Bridge;
 
 internal sealed record DocumentIdentityParams(Guid RuntimeDocumentId, string? DocumentPid);
 
+internal sealed record DocumentIdentityInitializeParams(Guid RuntimeDocumentId);
+
 internal sealed record ViewportVisualStyleSetParams(
     Guid RuntimeDocumentId,
     string? DocumentPid,
@@ -80,7 +82,17 @@ internal sealed record BatchCreateEntitySpec(
     double? StartAngle,
     double? EndAngle,
     double[][]? Points,
-    bool? Closed
+    bool? Closed,
+    string? Layer = null,
+    short? ColorIndex = null,
+    string? Text = null,
+    double[]? Position = null,
+    double? Height = null,
+    double? Rotation = null,
+    double? Width = null,
+    double[]? Xline1 = null,
+    double[]? Xline2 = null,
+    double[]? DimLinePoint = null
 );
 
 internal sealed record BatchCreateParams(
@@ -157,7 +169,8 @@ internal sealed record BridgeRequest(
     MetadataSetParams? MetadataSet = null,
     MetadataQueryParams? MetadataQuery = null,
     LogicalBeginParams? LogicalBegin = null,
-    ViewportVisualStyleSetParams? VisualStyleSet = null
+    ViewportVisualStyleSetParams? VisualStyleSet = null,
+    DocumentIdentityInitializeParams? DocumentIdentityInitialize = null
 );
 
 internal sealed record BridgeResponse(
@@ -220,6 +233,7 @@ internal static class BridgeProtocol
         "bridge.health",
         "bridge.documents.list",
         "bridge.document.identity",
+        "bridge.document.identity.initialize",
         "bridge.document.snapshot",
         "bridge.document.state",
         "viewport.visual_style.get",
@@ -260,6 +274,11 @@ internal static class BridgeProtocol
     {
         "runtime_document_id",
         "document_pid",
+    };
+
+    private static readonly HashSet<string> IdentityInitializeFields = new(StringComparer.Ordinal)
+    {
+        "runtime_document_id",
     };
 
     private static readonly HashSet<string> VisualStyleSetFields = new(StringComparer.Ordinal)
@@ -377,6 +396,8 @@ internal static class BridgeProtocol
         "kind",
         "start",
         "end",
+        "layer",
+        "color_index",
     };
 
     private static readonly HashSet<string> BatchCircleFields = new(StringComparer.Ordinal)
@@ -384,6 +405,8 @@ internal static class BridgeProtocol
         "kind",
         "center",
         "radius",
+        "layer",
+        "color_index",
     };
 
     private static readonly HashSet<string> BatchArcFields = new(StringComparer.Ordinal)
@@ -393,6 +416,8 @@ internal static class BridgeProtocol
         "radius",
         "start_angle",
         "end_angle",
+        "layer",
+        "color_index",
     };
 
     private static readonly HashSet<string> BatchPolylineFields = new(StringComparer.Ordinal)
@@ -400,6 +425,52 @@ internal static class BridgeProtocol
         "kind",
         "points",
         "closed",
+        "layer",
+        "color_index",
+    };
+
+    private static readonly HashSet<string> BatchTextFields = new(StringComparer.Ordinal)
+    {
+        "kind",
+        "text",
+        "position",
+        "height",
+        "rotation",
+        "layer",
+        "color_index",
+    };
+
+    private static readonly HashSet<string> BatchMTextFields = new(StringComparer.Ordinal)
+    {
+        "kind",
+        "text",
+        "position",
+        "height",
+        "rotation",
+        "width",
+        "layer",
+        "color_index",
+    };
+
+    private static readonly HashSet<string> BatchAlignedDimensionFields = new(StringComparer.Ordinal)
+    {
+        "kind",
+        "xline1",
+        "xline2",
+        "dim_line_point",
+        "layer",
+        "color_index",
+    };
+
+    private static readonly HashSet<string> BatchLinearDimensionFields = new(StringComparer.Ordinal)
+    {
+        "kind",
+        "xline1",
+        "xline2",
+        "dim_line_point",
+        "rotation",
+        "layer",
+        "color_index",
     };
 
     private static readonly HashSet<string> CreateLineFields = new(StringComparer.Ordinal)
@@ -614,6 +685,23 @@ internal static class BridgeProtocol
             }
 
             JsonElement parameters = RequireObject(root, "params", "INVALID_PARAMS", requestId);
+            if (string.Equals(operation, "bridge.document.identity.initialize", StringComparison.Ordinal))
+            {
+                ValidateExactFields(parameters, IdentityInitializeFields, "INVALID_PARAMS", requestId);
+                Guid bootstrapRuntimeDocumentId = RequireCanonicalGuid(
+                    parameters,
+                    "runtime_document_id",
+                    "INVALID_RUNTIME_DOCUMENT_ID",
+                    requestId
+                );
+                return new BridgeRequest(
+                    requestId,
+                    operation,
+                    null,
+                    null,
+                    DocumentIdentityInitialize: new DocumentIdentityInitializeParams(bootstrapRuntimeDocumentId)
+                );
+            }
             if (string.Equals(operation, "viewport.visual_style.set", StringComparison.Ordinal))
             {
                 return ParseVisualStyleSet(requestId, operation, parameters);
@@ -1218,11 +1306,12 @@ internal static class BridgeProtocol
             );
         }
         string kind = RequireString(item, "kind", "INVALID_PARAMS", requestId);
+        (string? layer, short? colorIndex) = ParseBatchEntityStyle(item, requestId);
         switch (kind)
         {
             case "line":
             {
-                ValidateExactFields(item, BatchLineFields, "INVALID_PARAMS", requestId);
+                ValidateExactOrSubsetFields(item, BatchLineFields, "INVALID_PARAMS", requestId);
                 double[] start = RequirePoint3(item, "start", requestId);
                 double[] end = RequirePoint3(item, "end", requestId);
                 if (start.SequenceEqual(end))
@@ -1233,10 +1322,14 @@ internal static class BridgeProtocol
                         requestId
                     );
                 }
-                return new BatchCreateEntitySpec(kind, start, end, null, null, null, null, null, null);
+                return new BatchCreateEntitySpec(
+                    kind, start, end, null, null, null, null, null, null,
+                    Layer: layer,
+                    ColorIndex: colorIndex
+                );
             }
             case "circle":
-                ValidateExactFields(item, BatchCircleFields, "INVALID_PARAMS", requestId);
+                ValidateExactOrSubsetFields(item, BatchCircleFields, "INVALID_PARAMS", requestId);
                 return new BatchCreateEntitySpec(
                     kind,
                     null,
@@ -1246,11 +1339,13 @@ internal static class BridgeProtocol
                     null,
                     null,
                     null,
-                    null
+                    null,
+                    Layer: layer,
+                    ColorIndex: colorIndex
                 );
             case "arc":
             {
-                ValidateExactFields(item, BatchArcFields, "INVALID_PARAMS", requestId);
+                ValidateExactOrSubsetFields(item, BatchArcFields, "INVALID_PARAMS", requestId);
                 double startAngle = RequireArcAngle(item, "start_angle", requestId);
                 double endAngle = RequireArcAngle(item, "end_angle", requestId);
                 if (Math.Abs(startAngle - endAngle) <= 1e-12)
@@ -1270,12 +1365,14 @@ internal static class BridgeProtocol
                     startAngle,
                     endAngle,
                     null,
-                    null
+                    null,
+                    Layer: layer,
+                    ColorIndex: colorIndex
                 );
             }
             case "lwpolyline":
             {
-                ValidateExactFields(item, BatchPolylineFields, "INVALID_PARAMS", requestId);
+                ValidateExactOrSubsetFields(item, BatchPolylineFields, "INVALID_PARAMS", requestId);
                 double[][] points = RequirePoint2Array(item, "points", requestId);
                 bool closed = RequireBoolean(item, "closed", requestId);
                 if (closed && (points.Length < 3 || SamePoint2(points[0], points[^1])))
@@ -1286,7 +1383,67 @@ internal static class BridgeProtocol
                         requestId
                     );
                 }
-                return new BatchCreateEntitySpec(kind, null, null, null, null, null, null, points, closed);
+                return new BatchCreateEntitySpec(
+                    kind, null, null, null, null, null, null, points, closed,
+                    Layer: layer,
+                    ColorIndex: colorIndex
+                );
+            }
+            case "text":
+                ValidateExactOrSubsetFields(item, BatchTextFields, "INVALID_PARAMS", requestId);
+                return new BatchCreateEntitySpec(
+                    kind, null, null, null, null, null, null, null, null,
+                    Layer: layer,
+                    ColorIndex: colorIndex,
+                    Text: RequireBatchText(item, requestId),
+                    Position: RequirePoint3(item, "position", requestId),
+                    Height: RequirePositiveDouble(item, "height", requestId),
+                    Rotation: RequireBoundedRotation(item, "rotation", requestId)
+                );
+            case "mtext":
+                ValidateExactOrSubsetFields(item, BatchMTextFields, "INVALID_PARAMS", requestId);
+                return new BatchCreateEntitySpec(
+                    kind, null, null, null, null, null, null, null, null,
+                    Layer: layer,
+                    ColorIndex: colorIndex,
+                    Text: RequireBatchText(item, requestId),
+                    Position: RequirePoint3(item, "position", requestId),
+                    Height: RequirePositiveDouble(item, "height", requestId),
+                    Rotation: RequireBoundedRotation(item, "rotation", requestId),
+                    Width: RequirePositiveDouble(item, "width", requestId)
+                );
+            case "aligned_dimension":
+            case "linear_dimension":
+            {
+                ValidateExactOrSubsetFields(
+                    item,
+                    string.Equals(kind, "aligned_dimension", StringComparison.Ordinal)
+                        ? BatchAlignedDimensionFields
+                        : BatchLinearDimensionFields,
+                    "INVALID_PARAMS",
+                    requestId
+                );
+                double[] xline1 = RequirePoint3(item, "xline1", requestId);
+                double[] xline2 = RequirePoint3(item, "xline2", requestId);
+                if (xline1.SequenceEqual(xline2))
+                {
+                    throw new BridgeProtocolException(
+                        "INVALID_PARAMS",
+                        "dimension extension points must differ",
+                        requestId
+                    );
+                }
+                return new BatchCreateEntitySpec(
+                    kind, null, null, null, null, null, null, null, null,
+                    Layer: layer,
+                    ColorIndex: colorIndex,
+                    Rotation: string.Equals(kind, "linear_dimension", StringComparison.Ordinal)
+                        ? RequireBoundedRotation(item, "rotation", requestId)
+                        : null,
+                    Xline1: xline1,
+                    Xline2: xline2,
+                    DimLinePoint: RequirePoint3(item, "dim_line_point", requestId)
+                );
             }
             default:
                 throw new BridgeProtocolException(
@@ -1295,6 +1452,84 @@ internal static class BridgeProtocol
                     requestId
                 );
         }
+    }
+
+    private static (string? Layer, short? ColorIndex) ParseBatchEntityStyle(
+        JsonElement item,
+        Guid requestId
+    )
+    {
+        string? layer = null;
+        if (item.TryGetProperty("layer", out JsonElement layerElement))
+        {
+            if (layerElement.ValueKind != JsonValueKind.String)
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "layer must be a non-empty string <=255 chars",
+                    requestId
+                );
+            }
+            layer = layerElement.GetString();
+            if (string.IsNullOrWhiteSpace(layer) || layer.Length > 255)
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "layer must be a non-empty string <=255 chars",
+                    requestId
+                );
+            }
+        }
+
+        short? colorIndex = null;
+        if (item.TryGetProperty("color_index", out JsonElement colorElement))
+        {
+            if (colorElement.ValueKind != JsonValueKind.Number
+                || !colorElement.TryGetInt16(out short parsed)
+                || parsed < 0
+                || parsed > 256)
+            {
+                throw new BridgeProtocolException(
+                    "INVALID_PARAMS",
+                    "color_index must be an integer in 0..256",
+                    requestId
+                );
+            }
+            colorIndex = parsed;
+        }
+        return (layer, colorIndex);
+    }
+
+    private static string RequireBatchText(JsonElement item, Guid requestId)
+    {
+        string text = RequireString(item, "text", "INVALID_PARAMS", requestId);
+        if (text.Length > 4096)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                "text must be <=4096 chars",
+                requestId
+            );
+        }
+        return text;
+    }
+
+    private static double RequireBoundedRotation(
+        JsonElement item,
+        string name,
+        Guid requestId
+    )
+    {
+        double rotation = RequireFiniteDouble(item, name, requestId);
+        if (Math.Abs(rotation) > Math.PI * 2.0)
+        {
+            throw new BridgeProtocolException(
+                "INVALID_PARAMS",
+                $"{name} must be within [-2pi, 2pi]",
+                requestId
+            );
+        }
+        return rotation;
     }
 
     private static BridgeRequest ParseBatchInsertBlocks(

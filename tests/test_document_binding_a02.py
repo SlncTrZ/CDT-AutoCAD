@@ -29,10 +29,16 @@ class _SaveDoc:
     def __init__(self, name: str, full_name: str):
         self.Name = name
         self.FullName = full_name
+        self.Saved = True
         self.save_calls = 0
 
     def Save(self):
         self.save_calls += 1
+        self.Saved = True
+
+    def GetVariable(self, name: str):
+        assert name == "DBMOD"
+        return 0
 
 
 @pytest.mark.asyncio

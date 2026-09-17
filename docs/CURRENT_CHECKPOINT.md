@@ -1,8 +1,8 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-16
-> Status: **LAUNCH-READY / OPERATIONAL RC — B0 + B1 + B2 + B3 + B4 CLOSED**
-> Current release-provenance checkpoint: `bcb5c66` (`chore: ignore non-canonical uv lock`)
+> Updated: 2026-09-17
+> Status: **LAUNCH-READY / OPERATIONAL RC — B0–B4 CLOSED + U1 CORE LIVE-ACCEPTED**
+> Last published/tagged release: `v0.4.0rc2` at `295a064`; current U1 source candidate advances to RC3
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
 
 This file is the canonical **public current-state authority**. It reports what is true now. It does not define architecture or future roadmap.
@@ -24,14 +24,14 @@ Launch-ready does not mean “every AutoCAD feature exists.” It means the prov
 ## 2. Current public identity
 
 ```text
-provider_version: 0.4.0rc2
-contract_version: autocad-generic-v1-rc2
-public MCP tools: 86
+provider_version: 0.4.0rc3
+contract_version: autocad-generic-v1-rc3
+public MCP tools: 87
 execution_model: feature-based-chunks-streaming-v1
-native bridge candidate: 0.8.2-mp7
+native bridge candidate: 0.8.3-u1
 ```
 
-The public tool count remains 86. The contract advanced to RC2 because the five native strong-integrity write entrypoints now require caller-supplied `document_pid` + `expected_parent_fp`; this is an intentional schema-strengthening change, not a new CAD capability family.
+The public tool count is now 87. RC3 adds one explicit public bootstrap entrypoint, `native_document_identity_initialize`, for a new empty current space and expands the existing bounded native create payload with generic TEXT/MTEXT/aligned/linear dimension families plus optional layer/color assignment. It does not add engineering-domain semantics or implicit legacy adoption.
 
 Canonical architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
@@ -54,6 +54,7 @@ The following major programs/scopes are closed within their documented boundarie
 | B2 reproducible release proof | **CLOSED / EXACT-LOCK PASS** | Fresh Linux/Windows A/B reconstructions from canonical platform `pylock.*` reproduce the same clean Git/source/package identity and pass full regression + Ruff |
 | B3 repo/tooling governance | **CLOSED** | `uv.lock` is explicitly non-canonical ignored residue, `pylock.*` is the exact dependency authority, Ruff is repeatable on both release platforms, and the release tree is clean |
 | B4 caller-state binding | **CLOSED / LIVE PASS** | Five native strong-integrity write tools require caller document PID + predecessor fingerprint; wrong-document/stale-parent requests refuse before journal/checkpoint/CAD mutation |
+| U1 core hardening | **CLOSED / LIVE PASS 2026-09-17** | New-empty-document PID bootstrap, truthful `document_save`, cached-COM readiness repair and native TEXT/MTEXT/aligned/linear dimension create breadth verified on AutoCAD 2027; D8/D9/D11 and legacy/non-empty adoption remain separate deferred scope |
 | Mixed PID P1 | **CLOSED / LIVE PASS** | Unmanaged entities refuse deterministically as `UNMANAGED_ENTITY_PRESENT`; read paths do not auto-adopt PID |
 | MP-G05 bounded native solid loop | **CLOSED / LIVE PASS** | Provider PID + `solid-semantic-v2` + drift guard + persisted read-back + R0/R2 for planar `3DSOLID` translation |
 
@@ -72,7 +73,17 @@ Normative behavior is defined in [`SEMANTIC_STATE_PROTOCOL.md`](SEMANTIC_STATE_P
 
 ## 5. Latest measured gates
 
-At current release-provenance checkpoint `bcb5c66`:
+U1 RC3 source candidate on 2026-09-17:
+
+- Focused native/public/schema regression: **81/81 passed**.
+- Full Linux regression: **412 passed / 11 skipped**.
+- Full Windows `.171` regression: **411 passed / 12 skipped**.
+- C# Managed .NET Release/x64 against AutoCAD 2027 SDK: **build PASS / 0 errors** with the same inherited MSB3277 warning families already documented for Autodesk/.NET reference-version conflicts.
+- Exact-source AutoCAD 2027 Session-1 U1 acceptance: document PID bootstrap read-back verified with scope `empty-current-space-only`; LINE, TEXT, MTEXT, aligned dimension and linear dimension each returned `COMMITTED_VERIFIED`; `pending_recoveries=0`; final save reported `Saved=true`, `DBMOD=0`, `persisted_clean=true`.
+- Dimension creation now canonicalizes native dimension layout before provisional fingerprinting, validates equivalent dimension-line geometry rather than a non-canonical definition-point coordinate, and re-extracts style resources in-transaction so AutoCAD-created resources such as `Defpoints` participate in the same provisional/persisted fingerprint.
+- Document fingerprint schema remains **v3** because these changes complete the already documented v3 semantic fields rather than define a new hash schema; callers must re-read/rebaseline the predecessor after a bridge upgrade instead of comparing fingerprints captured under an older bridge implementation.
+
+Last published RC2 reproducible-release checkpoint remains `bcb5c66` / tag `v0.4.0rc2`; its historical measurements are preserved below:
 
 - Linux clean reconstruction A: **405 passed / 11 skipped + Ruff PASS**; Linux clean reconstruction B: **405 / 11 + Ruff PASS**.
 - Windows `.171` clean reconstruction A: **404 passed / 12 skipped + Ruff PASS**; Windows clean reconstruction B: **404 / 12 + Ruff PASS**.
@@ -89,7 +100,7 @@ Detailed evidence scope remains in [`LIVE_ACCEPTANCE.md`](LIVE_ACCEPTANCE.md) an
 
 The following statements are intentional boundaries, not launch blockers:
 
-- 86 public tools do **not** mean every route has native strong-integrity guarantees.
+- 87 public tools do **not** mean every route has native strong-integrity guarantees.
 - COM/ActiveX remains an intentional compatibility/breadth lane.
 - Native `3DSOLID` closure currently proves **planar translate only** under the strong-integrity loop.
 - Native Boolean exact recovery, arbitrary XYZ/Rotate3D/scale parity and B-rep face/edge topology equivalence are not implied.

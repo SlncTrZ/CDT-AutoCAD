@@ -1,7 +1,7 @@
 # Semantic State Protocol — CDT-AutoCAD
 
-> Updated: 2026-09-12 17:30 +07:00
-> Status: CONTRACT BASELINE · N1–N7/O1 + G1/G2/G3 implemented/live-accepted for documented scopes · Feature-based Chunks Streaming live-accepted
+> Updated: 2026-09-17 +07:00
+> Status: CONTRACT BASELINE · N1–N7/O1 + G1/G2/G3 + U1 core implemented/live-accepted for documented scopes · Feature-based Chunks Streaming live-accepted
 > Scope: source semantics, native extraction, PID, canonicalization, fingerprinting, diff, metadata, feature-local rollback and deterministic validation
 
 ## 1. System invariant
@@ -27,7 +27,7 @@ As of the current checkpoint:
 - G3 provides one immutable predecessor checkpoint across yielded native chunks, independent final compact-state verification and exact R2 predecessor restoration for logical failure or unknown completion;
 - scale graduation is live-accepted at 100, 1,000, 5,000 and 10,000 entities, with beginning/middle/end failure injection and zero pending recovery;
 - Feature-based Chunks Streaming is the Production Domain orchestration model: one caller-defined feature owns one logical predecessor; the caller carries that predecessor PID/fingerprint into dispatch, stale/wrong binding refuses before mutation, and later feature failure restores only the current feature while prior committed features remain accepted;
-- the public identity is `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools`; current runtime/code checkpoint is `872da68` with bridge candidate `0.8.2-mp7`; the five public native strong-integrity write entrypoints require caller-supplied `document_pid` + `expected_parent_fp` from the state actually planned against, validate that binding before journal/checkpoint/mutation, and preserve the same predecessor as the native drift guard; the broader COM lane remains an intentional bounded-integrity compatibility route rather than an unfinished requirement to migrate everything native;
+- the current source identity is `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` with bridge candidate `0.8.3-u1`; `native_document_identity_initialize` provides an explicit read-back-verified document-lineage bootstrap only for a new empty current space, while legacy/non-empty adoption remains explicit future scope; the five public native strong-integrity write entrypoints still require caller-supplied `document_pid` + `expected_parent_fp` from the state actually planned against; bounded native create now includes TEXT/MTEXT/aligned/linear dimensions with optional layer/color assignment in addition to the earlier primitive families;
 - MP-G05 is closed for one deliberately bounded native `3DSOLID` mutation family: planar translation. Provider PID carriage is reused; `solid-semantic-v2` fingerprints combine centroid, volume, translation-faithful `Solid3d.GeometricExtents` and inertia terms; `expected_parent_fp` rejects stale state; successful commits require independent persisted read-back; and the existing immutable checkpoint chain provides verified R0 abort plus exact R2 predecessor restore after post-commit integrity failure. `topology_verified=false` remains explicit because this semantic signature is not a B-rep topology oracle, and no Boolean/rotate/scale parity is implied.
 
 The protocol below remains both implemented contract and normative guardrail. Current public status authority is `docs/CURRENT_CHECKPOINT.md`; the internal distilled state is `_private/AUDIT.md`, while raw historical machine evidence is retained only under ignored `artifacts/internal-evidence/`.
@@ -207,7 +207,7 @@ Do not conflate runtime identity with persistent semantic identity.
 
 ### 6.2 Document PID
 
-Each managed document has a provider-owned `document_pid` stored in the DWG Named Objects Dictionary under application-owned XRecord metadata. N2 native AutoCAD 2027 probes selected `SLNCTRZ_CDT/DOCUMENT_PID` as the carrier.
+Each managed document has a provider-owned `document_pid` stored in the DWG Named Objects Dictionary under application-owned XRecord metadata. N2 native AutoCAD 2027 probes selected `SLNCTRZ_CDT/DOCUMENT_PID` as the carrier. U1 adds an explicit production initializer for exactly one active document whose current space is empty: the bridge generates the `doc:<uuid>` internally, persists it transactionally, reads it back independently and returns the schema-v3 zero-entity predecessor fingerprint. Caller-supplied document PIDs are not accepted by this bootstrap.
 
 `document_pid` is **persistent semantic lineage identity**, not globally unique physical-file identity. A byte-for-byte DWG copy preserves it. Therefore mutation targeting must combine runtime document binding + `document_pid` + `expected_parent_fp`; checkpoint/file identity additionally uses `artifact_fp` when needed. If multiple open documents share one `document_pid` and the runtime target cannot be unambiguously resolved, the mutation fails closed before execution.
 
@@ -228,7 +228,7 @@ Required behavior:
 
 N2 finalized the carrier/clone policy for N3+: shallow `Clone()` receives a fresh PID; deep/cross/WBLOCK/INSERT result scopes require reconciliation/remap because those measured paths copy entity PID metadata; unresolved duplicates block acceptance.
 
-The native semantic lane is intentionally a **provider-owned PID scope**, not an implicit adoption mechanism. AutoCAD 2027 Session-1 mixed-drawing acceptance confirmed that one legacy/COM-created entity without provider PID metadata would otherwise make document-wide semantic extraction and even unrelated PID-targeted operations fail ambiguously. The enforced short-term policy is therefore explicit refusal with `UNMANAGED_ENTITY_PRESENT`. Native semantic reads and mutations do not assign PIDs as a side effect; bringing legacy entities under native ownership requires a future explicit, bounded adoption/bootstrap operation with its own fingerprint/re-baseline semantics.
+The native semantic lane is intentionally a **provider-owned PID scope**, not an implicit adoption mechanism. AutoCAD 2027 Session-1 mixed-drawing acceptance confirmed that one legacy/COM-created entity without provider PID metadata would otherwise make document-wide semantic extraction and even unrelated PID-targeted operations fail ambiguously. U1 closes the production-entry gap for **new empty drawings only** through explicit document-lineage initialization; native semantic reads still do not assign entity PIDs as a side effect, and non-empty/legacy drawings are never silently adopted. Bringing existing legacy entities under native ownership remains a future explicit, bounded adoption/re-baseline operation with its own clone/PID policy and acceptance evidence.
 
 ### 6.4 Fingerprint families
 
@@ -272,7 +272,7 @@ Physical-file/checkpoint identity is separate and must use `artifact_fp` plus th
 
 G2 advances the semantic document fingerprint to **schema v3**. V3 preserves the v2 decision that volatile `saved/DBMOD` is not semantic identity and additionally includes schema-agnostic entity metadata in the canonical entity state. A metadata change therefore advances `document_fp` even when geometry, PID, layer and style are unchanged.
 
-Metadata is canonicalized and bounded before persistence/hashing. Provider-owned identity/recovery namespaces remain outside arbitrary caller mutation. The native bridge advertises the document fingerprint schema explicitly; callers must never compare v2 and v3 fingerprints as if they were the same domain.
+Metadata is canonicalized and bounded before persistence/hashing. Provider-owned identity/recovery namespaces remain outside arbitrary caller mutation. U1 completes already-declared v3 dimension semantics by including defining points/rotation and stable MTEXT width in the extracted entity state, and it rebuilds provisional style resources from the live transaction so AutoCAD-generated resources participate in the same hash. This is an implementation-conformance correction inside schema v3, not a v4 domain change; bridge upgrades can therefore change the fingerprint of drawings whose previously omitted v3 fields are now represented. Callers must obtain a fresh predecessor after upgrade and must never compare v2/v3 or pre-upgrade/post-upgrade fingerprints as if implementation identity were irrelevant.
 
 ### 6.6 Duplicate detection
 
@@ -369,7 +369,7 @@ A delta is computed from pre/post semantic states, assisted by native database e
 
 Native events are evidence/optimization, not the sole truth source. Post-action extraction remains authoritative.
 
-`allowed_effects` in the ActionSpec is compared against this delta. In the accepted N7+O1 scope, validation independently checks requested geometry for LINE/CIRCLE/ARC/simple-LWPOLYLINE, target type/layer/style/hierarchy invariants, invariant document/style-resource state, affected-PID consistency and newly introduced duplicate geometry. O1 LWPOLYLINE is intentionally simple 2D: finite XY vertices, zero elevation, +Z normal and zero bulge/vertex widths; complex existing polylines are refused before write. Deterministic violations are rejected inside the native write transaction where possible; post-commit integrity failures use checkpoint-backed R1/R2 recovery and advance no state-chain entry unless the commit is accepted.
+`allowed_effects` in the ActionSpec is compared against this delta. In the accepted N7+O1 scope, validation independently checks requested geometry for LINE/CIRCLE/ARC/simple-LWPOLYLINE, target type/layer/style/hierarchy invariants, preserved predecessor document/resource state (create may add native resources but may not change/remove predecessor resources), affected-PID consistency and newly introduced duplicate geometry. O1 LWPOLYLINE is intentionally simple 2D: finite XY vertices, zero elevation, +Z normal and zero bulge/vertex widths; complex existing polylines are refused before write. Deterministic violations are rejected inside the native write transaction where possible; post-commit integrity failures use checkpoint-backed R1/R2 recovery and advance no state-chain entry unless the commit is accepted.
 
 ## 9. Deterministic ValidationRuleSet
 

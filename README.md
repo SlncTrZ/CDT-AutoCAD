@@ -1,6 +1,6 @@
 # CDT-AutoCAD
 
-> Provider `0.4.0rc2` · Contract `autocad-generic-v1-rc2` · 86 public MCP tools · AutoCAD 2027 primary certification lane · **Launch-ready / Operational RC**
+> Provider `0.4.0rc3` · Contract `autocad-generic-v1-rc3` · 87 public MCP tools · AutoCAD 2027 primary certification lane · **Launch-ready / Operational RC**
 
 CDT-AutoCAD is a **Generic CAD Execution Engine** for reliable automation of real AutoCAD drawings.
 
@@ -10,9 +10,9 @@ It deliberately does **not** own engineering-domain rules. Civil, structural, me
 
 ## Current position
 
-As of 2026-09-15, CDT-AutoCAD is **launch-ready for its intended execution-engine mission** with B0 document provenance and B4 caller-state binding re-certified on AutoCAD 2027.
+As of 2026-09-17, CDT-AutoCAD is **launch-ready for its intended execution-engine mission** with U1 core hardening live-accepted on AutoCAD 2027. New empty drawings now have an explicit verified production path to provider document lineage before native strong-integrity execution, and bounded native create batches cover LINE/CIRCLE/ARC/simple-LWPOLYLINE plus TEXT/MTEXT/aligned/linear dimensions with optional layer/color assignment.
 
-Native strong-integrity writes require the caller's planned `document_pid` + predecessor fingerprint and refuse wrong-document/stale-state requests before mutation. B1 filesystem containment is now closed with a split guarantee: provider-owned file I/O uses descriptor/handle-bound actual-I/O primitives against concurrent descendant namespace mutation, while AutoCAD APIs that accept pathname strings only remain explicitly bounded by pre/post verification rather than advertised as race-free. Future CAD capability is added only from a concrete blocked workflow plus its postcondition and verification invariant.
+Native strong-integrity writes require the caller's planned `document_pid` + predecessor fingerprint and refuse wrong-document/stale-state requests before mutation. `document_save` now requires an immediate persisted-clean postcondition, and cached live COM reuse repairs connection readiness metadata after successful probing. B1 filesystem containment remains closed with a split guarantee: provider-owned file I/O uses descriptor/handle-bound actual-I/O primitives against concurrent descendant namespace mutation, while AutoCAD APIs that accept pathname strings only remain explicitly bounded by pre/post verification rather than advertised as race-free. Future CAD capability is added only from a concrete blocked workflow plus its postcondition and verification invariant.
 
 This is not a claim of full AutoCAD API parity, and the project is not pursuing parity as an independent roadmap.
 
@@ -31,11 +31,11 @@ This README is a product landing page and summary, not a competing architecture 
 ## Public identity
 
 ```text
-provider_version: 0.4.0rc2
-contract_version: autocad-generic-v1-rc2
-public MCP tools: 86
+provider_version: 0.4.0rc3
+contract_version: autocad-generic-v1-rc3
+public MCP tools: 87
 execution_model: feature-based-chunks-streaming-v1
-native bridge candidate: 0.8.2-mp7
+native bridge candidate: 0.8.3-u1
 ```
 
 ## Execution model
@@ -74,7 +74,7 @@ The public orchestration entry point is `feature_execute`. The current logical f
 - Content-addressed accepted-artifact sealing.
 - Bounded view presets and visual styles for presentation workflows.
 
-The 86-tool catalog is intentionally hybrid. Tool presence does not imply every route has native strong-integrity guarantees; unsupported or unverifiable behavior must refuse explicitly.
+The 87-tool catalog is intentionally hybrid. Tool presence does not imply every route has native strong-integrity guarantees; unsupported or unverifiable behavior must refuse explicitly.
 
 ## Integrity model
 

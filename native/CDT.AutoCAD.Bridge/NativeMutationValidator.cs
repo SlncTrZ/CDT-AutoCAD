@@ -141,8 +141,8 @@ internal static class NativeMutationValidator
             "batch create produced an unexpected PID delta"
         );
         Require(
-            DocumentInvariantsEqual(before, provisional),
-            "batch create changed invariant document/resource state"
+            DocumentInvariantsPreservedForCreate(before, provisional),
+            "batch create changed or removed predecessor document/resource state"
         );
         Require(
             !IntroducedDuplicate(beforeEntities, afterEntities),
@@ -163,6 +163,10 @@ internal static class NativeMutationValidator
                 "circle" => "CIRCLE",
                 "arc" => "ARC",
                 "lwpolyline" => "LWPOLYLINE",
+                "text" => "TEXT",
+                "mtext" => "MTEXT",
+                "aligned_dimension" => "DIMENSION",
+                "linear_dimension" => "DIMENSION",
                 _ => throw new BridgeServiceException(
                     "PROVISIONAL_VALIDATION_FAILED",
                     "unsupported batch create family"
@@ -175,6 +179,10 @@ internal static class NativeMutationValidator
             Require(
                 GeometryMatches(spec, target),
                 "batch-created provisional geometry differs from requested geometry"
+            );
+            Require(
+                StyleMatches(spec, target),
+                "batch-created provisional style differs from requested style"
             );
         }
     }
@@ -324,6 +332,33 @@ internal static class NativeMutationValidator
     private static bool DocumentInvariantsEqual(
         Dictionary<string, object?> before,
         Dictionary<string, object?> after
+    ) =>
+        BasicDocumentInvariantsEqual(before, after)
+        && SemanticFingerprint.CanonicalScalarSortKey(before["styles"]!)
+            == SemanticFingerprint.CanonicalScalarSortKey(after["styles"]!);
+
+    private static bool DocumentInvariantsPreservedForCreate(
+        Dictionary<string, object?> before,
+        Dictionary<string, object?> after
+    )
+    {
+        if (!BasicDocumentInvariantsEqual(before, after)
+            || before["styles"] is not List<Dictionary<string, object?>> beforeStyles
+            || after["styles"] is not List<Dictionary<string, object?>> afterStyles)
+        {
+            return false;
+        }
+        HashSet<string> afterKeys = afterStyles
+            .Select(SemanticFingerprint.CanonicalScalarSortKey)
+            .ToHashSet(StringComparer.Ordinal);
+        return beforeStyles
+            .Select(SemanticFingerprint.CanonicalScalarSortKey)
+            .All(afterKeys.Contains);
+    }
+
+    private static bool BasicDocumentInvariantsEqual(
+        Dictionary<string, object?> before,
+        Dictionary<string, object?> after
     )
     {
         if (!Equals(before["schema_version"], after["schema_version"])
@@ -343,8 +378,7 @@ internal static class NativeMutationValidator
                 return false;
             }
         }
-        return SemanticFingerprint.CanonicalScalarSortKey(before["styles"]!)
-            == SemanticFingerprint.CanonicalScalarSortKey(after["styles"]!);
+        return true;
     }
 
     private static bool IntroducedDuplicate(
@@ -408,8 +442,137 @@ internal static class NativeMutationValidator
             "circle" => SameCircle(geometry, spec.Center, spec.Radius),
             "arc" => SameArc(geometry, spec.Center, spec.Radius, spec.StartAngle, spec.EndAngle),
             "lwpolyline" => SamePolyline(geometry, spec.Points, spec.Closed),
+            "text" => SameText(geometry, spec),
+            "mtext" => SameMText(geometry, spec),
+            "aligned_dimension" => SameDimension(geometry, spec, aligned: true),
+            "linear_dimension" => SameDimension(geometry, spec, aligned: false),
             _ => false,
         };
+    }
+
+    private static bool StyleMatches(
+        BatchCreateEntitySpec spec,
+        Dictionary<string, object?> entity
+    )
+    {
+        if (spec.Layer is not null
+            && !string.Equals(
+                Convert.ToString(entity["layer"]),
+                spec.Layer,
+                StringComparison.OrdinalIgnoreCase
+            ))
+        {
+            return false;
+        }
+        if (spec.ColorIndex is not short expectedColor)
+        {
+            return true;
+        }
+        if (entity["style"] is not Dictionary<string, object?> style
+            || !Number(style.GetValueOrDefault("color_index"), out double actualColor))
+        {
+            return false;
+        }
+        return Nearly(actualColor, expectedColor);
+    }
+
+    private static bool SameText(
+        Dictionary<string, object?> geometry,
+        BatchCreateEntitySpec spec
+    ) =>
+        string.Equals(Convert.ToString(geometry.GetValueOrDefault("text")), spec.Text, StringComparison.Ordinal)
+        && geometry.GetValueOrDefault("position") is double[] position
+        && spec.Position is double[] expectedPosition
+        && Same3(position, expectedPosition)
+        && Number(geometry.GetValueOrDefault("height"), out double height)
+        && spec.Height is double expectedHeight
+        && Nearly(height, expectedHeight)
+        && Number(geometry.GetValueOrDefault("rotation"), out double rotation)
+        && spec.Rotation is double expectedRotation
+        && SameAngle(rotation, expectedRotation);
+
+    private static bool SameMText(
+        Dictionary<string, object?> geometry,
+        BatchCreateEntitySpec spec
+    ) =>
+        string.Equals(Convert.ToString(geometry.GetValueOrDefault("text")), spec.Text, StringComparison.Ordinal)
+        && geometry.GetValueOrDefault("location") is double[] position
+        && spec.Position is double[] expectedPosition
+        && Same3(position, expectedPosition)
+        && Number(geometry.GetValueOrDefault("height"), out double height)
+        && spec.Height is double expectedHeight
+        && Nearly(height, expectedHeight)
+        && Number(geometry.GetValueOrDefault("rotation"), out double rotation)
+        && spec.Rotation is double expectedRotation
+        && SameAngle(rotation, expectedRotation)
+        && Number(geometry.GetValueOrDefault("width"), out double width)
+        && spec.Width is double expectedWidth
+        && Nearly(width, expectedWidth);
+
+    private static bool SameDimension(
+        Dictionary<string, object?> geometry,
+        BatchCreateEntitySpec spec,
+        bool aligned
+    )
+    {
+        string expectedType = aligned ? "AlignedDimension" : "RotatedDimension";
+        if (!string.Equals(
+                Convert.ToString(geometry.GetValueOrDefault("dimension_type")),
+                expectedType,
+                StringComparison.Ordinal
+            )
+            || geometry.GetValueOrDefault("xline1") is not double[] xline1
+            || geometry.GetValueOrDefault("xline2") is not double[] xline2
+            || geometry.GetValueOrDefault("dim_line_point") is not double[] dimLinePoint
+            || spec.Xline1 is not double[] expectedXline1
+            || spec.Xline2 is not double[] expectedXline2
+            || spec.DimLinePoint is not double[] expectedDimLinePoint
+            || !Same3(xline1, expectedXline1)
+            || !Same3(xline2, expectedXline2))
+        {
+            return false;
+        }
+        if (aligned)
+        {
+            return SameDimensionLinePoint(
+                dimLinePoint,
+                expectedDimLinePoint,
+                expectedXline2[0] - expectedXline1[0],
+                expectedXline2[1] - expectedXline1[1]
+            );
+        }
+        return Number(geometry.GetValueOrDefault("rotation"), out double rotation)
+            && spec.Rotation is double expectedRotation
+            && SameAngle(rotation, expectedRotation)
+            && SameDimensionLinePoint(
+                dimLinePoint,
+                expectedDimLinePoint,
+                Math.Cos(expectedRotation),
+                Math.Sin(expectedRotation)
+            );
+    }
+
+    private static bool SameDimensionLinePoint(
+        double[] actual,
+        double[] expected,
+        double directionX,
+        double directionY
+    )
+    {
+        if (actual.Length != 3 || expected.Length != 3)
+        {
+            return false;
+        }
+        double directionLength = Math.Sqrt(directionX * directionX + directionY * directionY);
+        if (directionLength <= 1e-12)
+        {
+            return false;
+        }
+        double deltaX = actual[0] - expected[0];
+        double deltaY = actual[1] - expected[1];
+        double cross = deltaX * directionY - deltaY * directionX;
+        return Math.Abs(cross) / directionLength <= 1e-9
+            && Nearly(actual[2], expected[2]);
     }
 
     private static bool GeometryMatchesTransform(

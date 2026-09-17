@@ -38,10 +38,11 @@ async def test_generic_rc_tool_surface_is_bounded_and_explicit(settings):
         names = {tool.name for tool in await client.list_tools()}
 
     assert names == set(_TOOL_DESCRIPTIONS)
-    assert len(names) == PUBLIC_TOOL_COUNT == 86
+    assert len(names) == PUBLIC_TOOL_COUNT == 87
     assert {
         "feature_execute",
         "native_integrity_status",
+        "native_document_identity_initialize",
         "batch_create_entities",
         "batch_insert_blocks",
         "batch_transform_entities",

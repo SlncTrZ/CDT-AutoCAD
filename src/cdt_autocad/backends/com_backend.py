@@ -714,6 +714,7 @@ class ComBackend(AutoCADBackend):
         if app is not None:
             if self._application_metadata is None:
                 self._application_metadata = _inspect_application(app)
+            self._connected = True
             return app
 
         progid = self.settings.com_progid
@@ -1379,12 +1380,32 @@ class ComBackend(AutoCADBackend):
                 quarantine_on_failure=True,
             )
 
+            try:
+                saved = bool(_com_property_with_busy_retry(doc, "Saved"))
+                dbmod = int(_com_call_with_busy_retry(lambda: doc.GetVariable("DBMOD")))
+            except Exception as exc:
+                reason = "AutoCAD save persisted-clean postcondition could not be verified"
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason) from exc
+
+            persisted_clean = saved and dbmod == 0
+            if not persisted_clean:
+                reason = "AutoCAD save did not reach the required persisted-clean postcondition"
+                self._quarantine_integrity(reason)
+                raise StateConflictError(reason)
+
             name = str(_com_property_with_busy_retry(doc, "Name"))
             self._document_scope_key = (name, str(verified_target))
             return {
                 "ok": True,
                 "path": str(verified_target),
                 "format": verified_target.suffix.lower().lstrip("."),
+                "command_completed": True,
+                "persisted_path_verified": True,
+                "saved": saved,
+                "dbmod": dbmod,
+                "persisted_clean": persisted_clean,
+                "postcondition_verified": True,
             }
 
         return await self._run(_sync)

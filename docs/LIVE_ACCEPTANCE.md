@@ -1,9 +1,9 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-16 +07:00
-> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0 document provenance + B1 filesystem containment + B4 caller-state binding
+> Updated: 2026-09-17 +07:00
+> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Public identity: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools` · current release-provenance checkpoint **`bcb5c66`** · historical promotion commit `0516fe3`
+> Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.3-u1` · last published/tagged release remains `v0.4.0rc2`
 
 ## 0. Current production live gate
 
@@ -11,7 +11,7 @@ The reviewed public-promotion tree preserves both the historical COM/A3 acceptan
 
 Current live native requirements already measured PASS on `.171` AutoCAD 2027 Session 1:
 
-- current bridge `0.8.2-mp7`, document fingerprint schema v3; historical G1/G2/G3/scale/Feature Streaming artifacts below remain `0.8.1-g3` evidence and are not rewritten;
+- current U1 bridge `0.8.3-u1`, document fingerprint schema v3; historical `0.8.2-mp7` and earlier G1/G2/G3/scale/Feature Streaming artifacts below retain their original identities and are not rewritten;
 - schema-agnostic metadata commit/readback/query plus exact R0/R1 recovery;
 - one logical predecessor checkpoint across yielded native micro-chunks;
 - micro-chunk maximum 32 entities and one batch mutation per AutoCAD Idle tick;
@@ -24,6 +24,8 @@ Current live native requirements already measured PASS on `.171` AutoCAD 2027 Se
 - B0 document provenance re-certification: SaveAs + artifact sealing live fixtures PASS with verified renamed-document cleanup and no leaked basetemp/task residue;
 - B1 provider-owned filesystem I/O closure is verified at the actual OS I/O boundary on Linux and Windows `.171` using descriptor/handle-bound adversarial namespace-swap fixtures; AutoCAD COM calls that accept pathname strings only retain bounded pre/post verification and inherit the prior B0 live provenance evidence rather than a new race-free claim;
 - B4 caller-state binding live acceptance PASS on a disposable PID-bearing DWG: wrong document PID refused with exact fingerprint/entity-count preservation, stale parent refused with zero mutation, valid caller predecessor committed, and replaying the old predecessor after commit refused without changing accepted state.
+- U1 exact-source Session-1 acceptance PASS on 2026-09-17 after the final bootstrap lock-scope review: explicit document lineage bootstrap holds the document lock through PID write/read-back and zero-entity semantic snapshot; LINE/TEXT/MTEXT/aligned-dimension/linear-dimension batches each returned `COMMITTED_VERIFIED`; native layer/color read-back matched; zero pending recovery remained; final `document.Save()` read-back was `Saved=true`, `DBMOD=0`. The deployed bridge hash in this final reload evidence is `0245e91fa4c067b86ec3fdb0797c709a661f78125cd12b0097789ec9f952661a`.
+- U1 acceptance also reproduced and fixed AutoCAD dimension canonicalization: provisional layout is recomputed before fingerprinting, create validation accepts only the same dimension line rather than an unstable point parameterization, and in-transaction style re-extraction includes AutoCAD-created `Defpoints`.
 
 Canonical current evidence (machine-readable artifacts retained with the internal acceptance record
 under these file names; not part of the published tree):
@@ -39,11 +41,13 @@ mp-g07-visual-style-live-2026-09-12.json
 mp2-hot-reload-current-identity-2026-09-12-isolated.json
 mp-g10-acis-soak-live-2026-09-12.json
 bridge-0.8.2-mp7-runtime-binding-2026-09-12.json
+u1-reload-lockfix-2026-09-17.json
+u1-floorplan-lockfix-2026-09-17.json
 ```
 
 The B4 caller-binding acceptance on 2026-09-15 intentionally used a transient JSON report under the Windows temp directory and deleted it during verified cleanup; its measured result is summarized here rather than presented as a retained artifact.
 
-Final close-gate result on the original promotion tree remains: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**. The RC2 caller-binding tree at `872da68` independently passed Linux **398 / 9 skipped**, Windows `.171` **397 / 10 skipped**, focused public-native/schema **32/32**, B4 AutoCAD 2027 Session-1 live acceptance PASS, plus the preceding B0 live SaveAs/artifact-seal **2/2** closure. B1 later closed provider-owned actual-I/O containment at `abeb9d9`. B2/B3 then closed release reproducibility/tooling governance at clean checkpoint `bcb5c66`: two fresh exact-lock reconstructions per platform reproduced the same source/package identity, with Linux **405 / 11 + Ruff PASS** and Windows `.171` **404 / 12 + Ruff PASS** in both A/B environments. No C# source changed in B1/B2/B3, so the native bridge remains the already accepted `0.8.2-mp7` build. Older sections below preserve their historical identities and wording.
+Final close-gate result on the original promotion tree remains: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**. The RC2 caller-binding tree at `872da68` independently passed Linux **398 / 9 skipped**, Windows `.171` **397 / 10 skipped**, focused public-native/schema **32/32**, B4 AutoCAD 2027 Session-1 live acceptance PASS, plus the preceding B0 live SaveAs/artifact-seal **2/2** closure. B1 later closed provider-owned actual-I/O containment at `abeb9d9`. B2/B3 then closed release reproducibility/tooling governance at clean checkpoint `bcb5c66`: two fresh exact-lock reconstructions per platform reproduced the same source/package identity, with Linux **405 / 11 + Ruff PASS** and Windows `.171` **404 / 12 + Ruff PASS** in both A/B environments. No C# source changed in B1/B2/B3, so those historical closure claims remain bound to `0.8.2-mp7`. U1 subsequently introduced bridge `0.8.3-u1` and the RC3/87-tool source identity with the live evidence summarized above. Older sections below preserve their historical identities and wording.
 
 ## 1. Certification policy
 

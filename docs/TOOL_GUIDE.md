@@ -1,6 +1,6 @@
 # CDT-AutoCAD Tool Guide
 
-> Contract: `autocad-generic-v1-rc2` · Provider: `0.4.0rc2` · Public tools: `86` · Updated: 2026-09-15
+> Contract: `autocad-generic-v1-rc3` · Provider: `0.4.0rc3` · Public tools: `87` · Updated: 2026-09-17
 
 CDT-AutoCAD is a generic CAD execution engine for AutoCAD workflows. It owns CAD execution,
 document state, persistent identity, fingerprints, transaction/recovery mechanics and bounded
@@ -17,11 +17,12 @@ For a normal live AutoCAD workflow:
 
 1. call `system_status` and `system_capabilities`;
 2. open or create the drawing and configure units/layers as needed;
-3. call `native_integrity_status` and retain the active `document_pid` + `document_fp` as the caller's planned predecessor;
-4. execute each strong-integrity write with that `document_pid` and `document_fp` as `expected_parent_fp`;
-5. after each accepted mutation, advance the caller predecessor to the returned final document fingerprint before the next write;
-6. inspect state with query/measurement tools;
-7. save, seal or export the accepted artifact.
+3. for a new empty drawing without provider lineage, call `native_document_identity_initialize` exactly once; it refuses non-empty current space and never accepts a caller-supplied PID;
+4. call `native_integrity_status` and retain the active `document_pid` + `document_fp` as the caller's planned predecessor;
+5. execute each strong-integrity write with that `document_pid` and `document_fp` as `expected_parent_fp`;
+6. after each accepted mutation, advance the caller predecessor to the returned final document fingerprint before the next write;
+7. inspect state with query/measurement tools;
+8. save, seal or export the accepted artifact.
 
 For presentation/showcase workflows, successful feature receipts recommend a **300 ms pause between
 features**. Native micro-chunks themselves are not artificially delayed; the bridge processes at most
@@ -37,7 +38,7 @@ is the preferred production entry point for Domain Agents.
 
 A feature may mix these generic action families:
 
-- `create_entities` — typed LINE/CIRCLE/ARC/simple-LWPOLYLINE batches;
+- `create_entities` — typed LINE/CIRCLE/ARC/simple-LWPOLYLINE/TEXT/MTEXT/aligned-dimension/linear-dimension batches with optional layer/color assignment;
 - `insert_blocks` — referenced block insertion by persistent block-definition PID;
 - `transform_entities` — typed translate, rotate-Z or uniform-scale operations over persistent entity PIDs.
 
@@ -86,6 +87,7 @@ These tools require the live Windows COM profile and the same-session Managed .N
 not silently fall back to a weaker COM mutation path.
 
 - `native_integrity_status`
+- `native_document_identity_initialize`
 - `feature_execute`
 - `batch_create_entities`
 - `batch_insert_blocks`
@@ -98,7 +100,7 @@ The three `batch_*` tools expose the underlying logical-batch primitive directly
 infrastructure and tests; production Domain Agents should normally prefer `feature_execute`.
 
 Native state uses persistent document/entity PIDs, fingerprint schema v3 and parent-fingerprint drift
-protection. `feature_execute`, the three `batch_*` write tools and `metadata_set` require caller-supplied
+protection. `native_document_identity_initialize` is the explicit production bootstrap for a new empty current space; it never implicitly adopts legacy/non-empty geometry. `feature_execute`, the three `batch_*` write tools and `metadata_set` require caller-supplied
 `document_pid` + `expected_parent_fp`; read tools do not. A mutation must end as `COMMITTED_VERIFIED`
 or `ROLLED_BACK_VERIFIED`; uncertain state blocks dependent work.
 
@@ -121,6 +123,7 @@ numeric range. CDT-AutoCAD stores and compares values but does not interpret the
 - `system_status` — provider/runtime/build/certification state.
 - `system_capabilities` — backend capability map.
 - `native_integrity_status` — live bridge version, active document PID/fingerprint and G3 invariants.
+- `native_document_identity_initialize` — explicit verified PID/fingerprint bootstrap for one active empty current space.
 
 Primary live certification target: **AutoCAD 2027 full / Windows x64 / `AutoCAD.Application.26`**.
 Other AutoCAD releases require their own compatibility evidence before they are called certified.
@@ -132,7 +135,7 @@ Other AutoCAD releases require their own compatibility evidence before they are 
 - `document_info`
 - `document_configure_units(insertion_units?, measurement?, linear_format?, linear_precision?)`
 - `document_dependencies`
-- `document_save(path?)`
+- `document_save(path?)` — success requires immediate verified persisted-clean state (`Saved=true`, `DBMOD=0`) in addition to path identity.
 - `document_save_as(path)`
 - `document_export_pdf(path, layout?)`
 - `drawing_audit`

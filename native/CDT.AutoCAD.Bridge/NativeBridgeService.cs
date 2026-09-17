@@ -30,6 +30,7 @@ internal sealed class NativeBridgeService
             "bridge.health" => Health(),
             "bridge.documents.list" => new { documents = _documents.List() },
             "bridge.document.identity" => DocumentIdentity(request),
+            "bridge.document.identity.initialize" => DocumentIdentityInitialize(request),
             "bridge.document.snapshot" => DocumentSnapshot(request),
             "bridge.document.state" => DocumentState(request),
             "viewport.visual_style.get" => ViewportVisualStyleGet(request),
@@ -111,6 +112,7 @@ internal sealed class NativeBridgeService
             },
             mutation_operations = new[]
             {
+                "bridge.document.identity.initialize",
                 "metadata.set",
                 "viewport.visual_style.set",
                 "entity.batch.create",
@@ -139,6 +141,66 @@ internal sealed class NativeBridgeService
         DocumentIdentityParams parameters = request.DocumentIdentity
             ?? throw new BridgeServiceException("INVALID_PARAMS", "document identity params are required");
         return _documents.Resolve(parameters.RuntimeDocumentId, parameters.DocumentPid);
+    }
+
+    private object DocumentIdentityInitialize(BridgeRequest request)
+    {
+        DocumentIdentityInitializeParams parameters = request.DocumentIdentityInitialize
+            ?? throw new BridgeServiceException(
+                "INVALID_PARAMS",
+                "document identity initialize params are required"
+            );
+        Document document = _documents.ResolveTransientDocument(parameters.RuntimeDocumentId, null);
+        DocumentPidInitialization initialization;
+        string documentPid;
+        Dictionary<string, object?> snapshot;
+        List<Dictionary<string, object?>> entities;
+        using (DocumentLock documentLock = document.LockDocument())
+        {
+            initialization = DocumentPidStore.InitializeEmptyCurrentSpace(document.Database);
+            documentPid = DocumentPidReader.Read(document.Database)
+                ?? throw new BridgeServiceException(
+                    "DOCUMENT_PID_MISSING",
+                    "document PID read-back failed after identity bootstrap"
+                );
+            if (!string.Equals(documentPid, initialization.DocumentPid, StringComparison.Ordinal))
+            {
+                throw new BridgeServiceException(
+                    "DOCUMENT_PID_READBACK_MISMATCH",
+                    "document PID read-back differs from the initialized lineage"
+                );
+            }
+            snapshot = _semantic.Extract(
+                document,
+                parameters.RuntimeDocumentId,
+                documentPid,
+                BridgeConstants.MaxBatchSemanticEntities
+            );
+            entities = snapshot["entities"]
+                as List<Dictionary<string, object?>>
+                ?? throw new BridgeServiceException(
+                    "INVALID_SNAPSHOT",
+                    "semantic snapshot has invalid entity collection"
+                );
+            if (entities.Count != 0)
+            {
+                throw new BridgeServiceException(
+                    "DOCUMENT_BOOTSTRAP_DRIFT",
+                    "document current space changed during identity bootstrap"
+                );
+            }
+        }
+        return new Dictionary<string, object?>
+        {
+            ["runtime_document_id"] = parameters.RuntimeDocumentId.ToString("D"),
+            ["document_pid"] = documentPid,
+            ["initialized"] = initialization.Initialized,
+            ["readback_verified"] = true,
+            ["scope"] = "empty-current-space-only",
+            ["document_fp_schema_version"] = 3,
+            ["document_fp"] = snapshot["document_fp"],
+            ["entity_count"] = entities.Count,
+        };
     }
 
     private object ViewportVisualStyleGet(BridgeRequest request)

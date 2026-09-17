@@ -1,6 +1,6 @@
 [project]
 name = "cdt-autocad-provider"
-version = "0.4.0rc2"
+version = "0.4.0rc3"
 description = "CDT-AutoCAD Generic CAD Execution Engine for AI agents"
 readme = "README.md"
 license = "LicenseRef-CDT-AutoCAD-Proprietary-1.0"

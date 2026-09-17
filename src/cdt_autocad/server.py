@@ -350,6 +350,10 @@ _TOOL_DESCRIPTIONS = {
         "Inspect the same-session managed native bridge and the exact active AutoCAD document binding, including "
         "persistent document PID and semantic fingerprint; this route never falls back to ordinary COM mutation."
     ),
+    "native_document_identity_initialize": (
+        "Explicitly initialize provider-owned persistent document lineage on the one active empty current space, then "
+        "return the verified document PID and semantic fingerprint; existing/non-empty drawings are refused."
+    ),
     "feature_execute": (
         "Execute one complete generic feature as a feature-local logical transaction bound to the caller-supplied document "
         "PID and predecessor fingerprint. Typed create/block-insert/transform micro-chunks remain bounded; wrong-document or "
@@ -642,6 +646,10 @@ def create_mcp(
     @provider_tool(tags={"native", "read"})
     async def native_integrity_status() -> dict[str, Any]:
         return await asyncio.to_thread(native_facade.status)
+
+    @provider_tool(tags={"native", "document", "write"})
+    async def native_document_identity_initialize() -> dict[str, Any]:
+        return await asyncio.to_thread(native_facade.bootstrap_document_identity)
 
     @provider_tool(tags={"native", "feature", "write"})
     async def feature_execute(

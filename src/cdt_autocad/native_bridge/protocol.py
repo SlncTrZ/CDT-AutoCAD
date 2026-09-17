@@ -42,6 +42,7 @@ _READ_ONLY_OPERATIONS = frozenset(
 )
 _MUTATION_OPERATIONS = frozenset(
     {
+        "bridge.document.identity.initialize",
         "entity.batch.create",
         "entity.batch.insert_blocks",
         "entity.batch.transform",
@@ -71,6 +72,7 @@ _RECOVERY_OPERATIONS = frozenset(
 _ALLOWED_OPERATIONS = _READ_ONLY_OPERATIONS | _MUTATION_OPERATIONS | _RECOVERY_OPERATIONS
 _REQUEST_FIELDS = frozenset({"protocol", "request_id", "operation", "params"})
 _DOCUMENT_IDENTITY_FIELDS = frozenset({"runtime_document_id", "document_pid"})
+_DOCUMENT_IDENTITY_INITIALIZE_FIELDS = frozenset({"runtime_document_id"})
 _VISUAL_STYLE_SET_FIELDS = frozenset(
     {
         "runtime_document_id",
@@ -165,6 +167,32 @@ class DocumentIdentityParams:
         if self.document_pid is not None:
             result["document_pid"] = self.document_pid
         return result
+
+
+@dataclass(frozen=True)
+class DocumentIdentityInitializeParams:
+    """Explicit bootstrap selector; callers may select a runtime document but never supply its PID."""
+
+    runtime_document_id: str
+    document_pid: None = None
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> DocumentIdentityInitializeParams:
+        if set(value) != _DOCUMENT_IDENTITY_INITIALIZE_FIELDS:
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                "document identity initialize requires only runtime_document_id",
+            )
+        return cls(
+            _canonical_uuid(
+                value.get("runtime_document_id"),
+                code="INVALID_RUNTIME_DOCUMENT_ID",
+                field_name="runtime_document_id",
+            )
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"runtime_document_id": self.runtime_document_id}
 
 
 @dataclass(frozen=True)
@@ -685,30 +713,89 @@ class BatchCreateEntitySpec:
     end_angle: float | None = None
     points: tuple[tuple[float, float], ...] | None = None
     closed: bool | None = None
+    layer: str | None = None
+    color_index: int | None = None
+    text: str | None = None
+    position: tuple[float, float, float] | None = None
+    height: float | None = None
+    rotation: float | None = None
+    width: float | None = None
+    xline1: tuple[float, float, float] | None = None
+    xline2: tuple[float, float, float] | None = None
+    dim_line_point: tuple[float, float, float] | None = None
+
+    @staticmethod
+    def _validate_fields(
+        item: Mapping[str, Any],
+        required: set[str],
+        *,
+        family: str,
+    ) -> None:
+        allowed = required | {"layer", "color_index"}
+        if not required <= set(item) or set(item) - allowed:
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                f"batch {family} must use the exact typed schema plus optional style fields",
+            )
+
+    @staticmethod
+    def _style(item: Mapping[str, Any]) -> tuple[str | None, int | None]:
+        layer = item.get("layer")
+        if layer is not None and (
+            not isinstance(layer, str) or not layer.strip() or len(layer) > 255
+        ):
+            raise BridgeProtocolError("INVALID_PARAMS", "layer must be a non-empty string <=255 chars")
+        color_index = item.get("color_index")
+        if color_index is not None and (
+            isinstance(color_index, bool)
+            or not isinstance(color_index, int)
+            or not 0 <= color_index <= 256
+        ):
+            raise BridgeProtocolError("INVALID_PARAMS", "color_index must be an integer in 0..256")
+        return layer, color_index
+
+    @staticmethod
+    def _text(value: Any) -> str:
+        if not isinstance(value, str) or not value.strip() or len(value) > 4096:
+            raise BridgeProtocolError("INVALID_PARAMS", "text must be a non-empty string <=4096 chars")
+        return value
+
+    @staticmethod
+    def _rotation(value: Any) -> float:
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise BridgeProtocolError("INVALID_PARAMS", "rotation must be a finite radian angle")
+        result = float(value)
+        if not math.isfinite(result) or abs(result) > math.tau:
+            raise BridgeProtocolError("INVALID_PARAMS", "rotation must be finite within [-2π, 2π]")
+        return result
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> BatchCreateEntitySpec:
         item = _require_mapping(value, code="INVALID_PARAMS", field_name="batch entity")
         kind = item.get("kind")
+        layer, color_index = cls._style(item)
         if kind == "line":
-            if set(item) != {"kind", "start", "end"}:
-                raise BridgeProtocolError("INVALID_PARAMS", "batch line must use the exact typed schema")
+            cls._validate_fields(item, {"kind", "start", "end"}, family="line")
             start = _point3(item.get("start"), "start")
             end = _point3(item.get("end"), "end")
             if start == end:
                 raise BridgeProtocolError("INVALID_PARAMS", "line start and end must differ")
-            return cls(kind="line", start=start, end=end)
+            return cls(kind="line", start=start, end=end, layer=layer, color_index=color_index)
         if kind == "circle":
-            if set(item) != {"kind", "center", "radius"}:
-                raise BridgeProtocolError("INVALID_PARAMS", "batch circle must use the exact typed schema")
+            cls._validate_fields(item, {"kind", "center", "radius"}, family="circle")
             return cls(
                 kind="circle",
                 center=_point3(item.get("center"), "center"),
                 radius=_positive_float(item.get("radius"), "radius"),
+                layer=layer,
+                color_index=color_index,
             )
         if kind == "arc":
-            if set(item) != {"kind", "center", "radius", "start_angle", "end_angle"}:
-                raise BridgeProtocolError("INVALID_PARAMS", "batch arc must use the exact typed schema")
+            cls._validate_fields(
+                item,
+                {"kind", "center", "radius", "start_angle", "end_angle"},
+                family="arc",
+            )
             start_angle = _arc_angle(item.get("start_angle"), "start_angle")
             end_angle = _arc_angle(item.get("end_angle"), "end_angle")
             if abs(start_angle - end_angle) <= 1e-12:
@@ -719,12 +806,11 @@ class BatchCreateEntitySpec:
                 radius=_positive_float(item.get("radius"), "radius"),
                 start_angle=start_angle,
                 end_angle=end_angle,
+                layer=layer,
+                color_index=color_index,
             )
         if kind == "lwpolyline":
-            if set(item) != {"kind", "points", "closed"}:
-                raise BridgeProtocolError(
-                    "INVALID_PARAMS", "batch lwpolyline must use the exact typed schema"
-                )
+            cls._validate_fields(item, {"kind", "points", "closed"}, family="lwpolyline")
             points = _points2(item.get("points"))
             closed = item.get("closed")
             if not isinstance(closed, bool):
@@ -734,27 +820,103 @@ class BatchCreateEntitySpec:
                     "INVALID_PARAMS",
                     "closed polyline requires at least three vertices and must not repeat the first point",
                 )
-            return cls(kind="lwpolyline", points=points, closed=closed)
+            return cls(
+                kind="lwpolyline",
+                points=points,
+                closed=closed,
+                layer=layer,
+                color_index=color_index,
+            )
+        if kind in {"text", "mtext"}:
+            required = {"kind", "text", "position", "height", "rotation"}
+            if kind == "mtext":
+                required.add("width")
+            cls._validate_fields(item, required, family=str(kind))
+            return cls(
+                kind=str(kind),
+                text=cls._text(item.get("text")),
+                position=_point3(item.get("position"), "position"),
+                height=_positive_float(item.get("height"), "height"),
+                rotation=cls._rotation(item.get("rotation")),
+                width=(
+                    _positive_float(item.get("width"), "width")
+                    if kind == "mtext"
+                    else None
+                ),
+                layer=layer,
+                color_index=color_index,
+            )
+        if kind in {"aligned_dimension", "linear_dimension"}:
+            required = {"kind", "xline1", "xline2", "dim_line_point"}
+            if kind == "linear_dimension":
+                required.add("rotation")
+            cls._validate_fields(item, required, family=str(kind))
+            xline1 = _point3(item.get("xline1"), "xline1")
+            xline2 = _point3(item.get("xline2"), "xline2")
+            if xline1 == xline2:
+                raise BridgeProtocolError("INVALID_PARAMS", "dimension extension points must differ")
+            return cls(
+                kind=str(kind),
+                xline1=xline1,
+                xline2=xline2,
+                dim_line_point=_point3(item.get("dim_line_point"), "dim_line_point"),
+                rotation=(
+                    cls._rotation(item.get("rotation"))
+                    if kind == "linear_dimension"
+                    else None
+                ),
+                layer=layer,
+                color_index=color_index,
+            )
         raise BridgeProtocolError("INVALID_PARAMS", "batch entity kind is not enabled")
 
     def to_dict(self) -> dict[str, Any]:
         if self.kind == "line":
-            return {"kind": self.kind, "start": list(self.start or ()), "end": list(self.end or ())}
-        if self.kind == "circle":
-            return {"kind": self.kind, "center": list(self.center or ()), "radius": self.radius}
-        if self.kind == "arc":
-            return {
+            result: dict[str, Any] = {
+                "kind": self.kind,
+                "start": list(self.start or ()),
+                "end": list(self.end or ()),
+            }
+        elif self.kind == "circle":
+            result = {"kind": self.kind, "center": list(self.center or ()), "radius": self.radius}
+        elif self.kind == "arc":
+            result = {
                 "kind": self.kind,
                 "center": list(self.center or ()),
                 "radius": self.radius,
                 "start_angle": self.start_angle,
                 "end_angle": self.end_angle,
             }
-        return {
-            "kind": self.kind,
-            "points": [list(point) for point in self.points or ()],
-            "closed": self.closed,
-        }
+        elif self.kind == "lwpolyline":
+            result = {
+                "kind": self.kind,
+                "points": [list(point) for point in self.points or ()],
+                "closed": self.closed,
+            }
+        elif self.kind in {"text", "mtext"}:
+            result = {
+                "kind": self.kind,
+                "text": self.text,
+                "position": list(self.position or ()),
+                "height": self.height,
+                "rotation": self.rotation,
+            }
+            if self.kind == "mtext":
+                result["width"] = self.width
+        else:
+            result = {
+                "kind": self.kind,
+                "xline1": list(self.xline1 or ()),
+                "xline2": list(self.xline2 or ()),
+                "dim_line_point": list(self.dim_line_point or ()),
+            }
+            if self.kind == "linear_dimension":
+                result["rotation"] = self.rotation
+        if self.layer is not None:
+            result["layer"] = self.layer
+        if self.color_index is not None:
+            result["color_index"] = self.color_index
+        return result
 
 
 @dataclass(frozen=True)
@@ -1376,6 +1538,7 @@ class BridgeRequest:
     operation: str
     params: (
         DocumentIdentityParams
+        | DocumentIdentityInitializeParams
         | LogicalBeginParams
         | MetadataGetParams
         | MetadataSetParams
@@ -1421,14 +1584,10 @@ class BridgeRequest:
             code="INVALID_PARAMS",
             field_name="params",
         )
-        if operation in {
-            "bridge.document.identity",
-            "bridge.document.snapshot",
-            "bridge.document.state",
-            "viewport.visual_style.get",
-        }:
+        if operation == "bridge.document.identity.initialize":
             params: (
                 DocumentIdentityParams
+                | DocumentIdentityInitializeParams
                 | BatchCreateParams
                 | BatchInsertBlocksParams
                 | BatchTransformParams
@@ -1443,7 +1602,14 @@ class BridgeRequest:
                 | RecoveryResolveParams
                 | RecoveryFinalizeParams
                 | Mapping[str, Any]
-            ) = DocumentIdentityParams.from_dict(raw_params)
+            ) = DocumentIdentityInitializeParams.from_dict(raw_params)
+        elif operation in {
+            "bridge.document.identity",
+            "bridge.document.snapshot",
+            "bridge.document.state",
+            "viewport.visual_style.get",
+        }:
+            params = DocumentIdentityParams.from_dict(raw_params)
         elif operation == "viewport.visual_style.set":
             params = ViewportVisualStyleSetParams.from_dict(raw_params)
         elif operation == "bridge.logical.begin":

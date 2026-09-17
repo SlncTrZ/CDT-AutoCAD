@@ -10,6 +10,31 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 - No standing COM-to-native parity program; existing COM/headless/native routes remain intentional according to their documented assurance scope.
 
 
+## [0.4.0rc3] - 2026-09-17
+
+### Added
+
+- Added public `native_document_identity_initialize` for explicit provider-owned document-lineage bootstrap on a new **empty current space**. The PID is generated internally, persisted in the DWG NOD, independently read back and paired with the schema-v3 zero-entity predecessor fingerprint; caller-supplied PID and implicit legacy/non-empty adoption are refused.
+- Expanded bounded native batch/feature create payloads with TEXT, MTEXT, aligned dimension and linear dimension plus optional layer/color assignment, preserving caller PID/fingerprint binding and verified recovery.
+- Added reusable Session-1 U1 acceptance profiles for exact bridge reload and floor-plan hardening verification.
+
+### Fixed
+
+- `document_save` now returns success only after immediate persisted-clean verification (`Saved=true`, `DBMOD=0`) and quarantines a dirty/ambiguous postcondition instead of reporting a weak acknowledgement as success.
+- Cached live COM application reuse now repairs connection readiness after successful metadata probing, closing the reproduced `document_info`-works / status-disconnected path without weakening stale-proxy failure handling.
+- Native dimension creation now forces AutoCAD layout/recompute before provisional fingerprinting and validates equivalent dimension-line geometry instead of requiring an unstable definition-point parameterization.
+- Provisional semantic rebuild now re-extracts style resources in the active transaction, so AutoCAD side effects such as automatic `Defpoints` creation are present in both provisional and persisted fingerprints. Create validation preserves every predecessor resource while allowing additive native resources; non-create invariants remain exact.
+
+### Verification
+
+- Focused native/public/schema suite: **81/81 passed**.
+- Full Linux: **412 passed / 11 skipped**.
+- Full Windows `.171`: **411 passed / 12 skipped**.
+- Managed .NET Release/x64 build against AutoCAD 2027 SDK: PASS / 0 errors; inherited Autodesk/.NET MSB3277 warning families remain unchanged.
+- Exact-source AutoCAD 2027 Session-1 U1 live acceptance: PID bootstrap read-back verified; LINE/TEXT/MTEXT/aligned-dimension/linear-dimension each `COMMITTED_VERIFIED`; zero pending recovery; final save `Saved=true`, `DBMOD=0`, `persisted_clean=true`.
+- Document fingerprint schema remains v3; callers must re-read/rebaseline predecessor state after upgrading bridge/provider implementation.
+
+
 ## [0.4.0rc2] - 2026-09-16
 
 ### Changed
