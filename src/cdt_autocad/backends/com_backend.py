@@ -705,6 +705,13 @@ class ComBackend(AutoCADBackend):
             "platform": sys.platform,
         }
 
+    def _invalidate_cached_app(self, generation: int) -> None:
+        self._apps.pop(generation, None)
+        self._connected = False
+        self._application_metadata = None
+        self._document_scope_key = None
+        self._created_viewport_handles.clear()
+
     def _app(self) -> Any:
         if not self.runtime_available:
             reason = self._runtime_reason() or "unknown"
@@ -712,10 +719,26 @@ class ComBackend(AutoCADBackend):
         generation = int(getattr(_THREAD_STATE, "generation", self._generation))
         app = self._apps.get(generation)
         if app is not None:
-            if self._application_metadata is None:
-                self._application_metadata = _inspect_application(app)
-            self._connected = True
-            return app
+            try:
+                _com_property_with_busy_retry(app, "Name")
+            except Exception as stale_error:
+                if _com_hresult(stale_error) in _COM_BUSY_HRESULTS:
+                    self._connected = True
+                    return app
+                self._invalidate_cached_app(generation)
+                if self._transaction_depth > 0:
+                    reason = (
+                        "AutoCAD COM application disappeared while a tracked transaction was open; "
+                        "provider restart is required before later mutation"
+                    )
+                    self._quarantine_integrity(reason)
+                    raise StateConflictError(reason) from stale_error
+                app = None
+            else:
+                if self._application_metadata is None:
+                    self._application_metadata = _inspect_application(app)
+                self._connected = True
+                return app
 
         progid = self.settings.com_progid
         _ensure_autocad_type_library()

@@ -21,7 +21,8 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 ### Fixed
 
 - `document_save` now returns success only after immediate persisted-clean verification (`Saved=true`, `DBMOD=0`) and quarantines a dirty/ambiguous postcondition instead of reporting a weak acknowledgement as success.
-- Cached live COM application reuse now repairs connection readiness after successful metadata probing, closing the reproduced `document_info`-works / status-disconnected path without weakening stale-proxy failure handling.
+- Cached live COM application reuse now repairs connection readiness after successful metadata probing, closing the reproduced `document_info`-works / status-disconnected path.
+- Fixed D8 stale COM application reuse after real AutoCAD process replacement: cached proxies are liveness-probed before use; confirmed-dead generation state is evicted and an idle backend reattaches through the configured attach/start policy. COM busy is not classified as process death, and process loss during a tracked transaction quarantines fail-closed rather than blind-retrying a mutation.
 - Native dimension creation now forces AutoCAD layout/recompute before provisional fingerprinting and validates equivalent dimension-line geometry instead of requiring an unstable definition-point parameterization.
 - Provisional semantic rebuild now re-extracts style resources in the active transaction, so AutoCAD side effects such as automatic `Defpoints` creation are present in both provisional and persisted fingerprints. Create validation preserves every predecessor resource while allowing additive native resources; non-create invariants remain exact.
 
@@ -33,6 +34,7 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 - Managed .NET Release/x64 build against AutoCAD 2027 SDK: PASS / 0 errors; inherited Autodesk/.NET MSB3277 warning families remain unchanged.
 - Exact-source AutoCAD 2027 Session-1 U1 live acceptance: PID bootstrap read-back verified; LINE/TEXT/MTEXT/aligned-dimension/linear-dimension each `COMMITTED_VERIFIED`; zero pending recovery; final save `Saved=true`, `DBMOD=0`, `persisted_clean=true`.
 - Document fingerprint schema remains v3; callers must re-read/rebaseline predecessor state after upgrading bridge/provider implementation.
+- D8 verification on 2026-09-18: focused stale/busy/transaction recovery tests **3/3 passed**; full Linux **415 / 11 skipped**; full Windows `.171` **414 / 12 skipped**; AutoCAD 2027 Session-1 live process-replacement fixture rebound the same backend object from cached PID `25048` to replacement PID `26788` with `connected=true` and zero tracked transaction depth.
 
 
 ## [0.4.0rc2] - 2026-09-16

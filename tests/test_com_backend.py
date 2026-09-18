@@ -612,6 +612,126 @@ def test_attach_only_policy_never_starts_autocad(settings, monkeypatch):
         backend._executor = None
 
 
+def test_cached_stale_app_is_evicted_and_reattached_before_use(settings, monkeypatch):
+    class StaleApp:
+        @property
+        def Name(self):
+            raise RuntimeError(-2147023174, "RPC server unavailable")
+
+    replacement = SimpleNamespace(
+        Visible=True,
+        Name="AutoCAD",
+        Version="26.0s (LMS Tech)",
+        Caption="Autodesk AutoCAD 2027",
+        FullName=r"C:\Program Files\Autodesk\AutoCAD 2027\acad.exe",
+    )
+    calls = _fake_com_runtime(
+        monkeypatch,
+        active_error=None,
+        dispatched=replacement,
+    )
+    backend = ComBackend(
+        replace(
+            settings,
+            backend="com",
+            com_attach_policy="attach_only",
+            com_progid="AutoCAD.Application.26",
+        )
+    )
+    try:
+        generation = backend._generation
+        backend._apps[generation] = StaleApp()
+        backend._application_metadata = {"release": "2027"}
+        backend._connected = True
+
+        assert backend._app() is replacement
+        assert calls == [("attach", "AutoCAD.Application.26")]
+        assert backend._apps[generation] is replacement
+        assert backend.status()["connected"] is True
+        assert backend.status()["application"]["release"] == "2027"
+    finally:
+        backend.shutdown()
+
+
+def test_busy_cached_app_is_not_misclassified_as_stale(settings, monkeypatch):
+    app = SimpleNamespace(Name="AutoCAD")
+    backend = ComBackend(replace(settings, backend="com"))
+    monkeypatch.setattr(cb, "_WIN32", True)
+    monkeypatch.setattr(cb, "_COM_IMPORTS_OK", True)
+
+    calls = []
+    monkeypatch.setattr(
+        cb,
+        "_com_property_with_busy_retry",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError(cb._RPC_E_CALL_REJECTED, "Call was rejected by callee")
+        ),
+    )
+    monkeypatch.setattr(
+        cb,
+        "win32com",
+        SimpleNamespace(
+            client=SimpleNamespace(
+                GetActiveObject=lambda progid: calls.append(("attach", progid)),
+            )
+        ),
+        raising=False,
+    )
+    try:
+        generation = backend._generation
+        backend._apps[generation] = app
+        assert backend._app() is app
+        assert calls == []
+        assert backend._apps[generation] is app
+        assert backend.status()["connected"] is True
+    finally:
+        backend.shutdown()
+
+
+def test_stale_app_during_tracked_transaction_fails_closed(settings, monkeypatch):
+    class StaleApp:
+        @property
+        def Name(self):
+            raise RuntimeError(-2147023174, "RPC server unavailable")
+
+    replacement = SimpleNamespace(
+        Visible=True,
+        Name="AutoCAD",
+        Version="26.0s (LMS Tech)",
+        Caption="Autodesk AutoCAD 2027",
+        FullName=r"C:\Program Files\Autodesk\AutoCAD 2027\acad.exe",
+    )
+    calls = _fake_com_runtime(
+        monkeypatch,
+        active_error=None,
+        dispatched=replacement,
+    )
+    backend = ComBackend(
+        replace(
+            settings,
+            backend="com",
+            com_attach_policy="attach_only",
+            com_progid="AutoCAD.Application.26",
+        )
+    )
+    try:
+        generation = backend._generation
+        backend._apps[generation] = StaleApp()
+        backend._transaction_depth = 1
+
+        with pytest.raises(StateConflictError, match="tracked transaction"):
+            backend._app()
+
+        assert calls == []
+        assert generation not in backend._apps
+        status = backend.status()
+        assert status["connected"] is False
+        assert status["integrity_uncertain"] is True
+    finally:
+        backend._transaction_depth = 0
+        backend.shutdown()
+
+
 def test_attach_or_start_dispatches_only_after_attach_fails(settings, monkeypatch):
     app = SimpleNamespace(
         Visible=False,

@@ -1,7 +1,7 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-17 +07:00
-> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening
+> Updated: 2026-09-18 +07:00
+> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening + D8 stale-COM recovery
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
 > Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.3-u1` · last published/tagged release remains `v0.4.0rc2`
 
@@ -26,6 +26,7 @@ Current live native requirements already measured PASS on `.171` AutoCAD 2027 Se
 - B4 caller-state binding live acceptance PASS on a disposable PID-bearing DWG: wrong document PID refused with exact fingerprint/entity-count preservation, stale parent refused with zero mutation, valid caller predecessor committed, and replaying the old predecessor after commit refused without changing accepted state.
 - U1 exact-source Session-1 acceptance PASS on 2026-09-17 after the final bootstrap lock-scope review: explicit document lineage bootstrap holds the document lock through PID write/read-back and zero-entity semantic snapshot; LINE/TEXT/MTEXT/aligned-dimension/linear-dimension batches each returned `COMMITTED_VERIFIED`; native layer/color read-back matched; zero pending recovery remained; final `document.Save()` read-back was `Saved=true`, `DBMOD=0`. The deployed bridge hash in this final reload evidence is `0245e91fa4c067b86ec3fdb0797c709a661f78125cd12b0097789ec9f952661a`.
 - U1 acceptance also reproduced and fixed AutoCAD dimension canonicalization: provisional layout is recomputed before fingerprinting, create validation accepts only the same dimension line rather than an unstable point parameterization, and in-transaction style re-extraction includes AutoCAD-created `Defpoints`.
+- D8 live restart/rebind acceptance PASS on 2026-09-18: one source `ComBackend` cached AutoCAD 2027 PID `25048`, the fixture terminated exactly that process, launched a replacement in the same Interactive Session 1, observed ROT replacement PID `26788`, and the unchanged backend object detected the dead cached proxy, evicted generation-local app/document/view state and rebound to PID `26788`; final `connected=true`, `transaction_depth=0`. The fixture did not restart the backend object between cache and rebind. A tracked transaction is intentionally not auto-rebound after process death; that case quarantines and requires provider restart before later mutation.
 
 Canonical current evidence (machine-readable artifacts retained with the internal acceptance record
 under these file names; not part of the published tree):
