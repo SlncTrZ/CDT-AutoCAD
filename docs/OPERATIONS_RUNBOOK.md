@@ -1,7 +1,7 @@
 # Operations Runbook — CDT-AutoCAD
 
 > Operational start: 2026-09-12
-> Updated: 2026-09-17 +07:00
+> Updated: 2026-09-19 +07:00
 > Current source product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools`
 > Current native bridge candidate: `0.8.6-d18` · last published/tagged release remains `v0.4.0rc2`
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
@@ -47,7 +47,7 @@ cdt-autocad --transport stdio
 Set the same COM environment plus `CDT_AUTOCAD_AUTH_TOKEN`, then run:
 
 ```text
-cdt-autocad-supervisor --host 127.0.0.1 --port 8000 --repo-root H:\Develop\CDT-AutoCAD --runtime-dir H:\Develop\CDT-AutoCAD\.runtime\hot-reload --require-bridge
+cdt-autocad-supervisor --host 127.0.0.1 --port 8000 --repo-root <repo-root> --runtime-dir <repo-root>/.runtime/hot-reload --require-bridge
 ```
 
 The supervisor refuses unauthenticated HTTP startup. Binding beyond loopback also requires the explicit remote-HTTP opt-in.
@@ -126,17 +126,17 @@ For important drawing steps:
 
 ## 8. Logs and evidence
 
-`.runtime/`, local `artifacts/`, `_private/` and `_test_workspace/` are intentionally local/ignored operational areas. They are not publication targets by default.
+Runtime directories, local artifacts, test workspaces and maintainer-only evidence are intentionally local/ignored operational areas. They are not publication targets by default.
 
-Canonical reviewed machine evidence is retained outside `_private` under ignored `artifacts/internal-evidence/`; the durable internal verdict/state is distilled into `_private/AUDIT.md` and `_private/HANDOFF.md`. Raw evidence must never be swept into a public/product commit. Structured diagnostics are operational evidence, not recovery authority; see `OBSERVABILITY.md`.
+Raw machine evidence must never be swept into a public/product commit. Published acceptance claims belong in `CURRENT_CHECKPOINT.md` and `LIVE_ACCEPTANCE.md`; structured diagnostics are operational evidence, not recovery authority. See `OBSERVABILITY.md`.
 
 ## 9. Verification environment
 
-For the shared Windows workspace, run the Windows regression with the repository `src` directory on `PYTHONPATH` and let the Windows virtual environment supply compiled dependencies:
+On Windows, run the regression with the repository `src` directory on `PYTHONPATH` and let a platform-correct virtual environment supply compiled dependencies:
 
 ```text
-$env:PYTHONPATH='H:\Develop\CDT-AutoCAD\src'
-C:\Users\truon\.venvs\CDT-AutoCAD\Scripts\python.exe -m pytest -q -p no:cacheprovider
+$env:PYTHONPATH='<repo-root>\src'
+<venv>\Scripts\python.exe -m pytest -q -p no:cacheprovider
 ```
 
 Do **not** add the shared Linux `.deps` directory to Windows `PYTHONPATH`; it contains Linux-native wheels and will produce false NumPy/Pydantic import failures on Windows.

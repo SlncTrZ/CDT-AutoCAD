@@ -1,6 +1,6 @@
 # Support
 
-CDT-AutoCAD is currently operated as an RC/preview product under the `0.4.0rc2 / autocad-generic-v1-rc2` contract.
+CDT-AutoCAD is currently operated as an RC/preview product from source candidate `0.4.0rc3 / autocad-generic-v1-rc3`; the last published/tagged release remains `v0.4.0rc2`.
 
 ## Supported operational lane
 
@@ -10,7 +10,8 @@ Primary live support target:
 - Windows x64;
 - ActiveX COM `26.0` / `AutoCAD.Application.26`;
 - Managed .NET `net10.0-windows`;
-- provider contract `autocad-generic-v1-rc2` with 86 public MCP tools;
+- provider contract `autocad-generic-v1-rc3` with 87 public MCP tools;
+- native bridge candidate `0.8.6-d18` for the current source tree;
 - native strong-integrity writes require caller-supplied document PID + predecessor fingerprint binding.
 
 The `ezdxf` backend is supported for its documented headless DXF scope. Capabilities are not generalized across backends or AutoCAD versions without evidence.

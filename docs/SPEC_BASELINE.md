@@ -30,7 +30,7 @@ Do not substitute one for the other.
 - A common-spec update requires an explicit pin update and conformance review; never silently track hub `main`.
 - Provider-local implementation may evolve without rewriting the frozen snapshot when common semantics do not change.
 - No runtime import/dependency on another CDT provider repository is permitted.
-- Provider roadmap lives only in `_private/DEVELOP_PLAN.md`; no published roadmap mirror is maintained here.
+- Provider roadmap/session planning is maintainer-local; no published roadmap mirror is maintained here and it never overrides the pinned spec or current public authorities.
 
 ## Extraction baseline
 

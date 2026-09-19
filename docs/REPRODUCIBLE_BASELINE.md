@@ -1,6 +1,6 @@
 # Reproducible Baseline — CDT-AutoCAD
 
-> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-16 +07:00
+> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-19 +07:00
 > Canonical resolver workflow: **`cdt_autocad.dependency_lock` + pip 26.1.2 `pip lock` → LF-normalized PEP 751 platform lock → install from that lock**.
 
 ## 1. Decision
@@ -82,19 +82,19 @@ Example on Linux:
 
 ```bash
 PYTHONPATH=src python3 -m cdt_autocad.provenance \
-  --output artifacts/internal-evidence/runtime-linux.json
+  --output <evidence-dir>/runtime-linux.json
 ```
 
 Example on the primary Windows host with an installed bridge artifact:
 
 ```powershell
-$env:PYTHONPATH='H:\Develop\CDT-AutoCAD\src'
+$env:PYTHONPATH='<repo-root>\src'
 python -m cdt_autocad.provenance `
   --dll "$env:APPDATA\Autodesk\ApplicationPlugins\CDT.AutoCAD.Bridge.bundle\Contents\Windows\CDT.AutoCAD.Bridge.dll" `
-  --output artifacts\internal-evidence\runtime-windows.json
+  --output <evidence-dir>\runtime-windows.json
 ```
 
-Provenance output belongs under ignored `artifacts/internal-evidence/`; it is a local observation record, not a published artifact. At session close, distill the verdict/hash that matters into `_private/AUDIT.md` or `_private/HANDOFF.md` rather than growing a second private documentation tree.
+Provenance output is a maintainer-local observation record, not a published artifact. Published certification claims must be distilled into the canonical current-status/live-acceptance documents rather than making raw manifests part of the public contract.
 
 A manifest records **what was observed**, not certification. A DLL hash that differs from accepted evidence must remain explicitly unaccepted until the corresponding native gate passes.
 
@@ -146,4 +146,4 @@ autocad_pid = 7888
 autocad_session = 1
 ```
 
-The machine-readable manifests used for this closure remain ignored local evidence under `artifacts/internal-evidence/`; the hashes and verdict above are the public audit summary. A future source, dependency, bridge or runtime identity change requires a fresh provenance run rather than reusing this closure record.
+The machine-readable manifests used for this historical closure remain maintainer-local evidence; the hashes and verdict above are the public audit summary. A future source, dependency, bridge or runtime identity change requires a fresh provenance run rather than reusing this closure record.

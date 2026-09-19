@@ -6,8 +6,22 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 
 ### Planned
 
+- Final exact-source recertification on the committed D18 tree before advancing the internal assurance score to 99/100.
 - Production-driven AutoCAD capability expansion only where a concrete CDT-Engineer/Domain workflow requires it and defines a verification invariant.
 - No standing COM-to-native parity program; existing COM/headless/native routes remain intentional according to their documented assurance scope.
+
+### Changed
+
+- D15 closed request/checkpoint ownership: durable recovery metadata exposes only owner fingerprints, foreign adoption refuses before CAD mutation, and the originating owner can restore the exact predecessor after lost response.
+- D16 unified COM/native mutation ownership under one provider-local writer authority and one uncertainty quarantine; timeout, cancellation, process loss and late completion block cross-lane mutation fail-closed.
+- D17 unified Save/SaveAs persisted-clean verification: success requires the same bound target plus `Saved=true` and `DBMOD=0`; dirty or unverifiable post-state quarantines later mutation.
+- D18 made document-PID bootstrap atomic with respect to identity: active binding is verified before side effect, provisional PID write/readback/semantic extraction share one native transaction, and pre-commit failure aborts orphan lineage. Native bridge candidate advanced to `0.8.6-d18`.
+- Documentation current-state authorities were synchronized to RC3 / 87 tools / D18 while preserving historical RC1/RC2 evidence under its original identity.
+
+### Verification
+
+- D18 closure: exact-lock Linux **446 passed / 11 skipped + Ruff PASS**; exact-lock Windows **445 passed / 12 skipped + Ruff PASS**; C# Release/x64 **0 errors**; AutoCAD 2027 Session-1 active-switch/post-PID-fault/success acceptance PASS.
+- Final exact-source recertification remains a separate pending gate and is not claimed complete by this changelog entry.
 
 
 ## [0.4.0rc3] - 2026-09-17

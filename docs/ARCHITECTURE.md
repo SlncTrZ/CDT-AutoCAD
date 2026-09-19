@@ -1,7 +1,7 @@
 # Architecture — CDT-AutoCAD
 
 > Canonical public architecture authority for the CDT-AutoCAD provider.
-> Updated: 2026-09-15
+> Updated: 2026-09-19
 
 ## 1. Mission
 
@@ -161,6 +161,6 @@ Related documents have narrower roles:
 - [`LIVE_ACCEPTANCE.md`](LIVE_ACCEPTANCE.md) — accepted live evidence and scope;
 - [`OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) — operational procedure;
 - [`SPEC_BASELINE.md`](SPEC_BASELINE.md) and `../specs/**` — pinned upstream control-plane inputs, not the current provider architecture;
-- `_private/DEVELOP_PLAN.md` — maintainer roadmap, intentionally unpublished and not architecture authority.
+- maintainer planning/session notes — intentionally unpublished and never architecture authority.
 
 Historical evidence or roadmap text must never override this architecture definition. If architecture changes, update this file explicitly and then reconcile dependent docs.

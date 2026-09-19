@@ -1,6 +1,12 @@
 # CDT-AutoCAD
 
 > Provider `0.4.0rc3` · Contract `autocad-generic-v1-rc3` · 87 public MCP tools · AutoCAD 2027 primary certification lane · **Launch-ready / Operational RC**
+>
+> **CDT certified host target:** AutoCAD **2027 full on Windows x64**. Current
+> acceptance and quality scoring are bound to this target only. Other AutoCAD
+> releases are unverified compatibility candidates that may be added later;
+> they are not implied supported today and do not reduce the current target's
+> quality score.
 
 CDT-AutoCAD is a **Generic CAD Execution Engine** for reliable automation of real AutoCAD drawings.
 

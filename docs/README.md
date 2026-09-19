@@ -1,10 +1,10 @@
 # CDT-AutoCAD Documentation Index
 
-> Updated: 2026-09-17
+> Updated: 2026-09-19
 
-This page defines the documentation structure and authority boundaries for CDT-AutoCAD.
+This page defines the **published documentation structure** and authority boundaries for CDT-AutoCAD.
 
-The governing rule is simple: **one concern, one source of truth**. Architecture, current status, roadmap and session notes must not compete with each other.
+The governing rule is simple: **one concern, one source of truth**. Published architecture, current status, contract, operations and evidence documents must not compete with each other. Maintainer-local planning, session notes and raw machine evidence are intentionally outside the published documentation contract and cannot override it.
 
 ## 1. Public documentation authority
 
@@ -21,7 +21,7 @@ The governing rule is simple: **one concern, one source of truth**. Architecture
 | Drawing quality | [`DRAWING_QUALITY_ACCEPTANCE.md`](DRAWING_QUALITY_ACCEPTANCE.md) | User-facing drawing acceptance criteria |
 | Drawing execution QA | [`DRAWING_EXECUTION_QA_WORKFLOW.md`](DRAWING_EXECUTION_QA_WORKFLOW.md) | Drawing build/review procedure |
 | Reproducible baseline | [`REPRODUCIBLE_BASELINE.md`](REPRODUCIBLE_BASELINE.md) | Reproduction/build baseline |
-| Upstream spec pin | [`SPEC_BASELINE.md`](SPEC_BASELINE.md) | Which CDT-Engineer control-plane snapshot this provider consumes |
+| Upstream spec pin | [`SPEC_BASELINE.md`](SPEC_BASELINE.md) | Pinned CDT-Engineer control-plane snapshot consumed by this provider |
 | Marketing demo | [`MARKETING_DEMO_RUNBOOK.md`](MARKETING_DEMO_RUNBOOK.md) | Public-safe demo procedure and approved claims |
 
 ### Important distinction: `docs/ARCHITECTURE.md` vs `specs/ARCHITECTURE.md`
@@ -30,36 +30,20 @@ The governing rule is simple: **one concern, one source of truth**. Architecture
 
 `specs/ARCHITECTURE.md` is a **frozen upstream snapshot** copied from the pinned CDT-Engineer control-plane baseline. Files under `specs/` are read-only inputs for provider work and must not be treated as current CDT-AutoCAD implementation status.
 
-## 2. Maintainer/private authority
+## 2. Source-of-truth rules
 
-Maintainer context is intentionally limited to exactly five ignored control files:
-
-| File | Sole responsibility |
-| --- | --- |
-| `_private/AUDIT.md` | Current internal audit/state verdict |
-| `_private/TECH_DEBT.md` | Known technical debt and explicit non-debt boundaries |
-| `_private/DEVELOP_PLAN.md` | **Only roadmap authority**: what may be worked on next and under which trigger |
-| `_private/HANDOFF.md` | What the latest work session completed |
-| `_private/NEXT_SESSION.md` | Where the next session should start |
-
-No additional TODO/roadmap/checkpoint/history tree belongs under `_private/`. Raw machine evidence worth retaining belongs under ignored `artifacts/internal-evidence/`.
-
-Private files do not define public architecture or public contract behavior. Public docs must remain usable without them.
-
-## 3. What each document must not do
-
-To prevent source-of-truth drift:
+To prevent documentation drift:
 
 - `ARCHITECTURE.md` must not become a release diary or backlog.
-- `CURRENT_CHECKPOINT.md` must not design future architecture or schedule work.
-- `DEVELOP_PLAN.md` must not redefine current architecture or claim runtime evidence.
-- `AUDIT.md` must not become a roadmap.
-- `HANDOFF.md` and `NEXT_SESSION.md` are disposable continuity notes, not durable design authorities.
-- `LIVE_ACCEPTANCE.md` records evidence; it does not set product direction.
-- `CHANGELOG.md` records history; history never overrides current architecture/status docs.
+- `CURRENT_CHECKPOINT.md` reports current truth; it must not design future architecture or schedule work.
+- `LIVE_ACCEPTANCE.md` records accepted evidence; it does not set product direction.
+- `SEMANTIC_STATE_PROTOCOL.md` owns the normative state/recovery contract.
+- `OPERATIONS_RUNBOOK.md` owns consumer-visible operating procedure, not workstation-specific maintainer paths.
+- `CHANGELOG.md` records history; historical evidence never overrides current architecture/status docs.
 - `specs/**` remains pinned upstream input and is never silently edited to match local implementation.
+- Maintainer-local roadmap, debt, handoff and raw evidence remain unpublished and cannot be required to understand the public contract.
 
-## 4. Current product position
+## 3. Current product position
 
 As of 2026-09-19, CDT-AutoCAD is **launch-ready / operational RC** for its intended role as a Generic CAD Execution Engine, with D15–D18 assurance closures live-accepted on AutoCAD 2027.
 
@@ -73,24 +57,24 @@ execution_model: feature-based-chunks-streaming-v1
 native_bridge: 0.8.6-d18
 ```
 
-There is no known top-level caller-state, document-provenance, semantic-recovery or CAD-execution integrity blocker requiring more AutoCAD breadth before CDT-Engineer work begins. Filesystem containment remains explicitly bounded rather than race-free. New capability is opened only from a concrete downstream engineering need plus a verification invariant. See [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) for current measured state and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the stable boundary.
+The last published/tagged release remains `v0.4.0rc2`; RC3 is the current source candidate and still requires final exact-source recertification. See [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) for measured current state and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the stable product boundary.
 
-## 5. Change routing
+## 4. Change routing
 
-When a change occurs, update only the authority that owns it:
+When published truth changes, update the authority that owns it:
 
 - architecture/boundary/invariant changed → `ARCHITECTURE.md`;
 - current version/capability/gate changed → `CURRENT_CHECKPOINT.md`;
 - semantic-state contract changed → `SEMANTIC_STATE_PROTOCOL.md`;
 - new accepted live evidence → `LIVE_ACCEPTANCE.md`;
 - operational procedure changed → `OPERATIONS_RUNBOOK.md`;
-- future work priority/trigger changed → `_private/DEVELOP_PLAN.md`;
-- debt opened/closed → `_private/TECH_DEBT.md`;
-- session ends → overwrite `_private/HANDOFF.md` and `_private/NEXT_SESSION.md`.
+- security boundary changed → `THREAT_MODEL.md` and, where applicable, root `SECURITY.md`;
+- public tool behavior changed → `TOOL_GUIDE.md`;
+- reproducibility/provenance procedure changed → `REPRODUCIBLE_BASELINE.md`.
 
 If a change affects more than one concern, update each owning document, but do not copy whole sections between them.
 
-## 6. Publication boundary
+## 5. Publication boundary
 
 Repository-level public/legal/provenance files remain at the project root:
 

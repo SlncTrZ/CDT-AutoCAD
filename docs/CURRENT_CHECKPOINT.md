@@ -1,7 +1,7 @@
 # Current Checkpoint — CDT-AutoCAD
 
 > Updated: 2026-09-19
-> Status: **LAUNCH-READY / OPERATIONAL RC — B0–B4 CLOSED + U1 CORE LIVE-ACCEPTED**
+> Status: **LAUNCH-READY / OPERATIONAL RC — B0–B4, D8 AND D15–D18 CLOSED / LIVE PASS; FINAL EXACT-SOURCE RECERTIFICATION PENDING**
 > Last published/tagged release: `v0.4.0rc2` at `295a064`; current D18 source candidate is RC3 and awaits final exact-source recertification
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
 
@@ -104,7 +104,7 @@ Last published RC2 reproducible-release checkpoint remains `bcb5c66` / tag `v0.4
 - B1 actual-I/O containment fixtures remain PASS on both platforms; B0/B4 accepted AutoCAD live evidence remains unchanged in scope.
 - `git diff --check` and clean release-tree checks pass. C# bridge source was unchanged by B1/B2/B3; accepted bridge remains `0.8.2-mp7`.
 
-Detailed evidence scope remains in [`LIVE_ACCEPTANCE.md`](LIVE_ACCEPTANCE.md) and retained machine evidence under ignored `artifacts/internal-evidence/`.
+Detailed accepted evidence scope remains in [`LIVE_ACCEPTANCE.md`](LIVE_ACCEPTANCE.md). Raw machine manifests are maintainer-local observations and are intentionally not part of the published documentation contract.
 
 ## 6. Important current truth boundaries
 
