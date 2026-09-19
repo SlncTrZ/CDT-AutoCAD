@@ -10,8 +10,15 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
-from .protocol import MAX_BATCH_CHUNK_ENTITIES, MAX_LOGICAL_BATCH_ITEMS, LogicalBatchBinding
+from .protocol import (
+    MAX_BATCH_CHUNK_ENTITIES,
+    MAX_LOGICAL_BATCH_ITEMS,
+    LogicalBatchBinding,
+    owner_request_fingerprint,
+    redact_owner_capabilities,
+)
 
 
 class LogicalBatchError(RuntimeError):
@@ -47,7 +54,7 @@ class LogicalBatchJournal:
 
     def append(self, event: Mapping[str, Any]) -> None:
         payload = json.dumps(
-            dict(event), ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":")
+            redact_owner_capabilities(dict(event)), ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":")
         )
         with self.path.open("a", encoding="utf-8", newline="\n") as stream:
             stream.write(payload + "\n")
@@ -160,15 +167,26 @@ class NativeLogicalBatchExecutor:
         if not _is_fingerprint(expected_parent_fp):
             raise LogicalBatchError("INVALID_PARENT_FP", "expected_parent_fp must be canonical sha256")
 
+        owner_request_id = str(uuid4())
         try:
             begin = self.client.begin_logical_batch(
                 runtime_document_id,
                 document_pid=document_pid,
                 expected_parent_fp=expected_parent_fp,
+                request_id=owner_request_id,
             )
-            binding = self._validate_begin(begin, document_pid, expected_parent_fp)
+            binding = self._validate_begin(
+                begin,
+                document_pid,
+                expected_parent_fp,
+                owner_request_id,
+            )
         except Exception as exc:
-            binding = self._discover_logical_binding(document_pid, expected_parent_fp)
+            binding = self._discover_logical_binding(
+                document_pid,
+                expected_parent_fp,
+                owner_request_id,
+            )
             if binding is None:
                 self.journal.append(
                     {
@@ -314,6 +332,7 @@ class NativeLogicalBatchExecutor:
                     document_pid=document_pid,
                     checkpoint_id=binding.checkpoint_id,
                     checkpoint_artifact_fp=binding.checkpoint_artifact_fp,
+                    owner_request_id=binding.owner_request_id,
                     accepted_post_fp=current_fp,
                 )
             except Exception as exc:
@@ -399,7 +418,9 @@ class NativeLogicalBatchExecutor:
         self,
         document_pid: str,
         expected_parent_fp: str,
+        owner_request_id: str,
     ) -> LogicalBatchBinding | None:
+        owner_request_fp = owner_request_fingerprint(owner_request_id)
         try:
             matches = [
                 row
@@ -407,6 +428,7 @@ class NativeLogicalBatchExecutor:
                 if row.get("operation") == "logical.batch"
                 and row.get("document_pid") == document_pid
                 and row.get("expected_restore_fp") == expected_parent_fp
+                and row.get("owner_request_fp") == owner_request_fp
             ]
         except Exception:
             return None
@@ -419,6 +441,7 @@ class NativeLogicalBatchExecutor:
                     "checkpoint_id": row.get("checkpoint_id"),
                     "checkpoint_artifact_fp": row.get("checkpoint_artifact_fp"),
                     "expected_restore_fp": row.get("expected_restore_fp"),
+                    "owner_request_id": owner_request_id,
                 }
             )
         except Exception:
@@ -431,12 +454,14 @@ class NativeLogicalBatchExecutor:
         expected_parent_fp: str,
     ) -> bool:
         rows = self.client.recoveries_list()
+        owner_request_fp = owner_request_fingerprint(binding.owner_request_id)
         return any(
             row.get("checkpoint_id") == binding.checkpoint_id
             and row.get("checkpoint_artifact_fp") == binding.checkpoint_artifact_fp
             and row.get("expected_restore_fp") == expected_parent_fp
             and row.get("document_pid") == document_pid
             and row.get("operation") == "logical.batch"
+            and row.get("owner_request_fp") == owner_request_fp
             for row in rows
         )
 
@@ -482,6 +507,7 @@ class NativeLogicalBatchExecutor:
                 document_pid=document_pid,
                 checkpoint_id=binding.checkpoint_id,
                 checkpoint_artifact_fp=binding.checkpoint_artifact_fp,
+                owner_request_id=binding.owner_request_id,
                 expected_restore_fp=expected_parent_fp,
                 strategy="R2_CHECKPOINT_RESTORE",
             )
@@ -556,7 +582,10 @@ class NativeLogicalBatchExecutor:
 
     @staticmethod
     def _validate_begin(
-        receipt: Mapping[str, Any], document_pid: str, expected_parent_fp: str
+        receipt: Mapping[str, Any],
+        document_pid: str,
+        expected_parent_fp: str,
+        owner_request_id: str,
     ) -> LogicalBatchBinding:
         if (
             receipt.get("status") != "OPEN"
@@ -585,6 +614,11 @@ class NativeLogicalBatchExecutor:
             raise LogicalBatchError(
                 "INVALID_LOGICAL_BEGIN_RECEIPT",
                 "logical checkpoint restore fingerprint differs from requested predecessor",
+            )
+        if binding.owner_request_id != owner_request_id:
+            raise LogicalBatchError(
+                "INVALID_LOGICAL_BEGIN_RECEIPT",
+                "logical checkpoint owner differs from the originating request",
             )
         return binding
 

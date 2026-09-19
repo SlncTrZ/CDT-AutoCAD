@@ -4,6 +4,7 @@ Wing: code | Topic: production-native-surface | Updated: 2026-09-11 19:05
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -19,6 +20,10 @@ PRE = "sha256:" + "1" * 64
 POST = "sha256:" + "2" * 64
 CP = "cp:44444444-4444-4444-8444-444444444444"
 ART = "sha256:" + "3" * 64
+
+
+def _owner_fp(owner_request_id: str) -> str:
+    return "sha256:" + hashlib.sha256(owner_request_id.encode("ascii")).hexdigest()
 
 
 def _snapshot(fp: str, *, metadata=None):
@@ -42,6 +47,8 @@ class FakeNativeClient:
         self.recovery_calls = []
         self.state_calls = []
         self.visual_style_calls = []
+        self.logical_owner_request_id = None
+        self.metadata_owner_request_id = None
 
     def health(self):
         return {
@@ -114,6 +121,7 @@ class FakeNativeClient:
 
     def begin_logical_batch(self, runtime_document_id, **kwargs):
         self.begin_calls.append((runtime_document_id, kwargs))
+        self.logical_owner_request_id = kwargs["request_id"]
         return {
             "schema_version": 1,
             "status": "OPEN",
@@ -123,6 +131,7 @@ class FakeNativeClient:
                 "checkpoint_id": CP,
                 "checkpoint_artifact_fp": ART,
                 "expected_restore_fp": PRE,
+                "owner_request_id": self.logical_owner_request_id,
             },
         }
 
@@ -143,6 +152,7 @@ class FakeNativeClient:
                 "checkpoint_id": CP,
                 "checkpoint_artifact_fp": ART,
                 "expected_restore_fp": PRE,
+                "owner_request_id": self.logical_owner_request_id,
             },
         }
 
@@ -164,6 +174,7 @@ class FakeNativeClient:
 
     def metadata_set(self, runtime_document_id, **kwargs):
         pre = self.fp
+        self.metadata_owner_request_id = kwargs["request_id"]
         self.metadata[kwargs["namespace"]] = kwargs["value"]
         self.fp = POST
         return {
@@ -180,10 +191,13 @@ class FakeNativeClient:
                 "checkpoint_id": CP,
                 "checkpoint_artifact_fp": ART,
                 "expected_restore_fp": PRE,
+                "owner_request_id": self.metadata_owner_request_id,
             },
         }
 
     def recoveries_list(self):
+        if self.metadata_owner_request_id is None:
+            return []
         return [
             {
                 "checkpoint_id": CP,
@@ -191,6 +205,7 @@ class FakeNativeClient:
                 "expected_restore_fp": PRE,
                 "checkpoint_artifact_fp": ART,
                 "operation": "metadata.set",
+                "owner_request_fp": _owner_fp(self.metadata_owner_request_id),
                 "r1_context_available": True,
             }
         ]
@@ -448,6 +463,7 @@ def test_public_metadata_set_recovers_exact_predecessor_on_readback_mismatch(set
 def test_public_metadata_unknown_completion_discovers_checkpoint_and_recovers(settings, tmp_path):
     class TimeoutAfterNativeMutation(FakeNativeClient):
         def metadata_set(self, runtime_document_id, **kwargs):
+            self.metadata_owner_request_id = kwargs["request_id"]
             self.metadata[kwargs["namespace"]] = kwargs["value"]
             self.fp = POST
             raise TimeoutError("completion unknown")
@@ -471,6 +487,48 @@ def test_public_metadata_unknown_completion_discovers_checkpoint_and_recovers(se
     assert result["post_document_fp"] == PRE
     assert result["recovery_reason"] == "metadata dispatch completion became unknown"
     assert len(client.recovery_calls) == 1
+
+
+def test_public_metadata_unknown_completion_refuses_foreign_checkpoint_owner(settings, tmp_path):
+    foreign_owner = "99999999-9999-4999-8999-999999999999"
+
+    class ForeignCheckpointAfterTimeout(FakeNativeClient):
+        def metadata_set(self, runtime_document_id, **kwargs):
+            self.metadata_owner_request_id = kwargs["request_id"]
+            self.metadata[kwargs["namespace"]] = kwargs["value"]
+            self.fp = POST
+            raise TimeoutError("completion unknown")
+
+        def recoveries_list(self):
+            return [
+                {
+                    "checkpoint_id": CP,
+                    "document_pid": DOC,
+                    "expected_restore_fp": PRE,
+                    "checkpoint_artifact_fp": ART,
+                    "operation": "metadata.set",
+                    "owner_request_fp": _owner_fp(foreign_owner),
+                    "r1_context_available": True,
+                }
+            ]
+
+    client = ForeignCheckpointAfterTimeout()
+    facade = NativePublicFacade(
+        replace(settings, backend="com"),
+        client_factory=lambda: client,
+        journal_root=tmp_path,
+    )
+
+    with pytest.raises(StateConflictError, match="no uniquely bound recovery checkpoint"):
+        facade.metadata_set(
+            ENTITY,
+            "customer.mechanical.v1",
+            {"part_no": "P-100"},
+            document_pid=DOC,
+            expected_parent_fp=PRE,
+        )
+
+    assert client.recovery_calls == []
 
 
 def test_public_feature_execute_returns_feature_local_receipt_and_pacing(settings, tmp_path):

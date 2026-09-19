@@ -17,6 +17,7 @@ from cdt_autocad.native_bridge.protocol import NATIVE_PROTOCOL_VERSION
 
 REQUEST_ID = "11111111-1111-4111-8111-111111111111"
 RUNTIME_DOCUMENT_ID = "22222222-2222-4222-8222-222222222222"
+OWNER_REQUEST_ID = "33333333-3333-4333-8333-333333333333"
 
 
 class FakeTransport:
@@ -54,6 +55,21 @@ def test_health_sends_strict_read_only_request_and_returns_result():
             "params": {},
         }
     ]
+
+
+def test_logical_begin_preserves_explicit_owner_request_id_on_wire():
+    transport = FakeTransport(lambda req: success(req, {"status": "OPEN"}))
+    client = NativeBridgeClient(transport, request_id_factory=lambda: REQUEST_ID)
+
+    client.begin_logical_batch(
+        RUNTIME_DOCUMENT_ID,
+        document_pid="doc:lineage",
+        expected_parent_fp="sha256:" + "a" * 64,
+        request_id=OWNER_REQUEST_ID,
+    )
+
+    assert transport.requests[0]["request_id"] == OWNER_REQUEST_ID
+    assert transport.requests[0]["operation"] == "bridge.logical.begin"
 
 
 def test_document_identity_binds_runtime_id_and_optional_lineage_assertion():

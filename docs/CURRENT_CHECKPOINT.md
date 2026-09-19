@@ -1,6 +1,6 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-17
+> Updated: 2026-09-19
 > Status: **LAUNCH-READY / OPERATIONAL RC — B0–B4 CLOSED + U1 CORE LIVE-ACCEPTED**
 > Last published/tagged release: `v0.4.0rc2` at `295a064`; current U1 source candidate advances to RC3
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
@@ -28,7 +28,7 @@ provider_version: 0.4.0rc3
 contract_version: autocad-generic-v1-rc3
 public MCP tools: 87
 execution_model: feature-based-chunks-streaming-v1
-native bridge candidate: 0.8.3-u1
+native bridge candidate: 0.8.5-d15
 ```
 
 The public tool count is now 87. RC3 adds one explicit public bootstrap entrypoint, `native_document_identity_initialize`, for a new empty current space and expands the existing bounded native create payload with generic TEXT/MTEXT/aligned/linear dimension families plus optional layer/color assignment. It does not add engineering-domain semantics or implicit legacy adoption.
@@ -56,6 +56,7 @@ The following major programs/scopes are closed within their documented boundarie
 | B4 caller-state binding | **CLOSED / LIVE PASS** | Five native strong-integrity write tools require caller document PID + predecessor fingerprint; wrong-document/stale-parent requests refuse before journal/checkpoint/CAD mutation |
 | U1 core hardening | **CLOSED / LIVE PASS 2026-09-17** | New-empty-document PID bootstrap, truthful `document_save`, cached-COM readiness repair and native TEXT/MTEXT/aligned/linear dimension create breadth verified on AutoCAD 2027; D9/D11 and legacy/non-empty adoption remain separate deferred scope |
 | D8 stale COM proxy recovery | **CLOSED / LIVE PASS 2026-09-18** | Cached application reuse probes liveness before use, does not misclassify COM busy as death, evicts stale generation-local state and reattaches after process replacement when no tracked transaction is open; process loss during an open tracked transaction quarantines fail-closed instead of blind retry |
+| D15 request/checkpoint ownership | **CLOSED / LIVE PASS 2026-09-19** | Native recovery checkpoints are bound to the originating request owner; public recovery discovery exposes only a one-way owner fingerprint, new durable manifests persist no raw owner capability, foreign begin/resolve/finalize/logical-chunk attempts refuse before CAD mutation, and lost-response reconnect recovers only the originating checkpoint |
 | Mixed PID P1 | **CLOSED / LIVE PASS** | Unmanaged entities refuse deterministically as `UNMANAGED_ENTITY_PRESENT`; read paths do not auto-adopt PID |
 | MP-G05 bounded native solid loop | **CLOSED / LIVE PASS** | Provider PID + `solid-semantic-v2` + drift guard + persisted read-back + R0/R2 for planar `3DSOLID` translation |
 
@@ -84,6 +85,7 @@ U1 RC3 source candidate on 2026-09-17:
 - Dimension creation now canonicalizes native dimension layout before provisional fingerprinting, validates equivalent dimension-line geometry rather than a non-canonical definition-point coordinate, and re-extracts style resources in-transaction so AutoCAD-created resources such as `Defpoints` participate in the same provisional/persisted fingerprint.
 - Document fingerprint schema remains **v3** because these changes complete the already documented v3 semantic fields rather than define a new hash schema; callers must re-read/rebaseline the predecessor after a bridge upgrade instead of comparing fingerprints captured under an older bridge implementation.
 - D8 stale-COM recovery gate on 2026-09-18: focused liveness/rebind tests **3/3 passed**; full Linux **415 passed / 11 skipped**; full Windows `.171` **414 passed / 12 skipped**; live AutoCAD 2027 Session-1 fixture cached PID `25048`, terminated that exact process, observed replacement PID `26788`, and the same backend object reattached with `connected=true`, `transaction_depth=0`. Busy COM remains distinct from stale-process detection; tracked-transaction process loss remains fail-closed/quarantined.
+- D15 request/checkpoint ownership gate on 2026-09-19: affected focused regression **68/68 passed**; exact-lock Linux **418 passed / 11 skipped + Ruff PASS**; Windows `.171` **417 passed / 12 skipped**; C# Release/x64 **PASS / 0 errors** with the known MSB3277 warning families. Exact-source AutoCAD 2027 Session-1 live acceptance on bridge `0.8.5-d15` simulated a lost `logical.begin` response, rediscovered the checkpoint only by the originating owner's SHA-256 correlation, proved `bridge.recovery.list` exposes no raw owner ID, proved the schema-v2 manifest persists only the owner fingerprint, refused foreign begin/resolve/finalize/logical-chunk paths before CAD mutation, restored the exact predecessor by owner A, and ended with `pending_recoveries=0`. The deployed candidate DLL SHA-256 was `b9ffc7d25ba40fd33f404489a5e547367701148d4ffd1921cd5552447973a627`.
 
 Last published RC2 reproducible-release checkpoint remains `bcb5c66` / tag `v0.4.0rc2`; its historical measurements are preserved below:
 

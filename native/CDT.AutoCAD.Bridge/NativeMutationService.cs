@@ -110,7 +110,7 @@ internal sealed class NativeMutationService
             ["status"] = "OPEN",
             ["document_pid"] = parameters.DocumentPid,
             ["pre_document_fp"] = parentFp,
-            ["logical_transaction"] = CheckpointPayload(checkpoint),
+            ["logical_transaction"] = CheckpointPayload(checkpoint, requestId.ToString("D")),
         };
     }
 
@@ -384,7 +384,7 @@ internal sealed class NativeMutationService
                 ["post_document_fp"] = persistedFp,
                 ["affected_semantic_pid"] = parameters.SemanticPid,
                 ["namespace"] = parameters.Namespace,
-                ["recovery_checkpoint"] = CheckpointPayload(checkpoint),
+                ["recovery_checkpoint"] = CheckpointPayload(checkpoint, requestId.ToString("D")),
             };
         }
         catch
@@ -587,7 +587,7 @@ internal sealed class NativeMutationService
                 ["provisional_document_fp"] = provisionalFp,
                 ["post_document_fp"] = persistedFp,
                 ["affected_semantic_pid"] = affectedPid,
-                ["recovery_checkpoint"] = CheckpointPayload(checkpoint),
+                ["recovery_checkpoint"] = CheckpointPayload(checkpoint, requestId.ToString("D")),
             };
         }
         catch
@@ -767,7 +767,10 @@ internal sealed class NativeMutationService
                 ["provisional_document_fp"] = provisionalFp,
                 ["post_document_fp"] = persistedFp,
                 ["affected_semantic_pids"] = affectedPids.ToArray(),
-                ["recovery_checkpoint"] = CheckpointPayload(checkpoint),
+                ["recovery_checkpoint"] = CheckpointPayload(
+                    checkpoint,
+                    parameters.LogicalTransaction?.OwnerRequestId ?? requestId.ToString("D")
+                ),
             };
         }
         catch
@@ -969,7 +972,10 @@ internal sealed class NativeMutationService
                 ["provisional_document_fp"] = provisionalFp,
                 ["post_document_fp"] = persistedFp,
                 ["affected_semantic_pids"] = affectedPids.ToArray(),
-                ["recovery_checkpoint"] = CheckpointPayload(checkpoint),
+                ["recovery_checkpoint"] = CheckpointPayload(
+                    checkpoint,
+                    parameters.LogicalTransaction?.OwnerRequestId ?? requestId.ToString("D")
+                ),
             };
         }
         catch
@@ -1154,7 +1160,10 @@ internal sealed class NativeMutationService
                 ["provisional_document_fp"] = provisionalFp,
                 ["post_document_fp"] = persistedFp,
                 ["affected_semantic_pids"] = parameters.SemanticPids,
-                ["recovery_checkpoint"] = CheckpointPayload(checkpoint),
+                ["recovery_checkpoint"] = CheckpointPayload(
+                    checkpoint,
+                    parameters.LogicalTransaction?.OwnerRequestId ?? requestId.ToString("D")
+                ),
             };
         }
         catch
@@ -1174,6 +1183,7 @@ internal sealed class NativeMutationService
             parameters.CheckpointId,
             parameters.DocumentPid,
             parameters.CheckpointArtifactFp,
+            parameters.OwnerRequestId,
             parameters.ExpectedRestoreFp
         );
         if (string.Equals(parameters.Strategy, "R1_COMPENSATE", StringComparison.Ordinal))
@@ -1226,6 +1236,7 @@ internal sealed class NativeMutationService
             parameters.CheckpointId,
             parameters.DocumentPid,
             parameters.CheckpointArtifactFp,
+            parameters.OwnerRequestId,
             null
         );
         EnsureNoR2InProgress(checkpoint.CheckpointId);
@@ -1267,6 +1278,7 @@ internal sealed class NativeMutationService
                 ["document_pid"] = checkpoint.DocumentPid,
                 ["expected_restore_fp"] = checkpoint.ExpectedParentFp,
                 ["checkpoint_artifact_fp"] = checkpoint.ArtifactFp,
+                ["owner_request_fp"] = checkpoint.OwnerRequestFp,
                 ["operation"] = checkpoint.Operation,
                 ["r1_context_available"] = _recoveryContexts.ContainsKey(checkpoint.CheckpointId)
                     || _batchRecoveryContexts.ContainsKey(checkpoint.CheckpointId),
@@ -1801,6 +1813,7 @@ internal sealed class NativeMutationService
             logicalTransaction.CheckpointId,
             documentPid,
             logicalTransaction.CheckpointArtifactFp,
+            logicalTransaction.OwnerRequestId,
             logicalTransaction.ExpectedRestoreFp
         );
         if (!string.Equals(checkpoint.Operation, "logical.batch", StringComparison.Ordinal))
@@ -2405,11 +2418,15 @@ internal sealed class NativeMutationService
         };
     }
 
-    private static Dictionary<string, object?> CheckpointPayload(NativeCheckpoint checkpoint) => new()
+    private static Dictionary<string, object?> CheckpointPayload(
+        NativeCheckpoint checkpoint,
+        string ownerRequestId
+    ) => new()
     {
         ["checkpoint_id"] = checkpoint.CheckpointId,
         ["checkpoint_artifact_fp"] = checkpoint.ArtifactFp,
         ["expected_restore_fp"] = checkpoint.ExpectedParentFp,
+        ["owner_request_id"] = ownerRequestId,
     };
 
     private static List<Dictionary<string, object?>> SnapshotEntities(Dictionary<string, object?> snapshot) =>

@@ -4,6 +4,7 @@ Wing: code | Topic: native-bridge-n4 | Updated: 2026-09-10 12:45
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -123,6 +124,33 @@ def _canonical_uuid(value: Any, *, code: str, field_name: str) -> str:
     if value != canonical:
         raise BridgeProtocolError(code, f"{field_name} must use lowercase canonical UUID form")
     return canonical
+
+
+def owner_request_fingerprint(owner_request_id: str) -> str:
+    """One-way public correlation for a private canonical checkpoint owner UUID."""
+
+    canonical = _canonical_uuid(
+        owner_request_id,
+        code="INVALID_PARAMS",
+        field_name="owner_request_id",
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("ascii")).hexdigest()
+
+
+def redact_owner_capabilities(value: Any) -> Any:
+    """Replace private owner UUID capabilities with one-way correlation fingerprints."""
+
+    if isinstance(value, Mapping):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            if key == "owner_request_id":
+                redacted["owner_request_fp"] = owner_request_fingerprint(item)
+            else:
+                redacted[key] = redact_owner_capabilities(item)
+        return redacted
+    if isinstance(value, (list, tuple)):
+        return [redact_owner_capabilities(item) for item in value]
+    return value
 
 
 def _require_mapping(value: Any, *, code: str, field_name: str) -> Mapping[str, Any]:
@@ -264,6 +292,7 @@ class RecoveryResolveParams:
     document_pid: str
     checkpoint_id: str
     checkpoint_artifact_fp: str
+    owner_request_id: str
     expected_restore_fp: str
     strategy: str
 
@@ -274,6 +303,7 @@ class RecoveryResolveParams:
             "document_pid",
             "checkpoint_id",
             "checkpoint_artifact_fp",
+            "owner_request_id",
             "expected_restore_fp",
             "strategy",
         }
@@ -297,6 +327,11 @@ class RecoveryResolveParams:
             checkpoint_artifact_fp=_canonical_fingerprint(
                 value.get("checkpoint_artifact_fp"), "checkpoint_artifact_fp"
             ),
+            owner_request_id=_canonical_uuid(
+                value.get("owner_request_id"),
+                code="INVALID_PARAMS",
+                field_name="owner_request_id",
+            ),
             expected_restore_fp=_canonical_fingerprint(
                 value.get("expected_restore_fp"), "expected_restore_fp"
             ),
@@ -309,6 +344,7 @@ class RecoveryResolveParams:
             "document_pid": self.document_pid,
             "checkpoint_id": self.checkpoint_id,
             "checkpoint_artifact_fp": self.checkpoint_artifact_fp,
+            "owner_request_id": self.owner_request_id,
             "expected_restore_fp": self.expected_restore_fp,
             "strategy": self.strategy,
         }
@@ -320,6 +356,7 @@ class RecoveryFinalizeParams:
     document_pid: str
     checkpoint_id: str
     checkpoint_artifact_fp: str
+    owner_request_id: str
     accepted_post_fp: str
 
     @classmethod
@@ -329,6 +366,7 @@ class RecoveryFinalizeParams:
             "document_pid",
             "checkpoint_id",
             "checkpoint_artifact_fp",
+            "owner_request_id",
             "accepted_post_fp",
         }
         if set(value) != allowed:
@@ -348,6 +386,11 @@ class RecoveryFinalizeParams:
             checkpoint_artifact_fp=_canonical_fingerprint(
                 value.get("checkpoint_artifact_fp"), "checkpoint_artifact_fp"
             ),
+            owner_request_id=_canonical_uuid(
+                value.get("owner_request_id"),
+                code="INVALID_PARAMS",
+                field_name="owner_request_id",
+            ),
             accepted_post_fp=_canonical_fingerprint(value.get("accepted_post_fp"), "accepted_post_fp"),
         )
 
@@ -357,6 +400,7 @@ class RecoveryFinalizeParams:
             "document_pid": self.document_pid,
             "checkpoint_id": self.checkpoint_id,
             "checkpoint_artifact_fp": self.checkpoint_artifact_fp,
+            "owner_request_id": self.owner_request_id,
             "accepted_post_fp": self.accepted_post_fp,
         }
 
@@ -399,16 +443,22 @@ class LogicalBatchBinding:
     checkpoint_id: str
     checkpoint_artifact_fp: str
     expected_restore_fp: str
+    owner_request_id: str
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> LogicalBatchBinding:
-        allowed = {"checkpoint_id", "checkpoint_artifact_fp", "expected_restore_fp"}
+        allowed = {"checkpoint_id", "checkpoint_artifact_fp", "expected_restore_fp", "owner_request_id"}
         if set(value) != allowed:
             raise BridgeProtocolError("INVALID_PARAMS", "logical_transaction must use the exact checkpoint binding schema")
         return cls(
             _canonical_checkpoint_id(value.get("checkpoint_id")),
             _canonical_fingerprint(value.get("checkpoint_artifact_fp"), "checkpoint_artifact_fp"),
             _canonical_fingerprint(value.get("expected_restore_fp"), "expected_restore_fp"),
+            _canonical_uuid(
+                value.get("owner_request_id"),
+                code="INVALID_PARAMS",
+                field_name="owner_request_id",
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -416,6 +466,7 @@ class LogicalBatchBinding:
             "checkpoint_id": self.checkpoint_id,
             "checkpoint_artifact_fp": self.checkpoint_artifact_fp,
             "expected_restore_fp": self.expected_restore_fp,
+            "owner_request_id": self.owner_request_id,
         }
 
 

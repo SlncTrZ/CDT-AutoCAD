@@ -4,17 +4,19 @@ Wing: code | Topic: native-g3-logical-batch | Updated: 2026-09-11 18:25
 
 from __future__ import annotations
 
+import hashlib
 import json
 from copy import deepcopy
 
 import pytest
 
-from cdt_autocad.native_bridge.logical_batch import NativeLogicalBatchExecutor
+from cdt_autocad.native_bridge.logical_batch import LogicalBatchError, NativeLogicalBatchExecutor
 from cdt_autocad.native_bridge.protocol import (
     BatchCreateParams,
     BridgeProtocolError,
     LogicalBatchBinding,
     LogicalBeginParams,
+    owner_request_fingerprint,
 )
 
 RUNTIME = "11111111-1111-4111-8111-111111111111"
@@ -23,10 +25,16 @@ DOC = "pid:33333333-3333-4333-8333-333333333333"
 PRE = "sha256:" + "1" * 64
 CP = "cp:44444444-4444-4444-8444-444444444444"
 ART = "sha256:" + "2" * 64
+OWNER = "55555555-5555-4555-8555-555555555555"
+FOREIGN_OWNER = "66666666-6666-4666-8666-666666666666"
 
 
 def _fp(index: int) -> str:
     return "sha256:" + f"{index:x}" * 64
+
+
+def _owner_fp(owner_request_id: str) -> str:
+    return "sha256:" + hashlib.sha256(owner_request_id.encode("ascii")).hexdigest()
 
 
 def _entities(count: int):
@@ -42,9 +50,12 @@ def test_logical_binding_is_all_or_nothing_and_exact():
             "checkpoint_id": CP,
             "checkpoint_artifact_fp": ART,
             "expected_restore_fp": PRE,
+            "owner_request_id": OWNER,
         }
     )
     assert binding.checkpoint_id == CP
+    assert binding.owner_request_id == OWNER
+    assert owner_request_fingerprint(OWNER) == _owner_fp(OWNER)
 
     params = BatchCreateParams.from_dict(
         {
@@ -99,21 +110,28 @@ class FakeLogicalClient:
         self.state_calls = []
         self.current_fp = PRE
         self.checkpoint_present = False
+        self.owner_request_id = None
+
+    def _binding(self):
+        assert isinstance(self.owner_request_id, str)
+        return {
+            "checkpoint_id": CP,
+            "checkpoint_artifact_fp": ART,
+            "expected_restore_fp": PRE,
+            "owner_request_id": self.owner_request_id,
+        }
 
     def begin_logical_batch(self, runtime_document_id, **kwargs):
         self.begin_calls.append((runtime_document_id, deepcopy(kwargs)))
         assert kwargs["expected_parent_fp"] == self.current_fp
+        self.owner_request_id = kwargs["request_id"]
         self.checkpoint_present = True
         return {
             "schema_version": 1,
             "status": "OPEN",
             "document_pid": DOC,
             "pre_document_fp": PRE,
-            "logical_transaction": {
-                "checkpoint_id": CP,
-                "checkpoint_artifact_fp": ART,
-                "expected_restore_fp": PRE,
-            },
+            "logical_transaction": self._binding(),
         }
 
     def batch_create_chunk(self, runtime_document_id, **kwargs):
@@ -130,11 +148,7 @@ class FakeLogicalClient:
                 "pre_document_fp": self.current_fp,
                 "post_document_fp": self.current_fp,
                 "affected_semantic_pids": [],
-                "recovery_checkpoint": {
-                    "checkpoint_id": CP,
-                    "checkpoint_artifact_fp": ART,
-                    "expected_restore_fp": PRE,
-                },
+                "recovery_checkpoint": self._binding(),
                 "rollback": {
                     "status": "ROLLED_BACK_VERIFIED",
                     "expected_restore_fp": self.current_fp,
@@ -154,11 +168,7 @@ class FakeLogicalClient:
             "provisional_document_fp": post,
             "post_document_fp": post,
             "affected_semantic_pids": pids,
-            "recovery_checkpoint": {
-                "checkpoint_id": CP,
-                "checkpoint_artifact_fp": ART,
-                "expected_restore_fp": PRE,
-            },
+            "recovery_checkpoint": self._binding(),
         }
         self.current_fp = post
         return receipt
@@ -185,11 +195,7 @@ class FakeLogicalClient:
                 "pre_document_fp": self.current_fp,
                 "post_document_fp": self.current_fp,
                 "affected_semantic_pids": [],
-                "recovery_checkpoint": {
-                    "checkpoint_id": CP,
-                    "checkpoint_artifact_fp": ART,
-                    "expected_restore_fp": PRE,
-                },
+                "recovery_checkpoint": self._binding(),
                 "rollback": {
                     "status": "ROLLED_BACK_VERIFIED",
                     "expected_restore_fp": self.current_fp,
@@ -206,11 +212,7 @@ class FakeLogicalClient:
             "provisional_document_fp": post,
             "post_document_fp": post,
             "affected_semantic_pids": semantic_pids,
-            "recovery_checkpoint": {
-                "checkpoint_id": CP,
-                "checkpoint_artifact_fp": ART,
-                "expected_restore_fp": PRE,
-            },
+            "recovery_checkpoint": self._binding(),
         }
         self.current_fp = post
         return receipt
@@ -218,6 +220,7 @@ class FakeLogicalClient:
     def finalize_recovery(self, runtime_document_id, **kwargs):
         self.finalize_calls.append((runtime_document_id, deepcopy(kwargs)))
         assert kwargs["accepted_post_fp"] == self.current_fp
+        assert kwargs["owner_request_id"] == self.owner_request_id
         self.checkpoint_present = False
         return {"schema_version": 1, "status": "FINALIZED", "checkpoint_id": CP}
 
@@ -238,9 +241,10 @@ class FakeLogicalClient:
         return [
             {
                 "checkpoint_id": CP,
-                "document_pid": DOC,
-                "expected_restore_fp": PRE,
                 "checkpoint_artifact_fp": ART,
+                "expected_restore_fp": PRE,
+                "owner_request_fp": _owner_fp(self.owner_request_id),
+                "document_pid": DOC,
                 "operation": "logical.batch",
             }
         ]
@@ -249,6 +253,7 @@ class FakeLogicalClient:
         self.recovery_calls.append((runtime_document_id, deepcopy(kwargs)))
         assert kwargs["strategy"] == "R2_CHECKPOINT_RESTORE"
         assert kwargs["expected_restore_fp"] == PRE
+        assert kwargs["owner_request_id"] == self.owner_request_id
         self.current_fp = PRE
         self.checkpoint_present = False
         return {
@@ -284,7 +289,11 @@ def test_g3_success_splits_70_entities_yields_chunks_and_finalizes_one_checkpoin
     assert len(client.begin_calls) == 1
     assert len(client.finalize_calls) == 1
     assert client.recovery_calls == []
-    events = [json.loads(line)["event"] for line in (tmp_path / "logical.jsonl").read_text().splitlines()]
+    journal_text = (tmp_path / "logical.jsonl").read_text()
+    assert isinstance(client.owner_request_id, str)
+    assert client.owner_request_id not in journal_text
+    assert _owner_fp(client.owner_request_id) in journal_text
+    events = [json.loads(line)["event"] for line in journal_text.splitlines()]
     assert events == [
         "logical_begin",
         "chunk_committed",
@@ -390,6 +399,7 @@ def test_g3_begin_unknown_completion_discovers_checkpoint_and_restores_predecess
     class BeginTimeoutClient(FakeLogicalClient):
         def begin_logical_batch(self, runtime_document_id, **kwargs):
             self.begin_calls.append((runtime_document_id, deepcopy(kwargs)))
+            self.owner_request_id = kwargs["request_id"]
             self.checkpoint_present = True
             raise TimeoutError("begin completion unknown")
 
@@ -407,6 +417,39 @@ def test_g3_begin_unknown_completion_discovers_checkpoint_and_restores_predecess
     events = [json.loads(line)["event"] for line in (tmp_path / "begin-timeout.jsonl").read_text().splitlines()]
     assert events[0] == "logical_begin_unknown"
     assert events[-1] == "logical_rollback"
+
+
+def test_g3_begin_unknown_refuses_foreign_checkpoint_with_same_predecessor(tmp_path):
+    class ForeignCheckpointClient(FakeLogicalClient):
+        def begin_logical_batch(self, runtime_document_id, **kwargs):
+            self.begin_calls.append((runtime_document_id, deepcopy(kwargs)))
+            self.owner_request_id = kwargs["request_id"]
+            self.checkpoint_present = True
+            raise TimeoutError("begin completion unknown")
+
+        def recoveries_list(self):
+            return [
+                {
+                    "checkpoint_id": CP,
+                    "document_pid": DOC,
+                    "expected_restore_fp": PRE,
+                    "checkpoint_artifact_fp": ART,
+                    "operation": "logical.batch",
+                    "owner_request_fp": _owner_fp(FOREIGN_OWNER),
+                }
+            ]
+
+    client = ForeignCheckpointClient()
+    executor = NativeLogicalBatchExecutor(client, tmp_path / "foreign-begin-timeout.jsonl")
+
+    with pytest.raises(LogicalBatchError) as caught:
+        executor.create_entities(
+            RUNTIME, document_pid=DOC, expected_parent_fp=PRE, entities=_entities(10)
+        )
+
+    assert caught.value.code == "LOGICAL_BEGIN_UNKNOWN"
+    assert client.recovery_calls == []
+    assert client.chunk_calls == []
 
 
 def test_g3_independent_final_state_mismatch_rolls_back_before_finalize(tmp_path):

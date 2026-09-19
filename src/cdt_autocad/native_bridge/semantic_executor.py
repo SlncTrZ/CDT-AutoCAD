@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
+from uuid import UUID
 
 from cdt_autocad.semantic.canonical import ToleranceProfile
 from cdt_autocad.semantic.delta import compute_semantic_delta, validate_action_delta
@@ -35,6 +36,7 @@ from .protocol import (
     LineTargetParams,
     PolylineCreateParams,
     PolylineTargetParams,
+    redact_owner_capabilities,
 )
 
 
@@ -457,6 +459,7 @@ class NativeSemanticExecutor:
                     document_pid=action.document_pid,
                     checkpoint_id=checkpoint["checkpoint_id"],
                     checkpoint_artifact_fp=checkpoint["checkpoint_artifact_fp"],
+                    owner_request_id=checkpoint["owner_request_id"],
                     accepted_post_fp=after_fp,
                 )
                 if (
@@ -723,6 +726,7 @@ class NativeSemanticExecutor:
             "checkpoint_id",
             "checkpoint_artifact_fp",
             "expected_restore_fp",
+            "owner_request_id",
         }:
             raise SemanticStepError(
                 "INVALID_NATIVE_RECEIPT",
@@ -731,6 +735,13 @@ class NativeSemanticExecutor:
         checkpoint_id = raw.get("checkpoint_id")
         artifact_fp = raw.get("checkpoint_artifact_fp")
         restore_fp = raw.get("expected_restore_fp")
+        owner_request_id = raw.get("owner_request_id")
+        try:
+            canonical_owner_request_id = (
+                str(UUID(owner_request_id)) if isinstance(owner_request_id, str) else None
+            )
+        except ValueError:
+            canonical_owner_request_id = None
         if (
             not isinstance(checkpoint_id, str)
             or not checkpoint_id.startswith("cp:")
@@ -738,6 +749,7 @@ class NativeSemanticExecutor:
             or len(artifact_fp) != 71
             or not artifact_fp.startswith("sha256:")
             or restore_fp != parent_fp
+            or canonical_owner_request_id != owner_request_id
         ):
             raise SemanticStepError(
                 "INVALID_NATIVE_RECEIPT",
@@ -747,6 +759,7 @@ class NativeSemanticExecutor:
             "checkpoint_id": checkpoint_id,
             "checkpoint_artifact_fp": artifact_fp,
             "expected_restore_fp": parent_fp,
+            "owner_request_id": owner_request_id,
         }
 
     def _recover_after_commit(
@@ -776,6 +789,7 @@ class NativeSemanticExecutor:
                     document_pid=action.document_pid,
                     checkpoint_id=checkpoint["checkpoint_id"],
                     checkpoint_artifact_fp=checkpoint["checkpoint_artifact_fp"],
+                    owner_request_id=checkpoint["owner_request_id"],
                     expected_restore_fp=parent_fp,
                     strategy=strategy,
                 )
@@ -979,7 +993,7 @@ class NativeSemanticExecutor:
 
     def _append_or_block(self, event: dict[str, Any], *, committed_state: bool = False) -> None:
         try:
-            self.journal.append(event)
+            self.journal.append(redact_owner_capabilities(event))
         except Exception as exc:
             if committed_state:
                 self.blocked_reason = "STATE_UNCERTAIN"

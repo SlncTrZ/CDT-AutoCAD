@@ -91,6 +91,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             document_pid=document_pid,
             checkpoint_id=str(checkpoint["checkpoint_id"]),
             checkpoint_artifact_fp=str(checkpoint["checkpoint_artifact_fp"]),
+            owner_request_id=str(checkpoint["owner_request_id"]),
             expected_restore_fp=parent_fp,
             strategy="R2_CHECKPOINT_RESTORE",
         )

@@ -24,7 +24,10 @@ def _checkpoint(receipt: dict[str, Any]) -> dict[str, str]:
     value = receipt.get("recovery_checkpoint")
     if not isinstance(value, dict):
         raise AssertionError("committed batch mutation did not expose recovery checkpoint")
-    return {key: str(value[key]) for key in ("checkpoint_id", "checkpoint_artifact_fp", "expected_restore_fp")}
+    return {
+        key: str(value[key])
+        for key in ("checkpoint_id", "checkpoint_artifact_fp", "expected_restore_fp", "owner_request_id")
+    }
 
 
 def _run(args: argparse.Namespace) -> dict[str, Any]:
@@ -97,6 +100,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             document_pid=document_pid,
             checkpoint_id=transform_checkpoint["checkpoint_id"],
             checkpoint_artifact_fp=transform_checkpoint["checkpoint_artifact_fp"],
+            owner_request_id=transform_checkpoint["owner_request_id"],
             expected_restore_fp=parent_fp,
             strategy="R1_COMPENSATE",
         )
@@ -136,6 +140,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             document_pid=document_pid,
             checkpoint_id=insert_checkpoint["checkpoint_id"],
             checkpoint_artifact_fp=insert_checkpoint["checkpoint_artifact_fp"],
+            owner_request_id=insert_checkpoint["owner_request_id"],
             expected_restore_fp=parent_fp,
             strategy="R1_COMPENSATE",
         )

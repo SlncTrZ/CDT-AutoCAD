@@ -20,6 +20,7 @@ from cdt_autocad.errors import StateConflictError, UnsupportedCapabilityError
 from .client import NativeBridgeClient
 from .feature_stream import FeatureStreamExecutor
 from .logical_batch import NativeLogicalBatchExecutor
+from .protocol import owner_request_fingerprint
 from .transport_windows import NamedPipeTransport, pipe_name_for_session
 
 
@@ -283,6 +284,7 @@ class NativePublicFacade:
             document_pid=document_pid,
             expected_parent_fp=expected_parent_fp,
         )
+        owner_request_id = str(uuid4())
         try:
             receipt = client.metadata_set(
                 active.runtime_document_id,
@@ -291,9 +293,14 @@ class NativePublicFacade:
                 semantic_pid=semantic_pid,
                 namespace=namespace,
                 value=value,
+                request_id=owner_request_id,
             )
         except Exception as exc:
-            checkpoint = self._discover_metadata_checkpoint(client, active)
+            checkpoint = self._discover_metadata_checkpoint(
+                client,
+                active,
+                owner_request_id,
+            )
             if checkpoint is None:
                 raise StateConflictError(
                     "native metadata completion is unknown and no uniquely bound recovery checkpoint was found"
@@ -315,8 +322,16 @@ class NativePublicFacade:
 
         try:
             checkpoint = self._checkpoint_binding(receipt)
+            if checkpoint["owner_request_id"] != owner_request_id:
+                raise StateConflictError(
+                    "native metadata receipt checkpoint owner does not match the originating request"
+                )
         except StateConflictError:
-            checkpoint = self._discover_metadata_checkpoint(client, active)
+            checkpoint = self._discover_metadata_checkpoint(
+                client,
+                active,
+                owner_request_id,
+            )
             if checkpoint is None:
                 raise
         if outcome != "COMMITTED_VERIFIED":
@@ -361,6 +376,7 @@ class NativePublicFacade:
                 document_pid=active.document_pid,
                 checkpoint_id=checkpoint["checkpoint_id"],
                 checkpoint_artifact_fp=checkpoint["checkpoint_artifact_fp"],
+                owner_request_id=checkpoint["owner_request_id"],
                 accepted_post_fp=after_fp,
             )
             if finalized.get("status") != "FINALIZED":
@@ -399,6 +415,7 @@ class NativePublicFacade:
                 document_pid=active.document_pid,
                 checkpoint_id=checkpoint["checkpoint_id"],
                 checkpoint_artifact_fp=checkpoint["checkpoint_artifact_fp"],
+                owner_request_id=checkpoint["owner_request_id"],
                 expected_restore_fp=active.document_fp,
                 strategy=strategy,
             )
@@ -437,13 +454,16 @@ class NativePublicFacade:
     def _discover_metadata_checkpoint(
         client: NativeBridgeClient,
         active: ActiveNativeDocument,
+        owner_request_id: str,
     ) -> dict[str, str] | None:
+        owner_request_fp = owner_request_fingerprint(owner_request_id)
         matches = [
             row
             for row in client.recoveries_list()
             if row.get("document_pid") == active.document_pid
             and row.get("operation") == "metadata.set"
             and row.get("expected_restore_fp") == active.document_fp
+            and row.get("owner_request_fp") == owner_request_fp
         ]
         if len(matches) != 1:
             return None
@@ -451,12 +471,22 @@ class NativePublicFacade:
         checkpoint_id = row.get("checkpoint_id")
         artifact_fp = row.get("checkpoint_artifact_fp")
         expected_restore_fp = row.get("expected_restore_fp")
-        if not all(isinstance(value, str) and value for value in (checkpoint_id, artifact_fp, expected_restore_fp)):
+        persisted_owner_request_fp = row.get("owner_request_fp")
+        if not all(
+            isinstance(value, str) and value
+            for value in (
+                checkpoint_id,
+                artifact_fp,
+                expected_restore_fp,
+                persisted_owner_request_fp,
+            )
+        ):
             return None
         return {
             "checkpoint_id": str(checkpoint_id),
             "checkpoint_artifact_fp": str(artifact_fp),
             "expected_restore_fp": str(expected_restore_fp),
+            "owner_request_id": owner_request_id,
         }
 
     def _client(self) -> NativeBridgeClient:
@@ -599,7 +629,12 @@ class NativePublicFacade:
         if not isinstance(raw, Mapping):
             raise StateConflictError("native mutation receipt is missing its recovery checkpoint")
         result: dict[str, str] = {}
-        for name in ("checkpoint_id", "checkpoint_artifact_fp", "expected_restore_fp"):
+        for name in (
+            "checkpoint_id",
+            "checkpoint_artifact_fp",
+            "expected_restore_fp",
+            "owner_request_id",
+        ):
             value = raw.get(name)
             if not isinstance(value, str) or not value:
                 raise StateConflictError(

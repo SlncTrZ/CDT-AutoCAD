@@ -1,9 +1,9 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-18 +07:00
-> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening + D8 stale-COM recovery
+> Updated: 2026-09-19 +07:00
+> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening + D8 stale-COM recovery + D15 request/checkpoint ownership
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.3-u1` · last published/tagged release remains `v0.4.0rc2`
+> Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.5-d15` · last published/tagged release remains `v0.4.0rc2`
 
 ## 0. Current production live gate
 
@@ -11,7 +11,7 @@ The reviewed public-promotion tree preserves both the historical COM/A3 acceptan
 
 Current live native requirements already measured PASS on `.171` AutoCAD 2027 Session 1:
 
-- current U1 bridge `0.8.3-u1`, document fingerprint schema v3; historical `0.8.2-mp7` and earlier G1/G2/G3/scale/Feature Streaming artifacts below retain their original identities and are not rewritten;
+- current D15 bridge `0.8.5-d15`, document fingerprint schema v3; historical `0.8.3-u1`, `0.8.2-mp7` and earlier G1/G2/G3/scale/Feature Streaming artifacts below retain their original identities and are not rewritten;
 - schema-agnostic metadata commit/readback/query plus exact R0/R1 recovery;
 - one logical predecessor checkpoint across yielded native micro-chunks;
 - micro-chunk maximum 32 entities and one batch mutation per AutoCAD Idle tick;
@@ -27,6 +27,7 @@ Current live native requirements already measured PASS on `.171` AutoCAD 2027 Se
 - U1 exact-source Session-1 acceptance PASS on 2026-09-17 after the final bootstrap lock-scope review: explicit document lineage bootstrap holds the document lock through PID write/read-back and zero-entity semantic snapshot; LINE/TEXT/MTEXT/aligned-dimension/linear-dimension batches each returned `COMMITTED_VERIFIED`; native layer/color read-back matched; zero pending recovery remained; final `document.Save()` read-back was `Saved=true`, `DBMOD=0`. The deployed bridge hash in this final reload evidence is `0245e91fa4c067b86ec3fdb0797c709a661f78125cd12b0097789ec9f952661a`.
 - U1 acceptance also reproduced and fixed AutoCAD dimension canonicalization: provisional layout is recomputed before fingerprinting, create validation accepts only the same dimension line rather than an unstable point parameterization, and in-transaction style re-extraction includes AutoCAD-created `Defpoints`.
 - D8 live restart/rebind acceptance PASS on 2026-09-18: one source `ComBackend` cached AutoCAD 2027 PID `25048`, the fixture terminated exactly that process, launched a replacement in the same Interactive Session 1, observed ROT replacement PID `26788`, and the unchanged backend object detected the dead cached proxy, evicted generation-local app/document/view state and rebound to PID `26788`; final `connected=true`, `transaction_depth=0`. The fixture did not restart the backend object between cache and rebind. A tracked transaction is intentionally not auto-rebound after process death; that case quarantines and requires provider restart before later mutation.
+- D15 request/checkpoint ownership acceptance PASS on 2026-09-19 under bridge `0.8.5-d15`: a real `logical.begin` reached the bridge and its response was intentionally dropped; reconnect discovered exactly one checkpoint using only the originating caller's locally retained raw UUID hashed to `owner_request_fp`. `bridge.recovery.list` exposed no raw owner; the live schema-v2 checkpoint manifest contained the owner fingerprint and no raw owner capability. A foreign caller could neither begin a second logical batch (`RECOVERY_PENDING`) nor resolve/finalize/use the checkpoint in a logical chunk (`RECOVERY_BINDING_MISMATCH`); document fingerprint/entity count remained unchanged before refusal. The originating owner completed exact R2 predecessor restoration and the run ended with zero pending recovery. Deployed DLL SHA-256: `b9ffc7d25ba40fd33f404489a5e547367701148d4ffd1921cd5552447973a627`.
 
 Canonical current evidence (machine-readable artifacts retained with the internal acceptance record
 under these file names; not part of the published tree):
@@ -44,6 +45,8 @@ mp-g10-acis-soak-live-2026-09-12.json
 bridge-0.8.2-mp7-runtime-binding-2026-09-12.json
 u1-reload-lockfix-2026-09-17.json
 u1-floorplan-lockfix-2026-09-17.json
+d15-reload-owner-fp-2026-09-19.json
+d15-checkpoint-ownership-owner-fp-2026-09-19.json
 ```
 
 The B4 caller-binding acceptance on 2026-09-15 intentionally used a transient JSON report under the Windows temp directory and deleted it during verified cleanup; its measured result is summarized here rather than presented as a retained artifact.

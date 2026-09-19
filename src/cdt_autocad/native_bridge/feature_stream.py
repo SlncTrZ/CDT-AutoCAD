@@ -8,6 +8,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 from .logical_batch import LogicalBatchError, NativeLogicalBatchExecutor, _is_fingerprint
 from .protocol import MAX_BATCH_CHUNK_ENTITIES, MAX_LOGICAL_BATCH_ITEMS
@@ -160,15 +161,26 @@ class FeatureStreamExecutor(NativeLogicalBatchExecutor):
                 "expected_parent_fp must be a canonical sha256 fingerprint",
             )
 
+        owner_request_id = str(uuid4())
         try:
             begin = self.client.begin_logical_batch(
                 runtime_document_id,
                 document_pid=document_pid,
                 expected_parent_fp=expected_parent_fp,
+                request_id=owner_request_id,
             )
-            binding = self._validate_begin(begin, document_pid, expected_parent_fp)
+            binding = self._validate_begin(
+                begin,
+                document_pid,
+                expected_parent_fp,
+                owner_request_id,
+            )
         except Exception as exc:
-            binding = self._discover_logical_binding(document_pid, expected_parent_fp)
+            binding = self._discover_logical_binding(
+                document_pid,
+                expected_parent_fp,
+                owner_request_id,
+            )
             if binding is None:
                 self.journal.append(
                     self._event(
@@ -337,6 +349,7 @@ class FeatureStreamExecutor(NativeLogicalBatchExecutor):
                     document_pid=document_pid,
                     checkpoint_id=binding.checkpoint_id,
                     checkpoint_artifact_fp=binding.checkpoint_artifact_fp,
+                    owner_request_id=binding.owner_request_id,
                     accepted_post_fp=current_fp,
                 )
             except Exception as exc:

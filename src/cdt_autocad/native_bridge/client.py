@@ -235,6 +235,7 @@ class NativeBridgeClient:
         *,
         document_pid: str,
         expected_parent_fp: str,
+        request_id: str | None = None,
     ) -> dict[str, Any]:
         params = LogicalBeginParams.from_dict(
             {
@@ -243,7 +244,7 @@ class NativeBridgeClient:
                 "expected_parent_fp": expected_parent_fp,
             }
         )
-        return self._request("bridge.logical.begin", params.to_dict())
+        return self._request("bridge.logical.begin", params.to_dict(), request_id=request_id)
 
     def metadata_get(
         self,
@@ -273,6 +274,7 @@ class NativeBridgeClient:
         namespace: str,
         value: Any,
         fault_stage: str | None = None,
+        request_id: str | None = None,
     ) -> dict[str, Any]:
         params = MetadataSetParams.from_dict(
             {
@@ -285,7 +287,7 @@ class NativeBridgeClient:
                 **({"fault_stage": fault_stage} if fault_stage is not None else {}),
             }
         )
-        return self._request("metadata.set", params.to_dict())
+        return self._request("metadata.set", params.to_dict(), request_id=request_id)
 
     def metadata_query(
         self,
@@ -682,6 +684,7 @@ class NativeBridgeClient:
         document_pid: str,
         checkpoint_id: str,
         checkpoint_artifact_fp: str,
+        owner_request_id: str,
         expected_restore_fp: str,
         strategy: str,
     ) -> dict[str, Any]:
@@ -691,6 +694,7 @@ class NativeBridgeClient:
                 "document_pid": document_pid,
                 "checkpoint_id": checkpoint_id,
                 "checkpoint_artifact_fp": checkpoint_artifact_fp,
+                "owner_request_id": owner_request_id,
                 "expected_restore_fp": expected_restore_fp,
                 "strategy": strategy,
             }
@@ -704,6 +708,7 @@ class NativeBridgeClient:
         document_pid: str,
         checkpoint_id: str,
         checkpoint_artifact_fp: str,
+        owner_request_id: str,
         accepted_post_fp: str,
     ) -> dict[str, Any]:
         params = RecoveryFinalizeParams.from_dict(
@@ -712,6 +717,7 @@ class NativeBridgeClient:
                 "document_pid": document_pid,
                 "checkpoint_id": checkpoint_id,
                 "checkpoint_artifact_fp": checkpoint_artifact_fp,
+                "owner_request_id": owner_request_id,
                 "accepted_post_fp": accepted_post_fp,
             }
         )
@@ -727,8 +733,14 @@ class NativeBridgeClient:
             )
         return recoveries
 
-    def _request(self, operation: str, params: Mapping[str, Any]) -> dict[str, Any]:
-        request_id = self.request_id_factory()
+    def _request(
+        self,
+        operation: str,
+        params: Mapping[str, Any],
+        *,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        request_id = self.request_id_factory() if request_id is None else request_id
         request = BridgeRequest.from_dict(
             {
                 "protocol": NATIVE_PROTOCOL_VERSION,

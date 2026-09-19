@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('session-probe', 'visual-style', 'acis-soak', 'mp2-current-identity', 'u1-floorplan', 'u1-reload')]
+    [ValidateSet('session-probe', 'visual-style', 'acis-soak', 'mp2-current-identity', 'u1-floorplan', 'u1-reload', 'd15-ownership')]
     [string]$Profile,
 
     [Parameter(Mandatory = $true)]
@@ -70,6 +70,10 @@ switch ($Profile) {
         $scriptPath = Join-Path $RepoRoot 'scripts\run_u1_bridge_reload.ps1'
         $scriptArgs = @('-OutputPath', $OutputPath)
         $executor = 'powershell'
+    }
+    'd15-ownership' {
+        $scriptPath = Join-Path $RepoRoot 'scripts\run_d15_checkpoint_ownership_acceptance.py'
+        $scriptArgs = @('--output', $OutputPath, '--com-progid', 'AutoCAD.Application.26')
     }
 }
 if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {

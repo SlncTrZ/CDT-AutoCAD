@@ -1,6 +1,6 @@
 # Threat Model — CDT-AutoCAD
 
-> Baseline: MP0-T00 · Version: 2 · Updated: 2026-09-15 +07:00
+> Baseline: MP0-T00 · Version: 3 · Updated: 2026-09-19 +07:00
 > Scope: public MCP/COM/ezdxf, staged native IPC/bridge, filesystem/artifacts, recovery state and runtime lifecycle.
 > Status: **ACTIVE BASELINE** — update by threat-model delta before enabling a materially new risky capability.
 
@@ -18,6 +18,7 @@ Non-negotiable invariants:
 6. Capability certification and promotion apply only to the exact `family × operation × backend × AutoCAD version × scope` tuple with evidence.
 7. Unsupported/unknown state fails closed; no silent downgrade to a weaker backend or validation mode.
 8. Credentials and unnecessary drawing/brief payloads are excluded from diagnostic events and evidence.
+9. A recovery checkpoint owner is a private capability: recovery discovery may expose only a one-way correlation fingerprint, while durable new manifests, journals and retained evidence must not persist or publish the raw owner UUID.
 
 ## 2. Assets and trust boundaries
 
@@ -56,6 +57,7 @@ Non-negotiable invariants:
 | T12 | PASS is generalized to sibling operation/backend/version/scope | Unsupported behavior advertised as certified | Capability registry/evidence keyed by exact promotion tuple | Metadata/evidence tests; review gate | Release owner |
 | T13 | Error/log payload contains secrets or unnecessary project data | Credential or drawing-data leakage | Fixed diagnostic schema, redaction, no arbitrary payload/error text in structured telemetry | Schema tests + review | Runtime owner |
 | T14 | Manual edit/save/reopen/clone/undo/redo or active-document switch races caller planning state | Stale plan, wrong-document mutation or false parent state | Caller-supplied `document_pid` + `expected_parent_fp`; exact active-document bind before journal/checkpoint/mutation; same predecessor forwarded as native drift guard; rebind/reconciliation after accepted state change | B4 wrong-PID/stale-parent/stale-replay live refusal + existing native drift/clone/save/reopen acceptance | Semantic/native owner |
+| T15 | Concurrent or reconnecting caller discovers another request's recovery checkpoint and reuses its owner token | Foreign rollback/finalize/chunk adoption or denial of the originating recovery | Generate a canonical per-request owner before dispatch; direct in-memory response returns it only to the originating caller; new checkpoint manifests and persisted journals store only `sha256(owner_request_id)`; `bridge.recovery.list` exposes only that fingerprint; resolve/finalize/logical-chunk paths require the original raw owner and compare its fingerprint to the persisted binding before CAD mutation | D15 focused owner/lost-response negatives + Linux/Windows full regression + C# Release/x64 + AutoCAD 2027 Session-1 lost-response/foreign-adoption fixture on `0.8.5-d15`; zero pending recovery | Semantic/native owner |
 
 ## 4. Failure-domain rule: journal vs telemetry
 

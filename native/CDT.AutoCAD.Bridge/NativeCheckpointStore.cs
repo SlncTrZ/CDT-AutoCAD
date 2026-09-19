@@ -2,6 +2,7 @@
 // Wing: code | Topic: native-bridge-n7 | Updated: 2026-09-10 20:38
 
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -18,7 +19,7 @@ internal sealed record NativeCheckpoint(
     string ManifestPath,
     string OriginalPath,
     string Operation,
-    string RequestId
+    string OwnerRequestFp
 );
 
 internal sealed record NativeCheckpointManifest(
@@ -30,7 +31,8 @@ internal sealed record NativeCheckpointManifest(
     string CheckpointPath,
     string OriginalPath,
     string Operation,
-    string RequestId,
+    string? OwnerRequestFp,
+    string? RequestId,
     string CreatedUtc
 );
 
@@ -120,7 +122,7 @@ internal sealed class NativeCheckpointStore
 
         string artifactFp = FingerprintFile(checkpointPath);
         NativeCheckpointManifest manifest = new(
-            1,
+            2,
             checkpointId,
             documentPid,
             expectedParentFp,
@@ -128,7 +130,8 @@ internal sealed class NativeCheckpointStore
             checkpointPath,
             originalPath,
             operation,
-            requestId.ToString("D"),
+            FingerprintOwnerRequestId(requestId.ToString("D")),
+            null,
             DateTimeOffset.UtcNow.ToString("O")
         );
         try
@@ -154,9 +157,9 @@ internal sealed class NativeCheckpointStore
                     File.ReadAllText(manifestPath),
                     JsonOptions
                 );
-                if (manifest is null || manifest.SchemaVersion != 1)
+                if (manifest is null)
                 {
-                    throw new InvalidDataException("native recovery manifest has an unsupported schema");
+                    throw new InvalidDataException("native recovery manifest is empty");
                 }
                 result.Add(FromManifest(manifest, manifestPath));
             }
@@ -175,6 +178,7 @@ internal sealed class NativeCheckpointStore
         string checkpointId,
         string documentPid,
         string artifactFp,
+        string ownerRequestId,
         string? expectedParentFp
     )
     {
@@ -196,10 +200,26 @@ internal sealed class NativeCheckpointStore
         {
             throw new BridgeServiceException("RECOVERY_MANIFEST_INVALID", "native recovery manifest is invalid");
         }
-        if (manifest is null
-            || manifest.SchemaVersion != 1
-            || !string.Equals(manifest.CheckpointId, checkpointId, StringComparison.Ordinal)
+        if (manifest is null)
+        {
+            throw new BridgeServiceException("RECOVERY_MANIFEST_INVALID", "native recovery manifest is invalid");
+        }
+        string persistedOwnerRequestFp;
+        try
+        {
+            persistedOwnerRequestFp = OwnerRequestFingerprintFromManifest(manifest);
+        }
+        catch (InvalidDataException)
+        {
+            throw new BridgeServiceException("RECOVERY_MANIFEST_INVALID", "native recovery manifest is invalid");
+        }
+        if (!string.Equals(manifest.CheckpointId, checkpointId, StringComparison.Ordinal)
             || !string.Equals(manifest.DocumentPid, documentPid, StringComparison.Ordinal)
+            || !string.Equals(
+                persistedOwnerRequestFp,
+                FingerprintOwnerRequestId(ownerRequestId),
+                StringComparison.Ordinal
+            )
             || (expectedParentFp is not null
                 && !string.Equals(manifest.ExpectedParentFp, expectedParentFp, StringComparison.Ordinal))
             || !string.Equals(manifest.ArtifactFp, artifactFp, StringComparison.Ordinal))
@@ -246,6 +266,43 @@ internal sealed class NativeCheckpointStore
         return "sha256:" + Convert.ToHexString(digest).ToLowerInvariant();
     }
 
+    internal static string FingerprintOwnerRequestId(string ownerRequestId)
+    {
+        byte[] digest = SHA256.HashData(Encoding.ASCII.GetBytes(ownerRequestId));
+        return "sha256:" + Convert.ToHexString(digest).ToLowerInvariant();
+    }
+
+    private static string OwnerRequestFingerprintFromManifest(NativeCheckpointManifest manifest)
+    {
+        if (manifest.SchemaVersion == 1)
+        {
+            if (string.IsNullOrWhiteSpace(manifest.RequestId)
+                || !Guid.TryParseExact(manifest.RequestId, "D", out Guid parsed)
+                || !string.Equals(manifest.RequestId, parsed.ToString("D"), StringComparison.Ordinal)
+                || manifest.OwnerRequestFp is not null)
+            {
+                throw new InvalidDataException("legacy native recovery manifest owner is invalid");
+            }
+            return FingerprintOwnerRequestId(manifest.RequestId);
+        }
+        if (manifest.SchemaVersion == 2
+            && IsCanonicalFingerprint(manifest.OwnerRequestFp)
+            && string.IsNullOrEmpty(manifest.RequestId))
+        {
+            return manifest.OwnerRequestFp!;
+        }
+        throw new InvalidDataException("native recovery manifest has an unsupported or invalid owner schema");
+    }
+
+    private static bool IsCanonicalFingerprint(string? value)
+    {
+        if (value is null || value.Length != 71 || !value.StartsWith("sha256:", StringComparison.Ordinal))
+        {
+            return false;
+        }
+        return value[7..].All(ch => ch is >= '0' and <= '9' or >= 'a' and <= 'f');
+    }
+
     private static string ParseCheckpointId(string checkpointId)
     {
         if (!checkpointId.StartsWith("cp:", StringComparison.Ordinal)
@@ -269,7 +326,7 @@ internal sealed class NativeCheckpointStore
         manifestPath,
         manifest.OriginalPath,
         manifest.Operation,
-        manifest.RequestId
+        OwnerRequestFingerprintFromManifest(manifest)
     );
 
     private static void WriteManifestAtomic(string path, NativeCheckpointManifest manifest)

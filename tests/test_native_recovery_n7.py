@@ -27,6 +27,7 @@ CHECKPOINT_ID = "cp:66666666-6666-4666-8666-666666666666"
 PARENT_FP = "sha256:" + "a" * 64
 POST_FP = "sha256:" + "b" * 64
 ARTIFACT_FP = "sha256:" + "c" * 64
+OWNER_REQUEST_ID = "88888888-8888-4888-8888-888888888888"
 
 
 def payload(operation: str, params: dict) -> dict:
@@ -88,6 +89,7 @@ def test_n7_recovery_resolve_contract_is_strict_and_binds_checkpoint_artifact_pa
                 "document_pid": DOCUMENT_PID,
                 "checkpoint_id": CHECKPOINT_ID,
                 "checkpoint_artifact_fp": ARTIFACT_FP,
+                "owner_request_id": OWNER_REQUEST_ID,
                 "expected_restore_fp": PARENT_FP,
                 "strategy": "R1_COMPENSATE",
             },
@@ -96,6 +98,7 @@ def test_n7_recovery_resolve_contract_is_strict_and_binds_checkpoint_artifact_pa
     assert isinstance(request.params, RecoveryResolveParams)
     assert request.params.strategy == "R1_COMPENSATE"
     assert request.params.checkpoint_id == CHECKPOINT_ID
+    assert request.params.owner_request_id == OWNER_REQUEST_ID
 
     for bad_strategy in ("UNDO", "R0_ABORT", "eval:anything"):
         with pytest.raises(BridgeProtocolError, match="INVALID_PARAMS"):
@@ -107,6 +110,7 @@ def test_n7_recovery_resolve_contract_is_strict_and_binds_checkpoint_artifact_pa
                         "document_pid": DOCUMENT_PID,
                         "checkpoint_id": CHECKPOINT_ID,
                         "checkpoint_artifact_fp": ARTIFACT_FP,
+                        "owner_request_id": OWNER_REQUEST_ID,
                         "expected_restore_fp": PARENT_FP,
                         "strategy": bad_strategy,
                     },
@@ -122,6 +126,7 @@ def test_n7_recovery_resolve_contract_is_strict_and_binds_checkpoint_artifact_pa
                     "document_pid": DOCUMENT_PID,
                     "checkpoint_id": CHECKPOINT_ID,
                     "checkpoint_artifact_fp": ARTIFACT_FP,
+                    "owner_request_id": OWNER_REQUEST_ID,
                     "expected_restore_fp": PARENT_FP,
                     "strategy": "R2_CHECKPOINT_RESTORE",
                     "path": r"C:\arbitrary\file.dwg",
@@ -139,6 +144,7 @@ def test_n7_recovery_finalize_contract_requires_accepted_post_fingerprint():
                 "document_pid": DOCUMENT_PID,
                 "checkpoint_id": CHECKPOINT_ID,
                 "checkpoint_artifact_fp": ARTIFACT_FP,
+                "owner_request_id": OWNER_REQUEST_ID,
                 "accepted_post_fp": POST_FP,
             },
         )
@@ -155,6 +161,7 @@ def test_n7_recovery_finalize_contract_requires_accepted_post_fingerprint():
                     "document_pid": DOCUMENT_PID,
                     "checkpoint_id": CHECKPOINT_ID,
                     "checkpoint_artifact_fp": "sha256:" + "A" * 64,
+                    "owner_request_id": OWNER_REQUEST_ID,
                     "accepted_post_fp": POST_FP,
                 },
             )
@@ -211,6 +218,7 @@ def test_n7_client_emits_strict_recovery_resolve_finalize_and_list_requests():
         document_pid=DOCUMENT_PID,
         checkpoint_id=CHECKPOINT_ID,
         checkpoint_artifact_fp=ARTIFACT_FP,
+        owner_request_id=OWNER_REQUEST_ID,
         expected_restore_fp=PARENT_FP,
         strategy="R1_COMPENSATE",
     )
@@ -223,6 +231,7 @@ def test_n7_client_emits_strict_recovery_resolve_finalize_and_list_requests():
         document_pid=DOCUMENT_PID,
         checkpoint_id=CHECKPOINT_ID,
         checkpoint_artifact_fp=ARTIFACT_FP,
+        owner_request_id=OWNER_REQUEST_ID,
         accepted_post_fp=POST_FP,
     )
     assert finalized["status"] == "FINALIZED"

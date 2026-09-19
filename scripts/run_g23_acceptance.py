@@ -110,7 +110,7 @@ def _logical_binding(receipt: dict[str, Any]) -> dict[str, str]:
     raw = receipt.get("logical_transaction")
     if not isinstance(raw, dict):
         raise AssertionError("logical begin did not return checkpoint binding")
-    required = ("checkpoint_id", "checkpoint_artifact_fp", "expected_restore_fp")
+    required = ("checkpoint_id", "checkpoint_artifact_fp", "expected_restore_fp", "owner_request_id")
     if any(not isinstance(raw.get(name), str) or not raw[name] for name in required):
         raise AssertionError("logical begin checkpoint binding is incomplete")
     return {name: str(raw[name]) for name in required}
@@ -170,6 +170,7 @@ def _run_logical_create(
         document_pid=document_pid,
         checkpoint_id=binding["checkpoint_id"],
         checkpoint_artifact_fp=binding["checkpoint_artifact_fp"],
+        owner_request_id=binding["owner_request_id"],
         accepted_post_fp=current_fp,
     )
     if finalized.get("status") != "FINALIZED":
@@ -296,6 +297,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             document_pid=document_pid,
             checkpoint_id=str(metadata_checkpoint["checkpoint_id"]),
             checkpoint_artifact_fp=str(metadata_checkpoint["checkpoint_artifact_fp"]),
+            owner_request_id=str(metadata_checkpoint["owner_request_id"]),
             accepted_post_fp=metadata_fp,
         )
 
@@ -334,6 +336,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             document_pid=document_pid,
             checkpoint_id=str(temporary_checkpoint["checkpoint_id"]),
             checkpoint_artifact_fp=str(temporary_checkpoint["checkpoint_artifact_fp"]),
+            owner_request_id=str(temporary_checkpoint["owner_request_id"]),
             expected_restore_fp=metadata_fp,
             strategy="R1_COMPENSATE",
         )
@@ -372,6 +375,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             document_pid=document_pid,
             checkpoint_id=logical_binding["checkpoint_id"],
             checkpoint_artifact_fp=logical_binding["checkpoint_artifact_fp"],
+            owner_request_id=logical_binding["owner_request_id"],
             expected_restore_fp=metadata_fp,
             strategy="R2_CHECKPOINT_RESTORE",
         )

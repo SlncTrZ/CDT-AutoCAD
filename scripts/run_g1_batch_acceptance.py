@@ -119,6 +119,7 @@ def _finalize_chunk(
         document_pid=document_pid,
         checkpoint_id=str(checkpoint["checkpoint_id"]),
         checkpoint_artifact_fp=str(checkpoint["checkpoint_artifact_fp"]),
+        owner_request_id=str(checkpoint["owner_request_id"]),
         accepted_post_fp=str(receipt["post_document_fp"]),
     )
     if finalized.get("status") != "FINALIZED":

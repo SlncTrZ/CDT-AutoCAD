@@ -4,6 +4,7 @@ Wing: code | Topic: production-feature-streaming | Updated: 2026-09-11 20:10
 
 from __future__ import annotations
 
+import hashlib
 from copy import deepcopy
 
 import pytest
@@ -24,6 +25,10 @@ CP1 = "cp:33333333-3333-4333-8333-333333333333"
 CP2 = "cp:44444444-4444-4444-8444-444444444444"
 ART1 = "sha256:" + "4" * 64
 ART2 = "sha256:" + "5" * 64
+
+
+def _owner_fp(owner_request_id: str) -> str:
+    return "sha256:" + hashlib.sha256(owner_request_id.encode("ascii")).hexdigest()
 
 
 def _lines(count: int):
@@ -70,6 +75,15 @@ class FakeClient:
         self.fail_next_chunk = False
         self.calls = []
 
+    def _binding(self):
+        assert self.pending is not None
+        return {
+            "checkpoint_id": self.pending["checkpoint_id"],
+            "checkpoint_artifact_fp": self.pending["checkpoint_artifact_fp"],
+            "expected_restore_fp": self.pending["expected_restore_fp"],
+            "owner_request_id": self.pending["owner_request_id"],
+        }
+
     def begin_logical_batch(self, runtime_document_id, **kwargs):
         assert runtime_document_id == RUNTIME
         assert kwargs["expected_parent_fp"] == self.fp
@@ -80,17 +94,14 @@ class FakeClient:
             "checkpoint_id": cp,
             "checkpoint_artifact_fp": art,
             "expected_restore_fp": self.fp,
+            "owner_request_id": kwargs["request_id"],
             "document_pid": DOC,
         }
         return {
             "status": "OPEN",
             "document_pid": DOC,
             "pre_document_fp": self.fp,
-            "logical_transaction": {
-                "checkpoint_id": cp,
-                "checkpoint_artifact_fp": art,
-                "expected_restore_fp": self.fp,
-            },
+            "logical_transaction": self._binding(),
         }
 
     def _chunk(self, operation, kwargs, size, affected):
@@ -105,11 +116,7 @@ class FakeClient:
                 "pre_document_fp": pre,
                 "post_document_fp": pre,
                 "affected_semantic_pids": [],
-                "recovery_checkpoint": {
-                    "checkpoint_id": self.pending["checkpoint_id"],
-                    "checkpoint_artifact_fp": self.pending["checkpoint_artifact_fp"],
-                    "expected_restore_fp": self.pending["expected_restore_fp"],
-                },
+                "recovery_checkpoint": self._binding(),
                 "rollback": {"status": "ROLLED_BACK_VERIFIED"},
             }
         self.fp = FP1 if pre == PRE else FP2
@@ -121,11 +128,7 @@ class FakeClient:
             "provisional_document_fp": self.fp,
             "post_document_fp": self.fp,
             "affected_semantic_pids": affected,
-            "recovery_checkpoint": {
-                "checkpoint_id": self.pending["checkpoint_id"],
-                "checkpoint_artifact_fp": self.pending["checkpoint_artifact_fp"],
-                "expected_restore_fp": self.pending["expected_restore_fp"],
-            },
+            "recovery_checkpoint": self._binding(),
         }
 
     def batch_create_chunk(self, runtime_document_id, **kwargs):
@@ -157,16 +160,28 @@ class FakeClient:
 
     def finalize_recovery(self, runtime_document_id, **kwargs):
         assert kwargs["accepted_post_fp"] == self.fp
+        assert self.pending is not None
+        assert kwargs["owner_request_id"] == self.pending["owner_request_id"]
         self.pending = None
         return {"status": "FINALIZED"}
 
     def recoveries_list(self):
         if self.pending is None:
             return []
-        return [{**self.pending, "operation": "logical.batch"}]
+        return [
+            {
+                "checkpoint_id": self.pending["checkpoint_id"],
+                "checkpoint_artifact_fp": self.pending["checkpoint_artifact_fp"],
+                "expected_restore_fp": self.pending["expected_restore_fp"],
+                "owner_request_fp": _owner_fp(self.pending["owner_request_id"]),
+                "document_pid": self.pending["document_pid"],
+                "operation": "logical.batch",
+            }
+        ]
 
     def resolve_recovery(self, runtime_document_id, **kwargs):
         assert self.pending is not None
+        assert kwargs["owner_request_id"] == self.pending["owner_request_id"]
         self.fp = self.pending["expected_restore_fp"]
         self.pending = None
         return {

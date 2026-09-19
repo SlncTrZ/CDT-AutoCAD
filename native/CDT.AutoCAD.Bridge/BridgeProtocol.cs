@@ -28,7 +28,8 @@ internal sealed record LogicalBeginParams(
 internal sealed record LogicalBatchBinding(
     string CheckpointId,
     string CheckpointArtifactFp,
-    string ExpectedRestoreFp
+    string ExpectedRestoreFp,
+    string OwnerRequestId
 );
 
 internal sealed record MetadataGetParams(
@@ -143,6 +144,7 @@ internal sealed record RecoveryResolveParams(
     string DocumentPid,
     string CheckpointId,
     string CheckpointArtifactFp,
+    string OwnerRequestId,
     string ExpectedRestoreFp,
     string Strategy
 );
@@ -152,6 +154,7 @@ internal sealed record RecoveryFinalizeParams(
     string DocumentPid,
     string CheckpointId,
     string CheckpointArtifactFp,
+    string OwnerRequestId,
     string AcceptedPostFp
 );
 
@@ -301,6 +304,7 @@ internal static class BridgeProtocol
         "checkpoint_id",
         "checkpoint_artifact_fp",
         "expected_restore_fp",
+        "owner_request_id",
     };
 
     private static readonly HashSet<string> MetadataGetFields = new(StringComparer.Ordinal)
@@ -576,6 +580,7 @@ internal static class BridgeProtocol
         "document_pid",
         "checkpoint_id",
         "checkpoint_artifact_fp",
+        "owner_request_id",
         "expected_restore_fp",
         "strategy",
     };
@@ -586,6 +591,7 @@ internal static class BridgeProtocol
         "document_pid",
         "checkpoint_id",
         "checkpoint_artifact_fp",
+        "owner_request_id",
         "accepted_post_fp",
     };
 
@@ -947,7 +953,13 @@ internal static class BridgeProtocol
         return new LogicalBatchBinding(
             RequireCheckpointId(logical, "checkpoint_id", requestId),
             RequireFingerprint(logical, "checkpoint_artifact_fp", requestId),
-            RequireFingerprint(logical, "expected_restore_fp", requestId)
+            RequireFingerprint(logical, "expected_restore_fp", requestId),
+            RequireCanonicalGuid(
+                logical,
+                "owner_request_id",
+                "INVALID_PARAMS",
+                requestId
+            ).ToString("D")
         );
     }
 
@@ -1169,6 +1181,12 @@ internal static class BridgeProtocol
         string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
         string checkpointId = RequireCheckpointId(parameters, "checkpoint_id", requestId);
         string artifactFp = RequireFingerprint(parameters, "checkpoint_artifact_fp", requestId);
+        string ownerRequestId = RequireCanonicalGuid(
+            parameters,
+            "owner_request_id",
+            "INVALID_PARAMS",
+            requestId
+        ).ToString("D");
         string expectedRestoreFp = RequireFingerprint(parameters, "expected_restore_fp", requestId);
         string strategy = RequireString(parameters, "strategy", "INVALID_PARAMS", requestId);
         if (!string.Equals(strategy, "R1_COMPENSATE", StringComparison.Ordinal)
@@ -1186,6 +1204,7 @@ internal static class BridgeProtocol
                 documentPid,
                 checkpointId,
                 artifactFp,
+                ownerRequestId,
                 expectedRestoreFp,
                 strategy
             )
@@ -1208,6 +1227,12 @@ internal static class BridgeProtocol
         string documentPid = RequireString(parameters, "document_pid", "INVALID_PARAMS", requestId);
         string checkpointId = RequireCheckpointId(parameters, "checkpoint_id", requestId);
         string artifactFp = RequireFingerprint(parameters, "checkpoint_artifact_fp", requestId);
+        string ownerRequestId = RequireCanonicalGuid(
+            parameters,
+            "owner_request_id",
+            "INVALID_PARAMS",
+            requestId
+        ).ToString("D");
         string acceptedPostFp = RequireFingerprint(parameters, "accepted_post_fp", requestId);
         return new BridgeRequest(
             requestId,
@@ -1220,6 +1245,7 @@ internal static class BridgeProtocol
                 documentPid,
                 checkpointId,
                 artifactFp,
+                ownerRequestId,
                 acceptedPostFp
             )
         );

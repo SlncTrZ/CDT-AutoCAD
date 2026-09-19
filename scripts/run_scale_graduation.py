@@ -125,7 +125,7 @@ def _logical_binding(begin: dict[str, Any], parent_fp: str) -> dict[str, str]:
     raw = begin.get("logical_transaction")
     if not isinstance(raw, dict):
         raise AssertionError("logical begin did not return checkpoint binding")
-    required = ("checkpoint_id", "checkpoint_artifact_fp", "expected_restore_fp")
+    required = ("checkpoint_id", "checkpoint_artifact_fp", "expected_restore_fp", "owner_request_id")
     if any(not isinstance(raw.get(key), str) or not raw[key] for key in required):
         raise AssertionError("logical begin returned incomplete checkpoint binding")
     if raw["expected_restore_fp"] != parent_fp:
@@ -202,6 +202,7 @@ def _run_failure_case(
         document_pid=document_pid,
         checkpoint_id=binding["checkpoint_id"],
         checkpoint_artifact_fp=binding["checkpoint_artifact_fp"],
+        owner_request_id=binding["owner_request_id"],
         expected_restore_fp=baseline_fp,
         strategy="R2_CHECKPOINT_RESTORE",
     )
@@ -298,6 +299,7 @@ def _run_success_case(
         document_pid=document_pid,
         checkpoint_id=binding["checkpoint_id"],
         checkpoint_artifact_fp=binding["checkpoint_artifact_fp"],
+        owner_request_id=binding["owner_request_id"],
         accepted_post_fp=current_fp,
     )
     if finalized.get("status") != "FINALIZED":

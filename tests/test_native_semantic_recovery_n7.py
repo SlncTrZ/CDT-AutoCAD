@@ -24,6 +24,7 @@ RUNTIME2 = "33333333-3333-4333-8333-333333333333"
 DOC = "doc:test"
 CP = "cp:66666666-6666-4666-8666-666666666666"
 ARTIFACT = "sha256:" + "c" * 64
+OWNER_REQUEST_ID = "88888888-8888-4888-8888-888888888888"
 
 
 def entity(pid: str, end_x: float) -> EntitySemanticState:
@@ -79,6 +80,7 @@ def checkpoint(parent: str) -> dict:
         "checkpoint_id": CP,
         "checkpoint_artifact_fp": ARTIFACT,
         "expected_restore_fp": parent,
+        "owner_request_id": OWNER_REQUEST_ID,
     }
 
 
@@ -160,6 +162,8 @@ def test_n7_accepted_commit_is_journaled_then_checkpoint_finalized(tmp_path):
     assert len(executor.entries) == 1
     assert len(client.finalize_calls) == 1
     assert client.finalize_calls[0][1]["accepted_post_fp"] == after.fingerprints.document_fp
+    journal_text = (tmp_path / "state.jsonl").read_text(encoding="utf-8")
+    assert OWNER_REQUEST_ID not in journal_text
     assert executor.blocked_reason is None
 
 
