@@ -136,7 +136,7 @@ Other AutoCAD releases require their own compatibility evidence before they are 
 - `document_configure_units(insertion_units?, measurement?, linear_format?, linear_precision?)`
 - `document_dependencies`
 - `document_save(path?)` — success requires immediate verified persisted-clean state (`Saved=true`, `DBMOD=0`) in addition to path identity.
-- `document_save_as(path)`
+- `document_save_as(path)` — success requires the requested path to remain bound to the same live document and immediate persisted-clean readback (`Saved=true`, `DBMOD=0`); dirty or unverifiable post-state fails closed and quarantines later mutation.
 - `document_export_pdf(path, layout?)`
 - `drawing_audit`
 - `drawing_purge`

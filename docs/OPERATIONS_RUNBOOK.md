@@ -85,7 +85,7 @@ Preferred production sequence:
 4. require `COMMITTED_VERIFIED` or the documented successful receipt for that public surface;
 5. inspect/query/measure the result;
 6. use the recommended 300 ms delay between completed visual features only when presentation pacing is desired;
-7. save at meaningful checkpoints; `document_save` success means immediate verified persisted-clean state (`Saved=true`, `DBMOD=0`), not merely command acknowledgement;
+7. save at meaningful checkpoints; both `document_save` and `document_save_as` succeed only after same-document/path verification and immediate persisted-clean readback (`Saved=true`, `DBMOD=0`), not merely command acknowledgement;
 8. seal accepted artifacts when a durable content-addressed checkpoint is required.
 
 A feature failure must remain feature-local. Earlier committed features must not be discarded merely because the current feature fails.

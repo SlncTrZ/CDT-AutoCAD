@@ -173,6 +173,8 @@ Operations such as SaveAs/export/file replacement are not assumed to be covered 
 
 For file side effects:
 
+- `Save`/`SaveAs` success requires post-call verification on the same bound document; `SaveAs` must still bind the requested canonical target path;
+- immediate persisted-clean readback requires `Saved=true` and `DBMOD=0`; dirty or unverifiable post-state is integrity uncertainty and blocks later mutation until provider restart;
 - write to a new/staging path where possible;
 - verify produced artifact semantics/hash;
 - promote/rename only after validation;

@@ -1063,6 +1063,28 @@ class ComBackend(AutoCADBackend):
                 raise
             raise StateConflictError(reason) from exc
 
+    def _verify_persisted_clean(self, doc: Any, *, operation: str) -> dict[str, Any]:
+        try:
+            saved = bool(_com_property_with_busy_retry(doc, "Saved"))
+            dbmod = int(_com_call_with_busy_retry(lambda: doc.GetVariable("DBMOD")))
+        except Exception as exc:
+            reason = f"AutoCAD {operation} persisted-clean postcondition could not be verified"
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason) from exc
+
+        persisted_clean = saved and dbmod == 0
+        if not persisted_clean:
+            reason = f"AutoCAD {operation} did not reach the required persisted-clean postcondition"
+            self._quarantine_integrity(reason)
+            raise StateConflictError(reason)
+
+        return {
+            "saved": saved,
+            "dbmod": dbmod,
+            "persisted_clean": True,
+            "postcondition_verified": True,
+        }
+
     async def _run(
         self,
         func,
@@ -1417,19 +1439,7 @@ class ComBackend(AutoCADBackend):
                 quarantine_on_failure=True,
             )
 
-            try:
-                saved = bool(_com_property_with_busy_retry(doc, "Saved"))
-                dbmod = int(_com_call_with_busy_retry(lambda: doc.GetVariable("DBMOD")))
-            except Exception as exc:
-                reason = "AutoCAD save persisted-clean postcondition could not be verified"
-                self._quarantine_integrity(reason)
-                raise StateConflictError(reason) from exc
-
-            persisted_clean = saved and dbmod == 0
-            if not persisted_clean:
-                reason = "AutoCAD save did not reach the required persisted-clean postcondition"
-                self._quarantine_integrity(reason)
-                raise StateConflictError(reason)
+            persisted = self._verify_persisted_clean(doc, operation="save")
 
             name = str(_com_property_with_busy_retry(doc, "Name"))
             self._document_scope_key = (name, str(verified_target))
@@ -1439,10 +1449,7 @@ class ComBackend(AutoCADBackend):
                 "format": verified_target.suffix.lower().lstrip("."),
                 "command_completed": True,
                 "persisted_path_verified": True,
-                "saved": saved,
-                "dbmod": dbmod,
-                "persisted_clean": persisted_clean,
-                "postcondition_verified": True,
+                **persisted,
             }
 
         return await self._run(_sync)
@@ -1466,12 +1473,16 @@ class ComBackend(AutoCADBackend):
                 expected=target,
                 quarantine_on_failure=True,
             )
+            persisted = self._verify_persisted_clean(doc, operation="save as")
             name = str(_com_property_with_busy_retry(doc, "Name"))
             self._document_scope_key = (name, str(verified_target))
             return {
                 "ok": True,
                 "path": str(verified_target),
                 "format": verified_target.suffix.lower().lstrip("."),
+                "command_completed": True,
+                "persisted_path_verified": True,
+                **persisted,
             }
 
         return await self._run(_sync)

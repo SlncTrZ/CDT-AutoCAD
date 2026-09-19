@@ -1043,6 +1043,7 @@ async def test_document_save_as_retries_only_post_save_scope_reads(
 
     class FakeDoc:
         Name = "safe.dwg"
+        Saved = True
 
         @property
         def FullName(self):
@@ -1055,6 +1056,10 @@ async def test_document_save_as_retries_only_post_save_scope_reads(
         def SaveAs(self, _path, _file_type):
             nonlocal save_calls
             save_calls += 1
+
+        def GetVariable(self, name):
+            assert name == "DBMOD"
+            return 0
 
     doc = FakeDoc()
     monkeypatch.setattr(backend, "_run", _inline_run)

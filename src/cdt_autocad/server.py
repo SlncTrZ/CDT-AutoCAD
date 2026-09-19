@@ -85,11 +85,13 @@ _TOOL_DESCRIPTIONS = {
     ),
     "document_save": (
         "Save the currently bound document to its verified existing path, or delegate to SaveAs "
-        "when path is supplied; mutation timeout must not be blindly retried."
+        "when path is supplied; success requires immediate persisted-clean readback and mutation "
+        "timeout must not be blindly retried."
     ),
     "document_save_as": (
-        "Save the active document to an allowed DWG/DXF destination and update its document "
-        "scope; backend format capability and path policy are enforced."
+        "Save the active document to an allowed DWG/DXF destination, verify the same bound path "
+        "and immediate persisted-clean state, then update its document scope; unverifiable or dirty "
+        "post-state fails closed."
     ),
     "document_export_pdf": (
         "Export the active document or selected layout to an allowed PDF path; this writes an "
