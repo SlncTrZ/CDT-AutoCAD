@@ -2,7 +2,7 @@
 
 > Updated: 2026-09-19
 > Status: **LAUNCH-READY / OPERATIONAL RC — B0–B4 CLOSED + U1 CORE LIVE-ACCEPTED**
-> Last published/tagged release: `v0.4.0rc2` at `295a064`; current U1 source candidate advances to RC3
+> Last published/tagged release: `v0.4.0rc2` at `295a064`; current D18 source candidate is RC3 and awaits final exact-source recertification
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
 
 This file is the canonical **public current-state authority**. It reports what is true now. It does not define architecture or future roadmap.

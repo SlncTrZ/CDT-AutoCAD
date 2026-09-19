@@ -1,7 +1,7 @@
 # Semantic State Protocol — CDT-AutoCAD
 
-> Updated: 2026-09-17 +07:00
-> Status: CONTRACT BASELINE · N1–N7/O1 + G1/G2/G3 + U1 core implemented/live-accepted for documented scopes · Feature-based Chunks Streaming live-accepted
+> Updated: 2026-09-19 +07:00
+> Status: CONTRACT BASELINE · N1–N7/O1 + G1/G2/G3 + U1 core + D15–D18 assurance closures implemented/live-accepted for documented scopes · Feature-based Chunks Streaming live-accepted
 > Scope: source semantics, native extraction, PID, canonicalization, fingerprinting, diff, metadata, feature-local rollback and deterministic validation
 
 ## 1. System invariant
@@ -210,7 +210,7 @@ Do not conflate runtime identity with persistent semantic identity.
 
 ### 6.2 Document PID
 
-Each managed document has a provider-owned `document_pid` stored in the DWG Named Objects Dictionary under application-owned XRecord metadata. N2 native AutoCAD 2027 probes selected `SLNCTRZ_CDT/DOCUMENT_PID` as the carrier. U1 adds an explicit production initializer for exactly one active document whose current space is empty: the bridge generates the `doc:<uuid>` internally, persists it transactionally, reads it back independently and returns the schema-v3 zero-entity predecessor fingerprint. Caller-supplied document PIDs are not accepted by this bootstrap.
+Each managed document has a provider-owned `document_pid` stored in the DWG Named Objects Dictionary under application-owned XRecord metadata. N2 native AutoCAD 2027 probes selected `SLNCTRZ_CDT/DOCUMENT_PID` as the carrier. U1 introduced the explicit production initializer for exactly one active document whose current space is empty; D18 hardens that path so the bound document must remain active and the provisional `doc:<uuid>` write, PID readback and zero-entity semantic extraction share one native transaction that commits only after verification. Any pre-commit failure aborts the provisional lineage rather than leaving an orphan PID. Caller-supplied document PIDs are not accepted by this bootstrap.
 
 `document_pid` is **persistent semantic lineage identity**, not globally unique physical-file identity. A byte-for-byte DWG copy preserves it. Therefore mutation targeting must combine runtime document binding + `document_pid` + `expected_parent_fp`; checkpoint/file identity additionally uses `artifact_fp` when needed. If multiple open documents share one `document_pid` and the runtime target cannot be unambiguously resolved, the mutation fails closed before execution.
 
@@ -231,7 +231,7 @@ Required behavior:
 
 N2 finalized the carrier/clone policy for N3+: shallow `Clone()` receives a fresh PID; deep/cross/WBLOCK/INSERT result scopes require reconciliation/remap because those measured paths copy entity PID metadata; unresolved duplicates block acceptance.
 
-The native semantic lane is intentionally a **provider-owned PID scope**, not an implicit adoption mechanism. AutoCAD 2027 Session-1 mixed-drawing acceptance confirmed that one legacy/COM-created entity without provider PID metadata would otherwise make document-wide semantic extraction and even unrelated PID-targeted operations fail ambiguously. U1 closes the production-entry gap for **new empty drawings only** through explicit document-lineage initialization; native semantic reads still do not assign entity PIDs as a side effect, and non-empty/legacy drawings are never silently adopted. Bringing existing legacy entities under native ownership remains a future explicit, bounded adoption/re-baseline operation with its own clone/PID policy and acceptance evidence.
+The native semantic lane is intentionally a **provider-owned PID scope**, not an implicit adoption mechanism. AutoCAD 2027 Session-1 mixed-drawing acceptance confirmed that one legacy/COM-created entity without provider PID metadata would otherwise make document-wide semantic extraction and even unrelated PID-targeted operations fail ambiguously. U1 introduced the production-entry path for **new empty drawings only** through explicit document-lineage initialization; D18 makes that bootstrap atomic with respect to PID/lineage and semantic identity. Native semantic reads still do not assign entity PIDs as a side effect, and non-empty/legacy drawings are never silently adopted. Bringing existing legacy entities under native ownership remains a future explicit, bounded adoption/re-baseline operation with its own clone/PID policy and acceptance evidence.
 
 ### 6.4 Fingerprint families
 

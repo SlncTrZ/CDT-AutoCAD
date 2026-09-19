@@ -1,10 +1,10 @@
 # Marketing Demo Runbook — CDT-AutoCAD
 
-> Updated: 2026-09-15 16:09 +07:00
-> Product identity: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools`
+> Updated: 2026-09-19 18:38 +07:00
+> Current product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools`
 > Positioning: **RC/preview — Generic CAD Execution Engine for AI agents**
 > Primary demo target: AutoCAD 2027 full / Windows x64 / Interactive Session 1
-> Current runner bridge identity: `0.8.2-mp7`; the evidence table in §4 intentionally preserves the older bridge identity of the recorded historical demo run.
+> Legacy camera-ready runner pin: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools` with bridge `0.8.2-mp7`; current product bridge is `0.8.6-d18`, while the §4 evidence table intentionally preserves the older identity of the recorded historical demo run.
 
 ## 1. Purpose
 
@@ -92,7 +92,7 @@ The product recommendation remains **300 ms between completed features**. The ma
 
 ## 4. Historical marketing live smoke evidence
 
-The production runner now requires current RC2 caller-state binding and bridge identity `0.8.2-mp7`. The table below intentionally remains the historical marketing smoke `20260911-220855-712350`; its RC1 / `0.8.1-g3` identity is evidence for that run and must not be rewritten retroactively. Current acceptance status lives in `docs/CURRENT_CHECKPOINT.md` and `docs/LIVE_ACCEPTANCE.md`.
+The legacy camera-ready runner remains intentionally pinned to the RC2 caller-state contract and bridge `0.8.2-mp7`; it is not the authority for the current RC3/`0.8.6-d18` runtime identity. The table below intentionally remains the historical marketing smoke `20260911-220855-712350`; its RC1 / `0.8.1-g3` identity is evidence for that run and must not be rewritten retroactively. Current acceptance status lives in `docs/CURRENT_CHECKPOINT.md` and `docs/LIVE_ACCEPTANCE.md`.
 
 Live Session-1 run `20260911-220855-712350` passed on AutoCAD 2027:
 
@@ -121,7 +121,7 @@ The run began with one stale synthetic marketing drawing, closed it automaticall
 
 Use claims narrowly and literally supported by evidence:
 
-- **86 public MCP tools** in the current RC contract.
+- **87 public MCP tools** in the current RC3 contract; the legacy camera-ready runner remains pinned to the historical RC2 86-tool fixture.
 - **AutoCAD 2027 / Windows x64** is the primary certified live lane.
 - Feature-based Chunks Streaming uses bounded native micro-chunks of at most **32 items**.
 - A failed current feature can be restored to its exact predecessor while earlier committed features remain intact.
@@ -143,7 +143,7 @@ Recommended proof line:
 
 Do **not** say:
 
-- “production GA” — current product version is `0.4.0rc2`; say **RC/preview**;
+- “production GA” — current source candidate is `0.4.0rc3` and the last published/tagged release remains `v0.4.0rc2`; say **RC/preview**;
 - “supports every AutoCAD version” — only the documented target is certified;
 - “understands civil/mechanical/architectural standards” — domain rules belong to Domain Agents;
 - “10,000 entities instantly” or “no freeze at 10k” — the scale evidence proves bounded execution/recovery, not instantaneous completion;

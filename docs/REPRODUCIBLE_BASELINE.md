@@ -65,7 +65,7 @@ A locked-install acceptance run must report the interpreter/platform and verify 
 
 ## 5. Runtime/build provenance manifest
 
-`src/cdt_autocad/provenance.py` generates a JSON manifest that binds. The current `0.8.2-mp7` maintenance acceptance additionally proves that the Release/x64 candidate hash equals the bridge DLL observed loaded in AutoCAD Session 1; historical runs lacking a runtime DLL hash are intentionally not rebound retroactively.
+`src/cdt_autocad/provenance.py` generates a JSON manifest that binds. The historical `0.8.2-mp7` maintenance acceptance additionally proved that the Release/x64 candidate hash equaled the bridge DLL observed loaded in AutoCAD Session 1; historical runs lacking a runtime DLL hash are intentionally not rebound retroactively. Current D18 bridge/runtime provenance is recorded in `docs/CURRENT_CHECKPOINT.md` and `docs/LIVE_ACCEPTANCE.md`.
 
 The manifest binds:
 

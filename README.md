@@ -10,9 +10,9 @@ It deliberately does **not** own engineering-domain rules. Civil, structural, me
 
 ## Current position
 
-As of 2026-09-17, CDT-AutoCAD is **launch-ready for its intended execution-engine mission** with U1 core hardening live-accepted on AutoCAD 2027. New empty drawings now have an explicit verified production path to provider document lineage before native strong-integrity execution, and bounded native create batches cover LINE/CIRCLE/ARC/simple-LWPOLYLINE plus TEXT/MTEXT/aligned/linear dimensions with optional layer/color assignment.
+As of 2026-09-19, CDT-AutoCAD is **launch-ready for its intended execution-engine mission** with D15–D18 assurance closures live-accepted on AutoCAD 2027. New empty drawings use the D18 atomic document-lineage bootstrap before native strong-integrity execution, and bounded native create batches cover LINE/CIRCLE/ARC/simple-LWPOLYLINE plus TEXT/MTEXT/aligned/linear dimensions with optional layer/color assignment.
 
-Native strong-integrity writes require the caller's planned `document_pid` + predecessor fingerprint and refuse wrong-document/stale-state requests before mutation. `document_save` now requires an immediate persisted-clean postcondition, and cached live COM reuse repairs connection readiness metadata after successful probing. B1 filesystem containment remains closed with a split guarantee: provider-owned file I/O uses descriptor/handle-bound actual-I/O primitives against concurrent descendant namespace mutation, while AutoCAD APIs that accept pathname strings only remain explicitly bounded by pre/post verification rather than advertised as race-free. Future CAD capability is added only from a concrete blocked workflow plus its postcondition and verification invariant.
+Native strong-integrity writes require the caller's planned `document_pid` + predecessor fingerprint and refuse wrong-document/stale-state requests before mutation. `document_save` and `document_save_as` require immediate persisted-clean verification; COM/native mutations share one fail-closed writer/quarantine boundary; and D18 commits document PID lineage only after same-transaction readback/semantic verification. B1 filesystem containment remains closed with a split guarantee: provider-owned file I/O uses descriptor/handle-bound actual-I/O primitives against concurrent descendant namespace mutation, while AutoCAD APIs that accept pathname strings only remain explicitly bounded by pre/post verification rather than advertised as race-free. The remaining assurance gate is final exact-source recertification on the committed D18 tree; future CAD capability is demand-driven from concrete blocked workflows.
 
 This is not a claim of full AutoCAD API parity, and the project is not pursuing parity as an independent roadmap.
 
@@ -35,7 +35,7 @@ provider_version: 0.4.0rc3
 contract_version: autocad-generic-v1-rc3
 public MCP tools: 87
 execution_model: feature-based-chunks-streaming-v1
-native bridge candidate: 0.8.3-u1
+native bridge candidate: 0.8.6-d18
 ```
 
 ## Execution model
@@ -171,7 +171,7 @@ Current accepted scale tiers on real AutoCAD 2027:
 | 5,000 | PASS | beginning / middle / end | 0 |
 | 10,000 | PASS | beginning / middle / end | 0 |
 
-At current release-provenance checkpoint `bcb5c66`:
+At the historical RC2 release-provenance checkpoint `bcb5c66`:
 
 - canonical exact-lock Linux reconstruction A/B: **405 passed / 11 skipped + Ruff PASS** in both fresh environments;
 - canonical exact-lock Windows `.171` reconstruction A/B: **404 passed / 12 skipped + Ruff PASS** in both fresh environments;
