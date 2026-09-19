@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from cdt_autocad.errors import StateConflictError, UnsupportedCapabilityError
+from cdt_autocad.native_bridge.client import BridgeRemoteError
 from cdt_autocad.native_bridge.public_runtime import NativePublicFacade
 
 RUNTIME = "11111111-1111-4111-8111-111111111111"
@@ -458,6 +459,50 @@ def test_public_metadata_set_recovers_exact_predecessor_on_readback_mismatch(set
     assert result["post_document_fp"] == PRE
     assert result["recovery_strategy"] == "R1_COMPENSATE"
     assert len(client.recovery_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "STATE_DRIFT",
+        "NO_EFFECT",
+        "ENTITY_NOT_FOUND",
+        "RECOVERY_PENDING",
+        "CHECKPOINT_UNAVAILABLE",
+        "DOCUMENT_NOT_FOUND",
+        "DOCUMENT_BINDING_MISMATCH",
+        "DOCUMENT_PID_MISSING",
+    ],
+)
+def test_public_metadata_deterministic_remote_refusal_does_not_enter_recovery_or_uncertainty(
+    settings, tmp_path, code
+):
+    class DeterministicRefusal(FakeNativeClient):
+        def metadata_set(self, runtime_document_id, **kwargs):
+            raise BridgeRemoteError(code, "deterministic refusal", kwargs["request_id"])
+
+        def recoveries_list(self):
+            raise AssertionError("deterministic pre-mutation refusal must not discover recovery")
+
+    client = DeterministicRefusal()
+    facade = NativePublicFacade(
+        replace(settings, backend="com"),
+        client_factory=lambda: client,
+        journal_root=tmp_path,
+    )
+
+    with pytest.raises(BridgeRemoteError) as caught:
+        facade.metadata_set(
+            ENTITY,
+            "customer.mechanical.v1",
+            {"part_no": "P-100"},
+            document_pid=DOC,
+            expected_parent_fp=PRE,
+        )
+
+    assert caught.value.code == code
+    assert client.recovery_calls == []
+    assert client.metadata == {}
 
 
 def test_public_metadata_unknown_completion_discovers_checkpoint_and_recovers(settings, tmp_path):

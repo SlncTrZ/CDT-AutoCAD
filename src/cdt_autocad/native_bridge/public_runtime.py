@@ -15,13 +15,28 @@ from typing import Any
 from uuid import uuid4
 
 from cdt_autocad.config import Settings
-from cdt_autocad.errors import StateConflictError, UnsupportedCapabilityError
+from cdt_autocad.errors import (
+    MutationCompletionUncertainError,
+    StateConflictError,
+    UnsupportedCapabilityError,
+)
 
-from .client import NativeBridgeClient
+from .client import BridgeRemoteError, NativeBridgeClient
 from .feature_stream import FeatureStreamExecutor
 from .logical_batch import NativeLogicalBatchExecutor
 from .protocol import owner_request_fingerprint
 from .transport_windows import NamedPipeTransport, pipe_name_for_session
+
+_METADATA_PREMUTATION_REFUSALS = {
+    "STATE_DRIFT",
+    "NO_EFFECT",
+    "ENTITY_NOT_FOUND",
+    "RECOVERY_PENDING",
+    "CHECKPOINT_UNAVAILABLE",
+    "DOCUMENT_NOT_FOUND",
+    "DOCUMENT_BINDING_MISMATCH",
+    "DOCUMENT_PID_MISSING",
+}
 
 
 @dataclass(frozen=True)
@@ -91,7 +106,24 @@ class NativePublicFacade:
             raise StateConflictError(
                 "active AutoCAD document already has persistent PID metadata; bootstrap is refused"
             )
-        result = client.initialize_document_identity(runtime_id)
+        try:
+            result = client.initialize_document_identity(runtime_id)
+        except BridgeRemoteError as exc:
+            if exc.code in {
+                "INVALID_PARAMS",
+                "DOCUMENT_NOT_FOUND",
+                "DOCUMENT_BINDING_MISMATCH",
+                "DOCUMENT_NOT_EMPTY",
+                "PID_METADATA_INVALID",
+            }:
+                raise
+            raise MutationCompletionUncertainError(
+                "native document identity bootstrap completion is uncertain after bridge dispatch"
+            ) from exc
+        except Exception as exc:
+            raise MutationCompletionUncertainError(
+                "native document identity bootstrap completion is uncertain after bridge dispatch"
+            ) from exc
         return {
             **result,
             "route": "native-managed-bridge",
@@ -295,6 +327,25 @@ class NativePublicFacade:
                 value=value,
                 request_id=owner_request_id,
             )
+        except BridgeRemoteError as exc:
+            if exc.code in _METADATA_PREMUTATION_REFUSALS:
+                raise
+            checkpoint = self._discover_metadata_checkpoint(
+                client,
+                active,
+                owner_request_id,
+            )
+            if checkpoint is None:
+                raise MutationCompletionUncertainError(
+                    "native metadata completion is unknown and no uniquely bound recovery checkpoint was found"
+                ) from exc
+            return self._recover_metadata(
+                client,
+                active,
+                {"dispatch_error": f"{type(exc).__name__}: {exc}"},
+                checkpoint,
+                reason="metadata dispatch completion became unknown",
+            )
         except Exception as exc:
             checkpoint = self._discover_metadata_checkpoint(
                 client,
@@ -302,7 +353,7 @@ class NativePublicFacade:
                 owner_request_id,
             )
             if checkpoint is None:
-                raise StateConflictError(
+                raise MutationCompletionUncertainError(
                     "native metadata completion is unknown and no uniquely bound recovery checkpoint was found"
                 ) from exc
             return self._recover_metadata(
@@ -445,7 +496,7 @@ class NativePublicFacade:
             rebound = recovery.get("runtime_document_id")
             if isinstance(rebound, str) and rebound:
                 runtime_id = rebound
-        raise StateConflictError(
+        raise MutationCompletionUncertainError(
             "native metadata state is uncertain because exact predecessor recovery was not confirmed: "
             + self._canonical_json(last or {"reason": reason})
         )

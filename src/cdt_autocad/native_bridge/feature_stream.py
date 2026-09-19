@@ -24,6 +24,10 @@ class FeatureExecutionError(RuntimeError):
     def __init__(self, code: str, message: str, *, detail: Any = None):
         self.code = code
         self.detail = detail
+        self.completion_unknown = code in {
+            "FEATURE_BEGIN_UNKNOWN",
+            "FEATURE_FINALIZE_UNKNOWN",
+        }
         super().__init__(f"{code}: {message}")
 
 

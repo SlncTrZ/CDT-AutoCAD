@@ -47,9 +47,11 @@ from .diagnostics import DiagnosticSink, ProviderDiagnosticMiddleware
 from .errors import (
     BackendQuarantinedError,
     BackendTimeoutError,
+    MutationCompletionUncertainError,
     StateConflictError,
     UnsupportedCapabilityError,
 )
+from .mutation_coordinator import MutationCoordinator
 from .native_bridge.public_runtime import NativePublicFacade
 from .runtime_identity import RuntimeIdentity
 
@@ -506,6 +508,16 @@ def _classify_error(exc: Exception) -> tuple[str, dict[str, Any], str] | None:
                 {"reason": "document_quarantined", "retryable": False},
                 str(item),
             )
+        if isinstance(item, MutationCompletionUncertainError):
+            return (
+                "conflict",
+                {
+                    "reason": "mutation_completion_uncertain",
+                    "retryable": False,
+                    "completion_unknown": True,
+                },
+                str(item),
+            )
         if isinstance(item, StateConflictError):
             return "conflict", {"retryable": False}, str(item)
         if isinstance(item, BackendTimeoutError):
@@ -525,6 +537,42 @@ def _classify_error(exc: Exception) -> tuple[str, dict[str, Any], str] | None:
         if isinstance(item, RuntimeError):
             return "provider_unavailable", {"retryable": False}, str(item)
     return None
+
+
+def _consume_background_mutation(task: asyncio.Task[Any]) -> None:
+    try:
+        task.result()
+    except BaseException:
+        pass
+
+
+async def _run_native_mutation(
+    coordinator: MutationCoordinator,
+    func: Any,
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Run one synchronous native writer behind the shared provider mutation authority."""
+
+    async with coordinator.writer("native"):
+        task = asyncio.create_task(asyncio.to_thread(func, *args, **kwargs))
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            coordinator.quarantine(
+                "native",
+                "native mutation request was cancelled after dispatch; completion is unknown",
+            )
+            task.add_done_callback(_consume_background_mutation)
+            raise
+        except Exception as exc:
+            if bool(getattr(exc, "completion_unknown", False)):
+                coordinator.quarantine("native", str(exc))
+                if isinstance(exc, MutationCompletionUncertainError):
+                    raise
+                raise MutationCompletionUncertainError(str(exc)) from exc
+            raise
 
 
 class ProviderErrorMiddleware(Middleware):
@@ -559,9 +607,10 @@ def create_mcp(
 ) -> FastMCP:
     settings = settings or Settings.from_env()
     runtime_identity = RuntimeIdentity.from_env()
+    mutation_coordinator = MutationCoordinator()
     backend: AutoCADBackend
     if settings.backend == "com":
-        backend = ComBackend(settings)
+        backend = ComBackend(settings, mutation_coordinator=mutation_coordinator)
     else:
         backend = EzdxfBackend(settings)
     native_facade = NativePublicFacade(settings)
@@ -645,11 +694,15 @@ def create_mcp(
 
     @provider_tool(tags={"native", "read"})
     async def native_integrity_status() -> dict[str, Any]:
-        return await asyncio.to_thread(native_facade.status)
+        status = await asyncio.to_thread(native_facade.status)
+        return {**status, "mutation_coordinator": mutation_coordinator.status()}
 
     @provider_tool(tags={"native", "document", "write"})
     async def native_document_identity_initialize() -> dict[str, Any]:
-        return await asyncio.to_thread(native_facade.bootstrap_document_identity)
+        return await _run_native_mutation(
+            mutation_coordinator,
+            native_facade.bootstrap_document_identity,
+        )
 
     @provider_tool(tags={"native", "feature", "write"})
     async def feature_execute(
@@ -660,7 +713,8 @@ def create_mcp(
         correlation_id: str,
         actions: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        return await asyncio.to_thread(
+        return await _run_native_mutation(
+            mutation_coordinator,
             native_facade.feature_execute,
             document_pid=document_pid,
             expected_parent_fp=expected_parent_fp,
@@ -676,7 +730,8 @@ def create_mcp(
         expected_parent_fp: str,
         entities: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        return await asyncio.to_thread(
+        return await _run_native_mutation(
+            mutation_coordinator,
             native_facade.batch_create_entities,
             entities,
             document_pid=document_pid,
@@ -689,7 +744,8 @@ def create_mcp(
         expected_parent_fp: str,
         inserts: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        return await asyncio.to_thread(
+        return await _run_native_mutation(
+            mutation_coordinator,
             native_facade.batch_insert_blocks,
             inserts,
             document_pid=document_pid,
@@ -703,7 +759,8 @@ def create_mcp(
         semantic_pids: list[str],
         transform: dict[str, Any],
     ) -> dict[str, Any]:
-        return await asyncio.to_thread(
+        return await _run_native_mutation(
+            mutation_coordinator,
             native_facade.batch_transform_entities,
             semantic_pids,
             transform,
@@ -723,7 +780,8 @@ def create_mcp(
         namespace: str,
         value: Any,
     ) -> dict[str, Any]:
-        return await asyncio.to_thread(
+        return await _run_native_mutation(
+            mutation_coordinator,
             native_facade.metadata_set,
             semantic_pid,
             namespace,
@@ -1464,6 +1522,7 @@ def create_mcp(
         return await backend.redo()
 
     app._cdt_backend = backend  # type: ignore[attr-defined]
+    app._cdt_mutation_coordinator = mutation_coordinator  # type: ignore[attr-defined]
     app._cdt_settings = settings  # type: ignore[attr-defined]
     return app
 

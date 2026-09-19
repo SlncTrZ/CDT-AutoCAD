@@ -39,6 +39,7 @@ from ..errors import (
     UnsupportedCapabilityError,
 )
 from ..models import BlockInfo, Capability, EntityInfo, LayerInfo
+from ..mutation_coordinator import MutationCoordinator
 from ..security import (
     resolve_allowed_directory,
     resolve_autocad_document_path,
@@ -531,8 +532,14 @@ def _capture_window_png(hwnd: int) -> bytes:
 class ComBackend(AutoCADBackend):
     """A2 live AutoCAD backend with lazy connection and serialized STA execution."""
 
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        mutation_coordinator: MutationCoordinator | None = None,
+    ):
         self.settings = settings
+        self._mutation_coordinator = mutation_coordinator or MutationCoordinator()
         self._generation = 0
         self._apps: dict[int, Any] = {}
         self._executor: ThreadPoolExecutor | None = None
@@ -542,7 +549,6 @@ class ComBackend(AutoCADBackend):
         self._timeout_uncertain = False
         self._uncertain_future: Future[Any] | None = None
         self._integrity_uncertain_reason: str | None = None
-        self._mutation_gate = asyncio.Lock()
         self._document_scope_key: tuple[str, str] | None = None
         self._created_viewport_handles: set[str] = set()
         if _COM_IMPORTS_OK:
@@ -687,6 +693,7 @@ class ComBackend(AutoCADBackend):
             ),
             "integrity_uncertain": self._integrity_uncertain_reason is not None,
             "integrity_uncertain_reason": self._integrity_uncertain_reason,
+            "mutation_coordinator": self._mutation_coordinator.status(),
             "a2_implementation_state": "release_candidate",
             "a2_live_verification": "historical_primary_target_pass_current_process_unverified",
             "live_certification": {
@@ -1008,12 +1015,17 @@ class ComBackend(AutoCADBackend):
     def _latch_uncertain_completion(self, future: Future[Any]) -> None:
         self._timeout_uncertain = True
         self._uncertain_future = future
+        self._mutation_coordinator.quarantine(
+            "com",
+            "COM mutation completion is unknown after timeout or cancellation",
+        )
         self._connected = False
         self._application_metadata = None
         self._created_viewport_handles.clear()
 
     def _quarantine_integrity(self, reason: str) -> None:
         self._integrity_uncertain_reason = str(reason)
+        self._mutation_coordinator.quarantine("com", self._integrity_uncertain_reason)
         self._connected = False
         self._application_metadata = None
         self._created_viewport_handles.clear()
@@ -1058,7 +1070,7 @@ class ComBackend(AutoCADBackend):
         may_mutate_document: bool = True,
     ) -> _T:
         if may_mutate_document:
-            async with self._mutation_gate:
+            async with self._mutation_coordinator.writer("com"):
                 return await self._run_after_mutation_gate(
                     func,
                     may_mutate_document=True,
@@ -1091,6 +1103,8 @@ class ComBackend(AutoCADBackend):
                 "verify the live drawing with read-only calls and restart the provider before "
                 "mutating again"
             )
+        if may_mutate_document:
+            self._mutation_coordinator.ensure_writable()
 
         loop = asyncio.get_running_loop()
         concurrent_future = executor.submit(func)

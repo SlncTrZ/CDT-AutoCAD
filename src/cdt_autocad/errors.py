@@ -21,6 +21,12 @@ class BackendQuarantinedError(StateConflictError):
     """Raised when a timed-out mutation left document integrity uncertain."""
 
 
+class MutationCompletionUncertainError(StateConflictError):
+    """Raised when a dispatched mutation cannot prove commit or rollback completion."""
+
+    completion_unknown = True
+
+
 class BackendTimeoutError(AutoCADProviderError):
     """Raised when a backend operation exceeds its configured deadline."""
 

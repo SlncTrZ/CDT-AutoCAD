@@ -27,6 +27,12 @@ class LogicalBatchError(RuntimeError):
     def __init__(self, code: str, message: str, *, detail: Any = None):
         self.code = code
         self.detail = detail
+        self.completion_unknown = code in {
+            "LOGICAL_BEGIN_UNKNOWN",
+            "LOGICAL_FINALIZE_UNKNOWN",
+            "LOGICAL_STATE_UNCERTAIN",
+            "LOGICAL_ROLLBACK_FAILED",
+        }
         super().__init__(f"{code}: {message}")
 
 

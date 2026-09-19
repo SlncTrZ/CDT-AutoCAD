@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('session-probe', 'visual-style', 'acis-soak', 'mp2-current-identity', 'u1-floorplan', 'u1-reload', 'd15-ownership')]
+    [ValidateSet('session-probe', 'visual-style', 'acis-soak', 'mp2-current-identity', 'u1-floorplan', 'u1-reload', 'd15-ownership', 'd16-shared-mutation')]
     [string]$Profile,
 
     [Parameter(Mandatory = $true)]
@@ -73,6 +73,10 @@ switch ($Profile) {
     }
     'd15-ownership' {
         $scriptPath = Join-Path $RepoRoot 'scripts\run_d15_checkpoint_ownership_acceptance.py'
+        $scriptArgs = @('--output', $OutputPath, '--com-progid', 'AutoCAD.Application.26')
+    }
+    'd16-shared-mutation' {
+        $scriptPath = Join-Path $RepoRoot 'scripts\run_d16_shared_mutation_acceptance.py'
         $scriptArgs = @('--output', $OutputPath, '--com-progid', 'AutoCAD.Application.26')
     }
 }
