@@ -153,9 +153,17 @@ class NativeBridgeClient:
         )
         return self._request("bridge.document.identity", params.to_dict())
 
-    def initialize_document_identity(self, runtime_document_id: str) -> dict[str, Any]:
+    def initialize_document_identity(
+        self,
+        runtime_document_id: str,
+        *,
+        fault_stage: str | None = None,
+    ) -> dict[str, Any]:
         params = DocumentIdentityInitializeParams.from_dict(
-            {"runtime_document_id": runtime_document_id}
+            {
+                "runtime_document_id": runtime_document_id,
+                **({"fault_stage": fault_stage} if fault_stage is not None else {}),
+            }
         )
         result = self._request("bridge.document.identity.initialize", params.to_dict())
         document_pid = result.get("document_pid")

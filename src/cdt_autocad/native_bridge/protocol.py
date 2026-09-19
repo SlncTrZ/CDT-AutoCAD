@@ -73,7 +73,7 @@ _RECOVERY_OPERATIONS = frozenset(
 _ALLOWED_OPERATIONS = _READ_ONLY_OPERATIONS | _MUTATION_OPERATIONS | _RECOVERY_OPERATIONS
 _REQUEST_FIELDS = frozenset({"protocol", "request_id", "operation", "params"})
 _DOCUMENT_IDENTITY_FIELDS = frozenset({"runtime_document_id", "document_pid"})
-_DOCUMENT_IDENTITY_INITIALIZE_FIELDS = frozenset({"runtime_document_id"})
+_DOCUMENT_IDENTITY_INITIALIZE_FIELDS = frozenset({"runtime_document_id", "fault_stage"})
 _VISUAL_STYLE_SET_FIELDS = frozenset(
     {
         "runtime_document_id",
@@ -199,28 +199,42 @@ class DocumentIdentityParams:
 
 @dataclass(frozen=True)
 class DocumentIdentityInitializeParams:
-    """Explicit bootstrap selector; callers may select a runtime document but never supply its PID."""
+    """Explicit bootstrap selector with one bounded acceptance-only fault stage."""
 
     runtime_document_id: str
+    fault_stage: str | None = None
     document_pid: None = None
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> DocumentIdentityInitializeParams:
-        if set(value) != _DOCUMENT_IDENTITY_INITIALIZE_FIELDS:
+        if (
+            "runtime_document_id" not in value
+            or set(value) - _DOCUMENT_IDENTITY_INITIALIZE_FIELDS
+        ):
             raise BridgeProtocolError(
                 "INVALID_PARAMS",
-                "document identity initialize requires only runtime_document_id",
+                "document identity initialize requires runtime_document_id and optional fault_stage",
+            )
+        fault_stage = value.get("fault_stage")
+        if fault_stage is not None and fault_stage != "after_pid_before_verify":
+            raise BridgeProtocolError(
+                "INVALID_PARAMS",
+                "document identity initialize fault_stage is not enabled",
             )
         return cls(
             _canonical_uuid(
                 value.get("runtime_document_id"),
                 code="INVALID_RUNTIME_DOCUMENT_ID",
                 field_name="runtime_document_id",
-            )
+            ),
+            fault_stage,
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {"runtime_document_id": self.runtime_document_id}
+        return {
+            "runtime_document_id": self.runtime_document_id,
+            **({"fault_stage": self.fault_stage} if self.fault_stage is not None else {}),
+        }
 
 
 @dataclass(frozen=True)

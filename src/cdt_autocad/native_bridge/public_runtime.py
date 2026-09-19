@@ -113,6 +113,7 @@ class NativePublicFacade:
                 "INVALID_PARAMS",
                 "DOCUMENT_NOT_FOUND",
                 "DOCUMENT_BINDING_MISMATCH",
+                "DOCUMENT_NOT_ACTIVE",
                 "DOCUMENT_NOT_EMPTY",
                 "PID_METADATA_INVALID",
             }:

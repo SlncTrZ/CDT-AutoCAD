@@ -1,9 +1,9 @@
 # AutoCAD Live Acceptance Runbook
 
 > Updated: 2026-09-19 +07:00
-> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening + D8 stale-COM recovery + D15 request/checkpoint ownership
+> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening + D8 stale-COM recovery + D15–D18 assurance closures
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.5-d15` · last published/tagged release remains `v0.4.0rc2`
+> Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.6-d18` · last published/tagged release remains `v0.4.0rc2`
 
 ## 0. Current production live gate
 
@@ -11,7 +11,7 @@ The reviewed public-promotion tree preserves both the historical COM/A3 acceptan
 
 Current live native requirements already measured PASS on `.171` AutoCAD 2027 Session 1:
 
-- current D15 bridge `0.8.5-d15`, document fingerprint schema v3; historical `0.8.3-u1`, `0.8.2-mp7` and earlier G1/G2/G3/scale/Feature Streaming artifacts below retain their original identities and are not rewritten;
+- current D18 bridge `0.8.6-d18`, document fingerprint schema v3; historical `0.8.5-d15`, `0.8.3-u1`, `0.8.2-mp7` and earlier G1/G2/G3/scale/Feature Streaming artifacts below retain their original identities and are not rewritten;
 - schema-agnostic metadata commit/readback/query plus exact R0/R1 recovery;
 - one logical predecessor checkpoint across yielded native micro-chunks;
 - micro-chunk maximum 32 entities and one batch mutation per AutoCAD Idle tick;
@@ -30,6 +30,7 @@ Current live native requirements already measured PASS on `.171` AutoCAD 2027 Se
 - D15 request/checkpoint ownership acceptance PASS on 2026-09-19 under bridge `0.8.5-d15`: a real `logical.begin` reached the bridge and its response was intentionally dropped; reconnect discovered exactly one checkpoint using only the originating caller's locally retained raw UUID hashed to `owner_request_fp`. `bridge.recovery.list` exposed no raw owner; the live schema-v2 checkpoint manifest contained the owner fingerprint and no raw owner capability. A foreign caller could neither begin a second logical batch (`RECOVERY_PENDING`) nor resolve/finalize/use the checkpoint in a logical chunk (`RECOVERY_BINDING_MISMATCH`); document fingerprint/entity count remained unchanged before refusal. The originating owner completed exact R2 predecessor restoration and the run ended with zero pending recovery. Deployed DLL SHA-256: `b9ffc7d25ba40fd33f404489a5e547367701148d4ffd1921cd5552447973a627`.
 - D16 shared COM/native mutation ownership acceptance PASS on 2026-09-19 under the same bridge `0.8.5-d15`: one provider-local writer authority serialized COM→native and native→COM mutation; COM timeout, native cancellation after dispatch and real tracked-transaction AutoCAD process loss quarantined both mutation lanes fail-closed; late worker completion did not clear quarantine. The same exact-source run also forced a real metadata `ENTITY_NOT_FOUND` refusal before mutation and proved it remained a typed deterministic refusal with `quarantined=false`, preventing false quarantine of healthy state. The process-loss fixture terminated exact PID `31664`, observed replacement PID `9200`, and the workstation was subsequently restored with deployed bridge SHA-256 `b9ffc7d25ba40fd33f404489a5e547367701148d4ffd1921cd5552447973a627`.
 - D17 Save/SaveAs persisted-clean acceptance PASS on 2026-09-19: a real disposable AutoCAD 2027 drawing used `ComBackend.document_save_as` and returned the requested bound path with `Saved=true`, `DBMOD=0`, `persisted_clean=true`, and `same_bound_document_verified=true`. The negative fixture then injected a real LINE after SaveAs path verification but before persisted-clean readback; success was refused, COM/shared mutation quarantine latched, and a later Save was blocked. The final Session-1 runner exited `0`, deleted its scheduled task, and reported `cleanup_verified=true`.
+- D18 atomic document-PID bootstrap acceptance PASS on 2026-09-19 under bridge `0.8.6-d18`: two disposable drawings proved that a previously discovered runtime document switched out of active status refuses as `DOCUMENT_NOT_ACTIVE` without writing a PID; `after_pid_before_verify` then injected `BOOTSTRAP_FAULT_INJECTED` after the provisional PID write, and transaction abort restored `document_pid=null` with zero entity drift. A subsequent normal bootstrap committed one PID, independently read back the matching schema-v3 document fingerprint, and reached persisted-clean state after save. AutoCAD changed `DBMOD` from `0` to `1` across the aborted fault transaction despite PID/entity rollback, so the accepted D18 guarantee is exact predecessor identity rollback rather than persisted-clean rollback. Final Session-1 runner exited `0`, deleted its task and reported `cleanup_verified=true`; deployed bridge SHA-256 is `c058c0266664490e4fc05431320aab9fca11dcf6f0d8796241cd1823447f44ae`.
 
 Canonical current evidence (machine-readable artifacts retained with the internal acceptance record
 under these file names; not part of the published tree):
@@ -51,6 +52,7 @@ d15-reload-owner-fp-2026-09-19.json
 d15-checkpoint-ownership-owner-fp-2026-09-19.json
 d16-shared-mutation-closure-2026-09-19.json
 d17-save-persistence-final-2026-09-19.json
+d18-pid-bootstrap-final-2026-09-19.json
 ```
 
 The B4 caller-binding acceptance on 2026-09-15 intentionally used a transient JSON report under the Windows temp directory and deleted it during verified cleanup; its measured result is summarized here rather than presented as a retained artifact.

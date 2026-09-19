@@ -3,7 +3,7 @@
 > Operational start: 2026-09-12
 > Updated: 2026-09-17 +07:00
 > Current source product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools`
-> Current native bridge candidate: `0.8.5-d15` · last published/tagged release remains `v0.4.0rc2`
+> Current native bridge candidate: `0.8.6-d18` · last published/tagged release remains `v0.4.0rc2`
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
 
 ## 1. Operating boundary
@@ -17,8 +17,8 @@ The provider owns generic CAD execution, persistent identity, semantic state, bo
 Before starting a production/live session:
 
 1. AutoCAD 2027 is already running in the intended interactive Windows user/session.
-2. The required Managed .NET bridge is loaded, reports ready and matches the bridge identity expected by the workflow; current D15 candidate is `0.8.5-d15`.
-3. After creating a new empty drawing that has no provider lineage, call `native_document_identity_initialize` once. It is intentionally limited to an empty current space, generates the PID internally, independently reads it back and returns the schema-v3 predecessor fingerprint. Never use it to imply adoption of legacy/non-empty geometry.
+2. The required Managed .NET bridge is loaded, reports ready and matches the bridge identity expected by the workflow; current D18 candidate is `0.8.6-d18`.
+3. After creating a new empty drawing that has no provider lineage, call `native_document_identity_initialize` once. It is intentionally limited to an empty current space; D18 requires the bound document to remain active and keeps provisional PID write, PID readback and semantic extraction inside one native transaction that commits only after verification. Never use it to imply adoption of legacy/non-empty geometry.
 4. Before any native strong-integrity write, call `native_integrity_status` and retain the caller-planned `document_pid` + `document_fp`; pass them to the write as `document_pid` + `expected_parent_fp`. Do not refresh them implicitly at dispatch if the workflow intended to mutate the earlier planned state.
 5. `CDT_AUTOCAD_BACKEND=com`.
 6. `CDT_AUTOCAD_COM_PROGID=AutoCAD.Application.26`.

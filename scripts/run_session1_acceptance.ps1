@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('session-probe', 'visual-style', 'acis-soak', 'mp2-current-identity', 'u1-floorplan', 'u1-reload', 'd15-ownership', 'd16-shared-mutation', 'd17-save-persistence')]
+    [ValidateSet('session-probe', 'visual-style', 'acis-soak', 'mp2-current-identity', 'u1-floorplan', 'u1-reload', 'd15-ownership', 'd16-shared-mutation', 'd17-save-persistence', 'd18-pid-bootstrap')]
     [string]$Profile,
 
     [Parameter(Mandatory = $true)]
@@ -81,6 +81,10 @@ switch ($Profile) {
     }
     'd17-save-persistence' {
         $scriptPath = Join-Path $RepoRoot 'scripts\run_d17_save_persistence_acceptance.py'
+        $scriptArgs = @('--output', $OutputPath, '--com-progid', 'AutoCAD.Application.26')
+    }
+    'd18-pid-bootstrap' {
+        $scriptPath = Join-Path $RepoRoot 'scripts\run_d18_pid_bootstrap_acceptance.py'
         $scriptArgs = @('--output', $OutputPath, '--com-progid', 'AutoCAD.Application.26')
     }
 }

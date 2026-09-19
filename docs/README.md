@@ -61,7 +61,7 @@ To prevent source-of-truth drift:
 
 ## 4. Current product position
 
-As of 2026-09-19, CDT-AutoCAD is **launch-ready / operational RC** for its intended role as a Generic CAD Execution Engine, with D15 request/checkpoint ownership live-accepted on AutoCAD 2027.
+As of 2026-09-19, CDT-AutoCAD is **launch-ready / operational RC** for its intended role as a Generic CAD Execution Engine, with D15–D18 assurance closures live-accepted on AutoCAD 2027.
 
 Current source/public contract identity is:
 
@@ -70,7 +70,7 @@ provider_version: 0.4.0rc3
 contract_version: autocad-generic-v1-rc3
 public_tools: 87
 execution_model: feature-based-chunks-streaming-v1
-native_bridge: 0.8.5-d15
+native_bridge: 0.8.6-d18
 ```
 
 There is no known top-level caller-state, document-provenance, semantic-recovery or CAD-execution integrity blocker requiring more AutoCAD breadth before CDT-Engineer work begins. Filesystem containment remains explicitly bounded rather than race-free. New capability is opened only from a concrete downstream engineering need plus a verification invariant. See [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) for current measured state and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the stable boundary.

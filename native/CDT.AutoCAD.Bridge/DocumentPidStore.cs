@@ -9,9 +9,11 @@ internal sealed record DocumentPidInitialization(string DocumentPid, bool Initia
 
 internal static class DocumentPidStore
 {
-    internal static DocumentPidInitialization InitializeEmptyCurrentSpace(Database database)
+    internal static DocumentPidInitialization InitializeEmptyCurrentSpace(
+        Database database,
+        Transaction transaction
+    )
     {
-        using Transaction transaction = database.TransactionManager.StartTransaction();
         BlockTableRecord currentSpace = (BlockTableRecord)transaction.GetObject(
             database.CurrentSpaceId,
             OpenMode.ForRead
@@ -50,7 +52,6 @@ internal static class DocumentPidStore
                 OpenMode.ForRead
             );
             string pid = ReadPid(existing);
-            transaction.Commit();
             return new DocumentPidInitialization(pid, false);
         }
 
@@ -62,7 +63,6 @@ internal static class DocumentPidStore
         Xrecord record = new() { Data = payload };
         appDictionary.SetAt(BridgeConstants.DocumentPidRecordKey, record);
         transaction.AddNewlyCreatedDBObject(record, true);
-        transaction.Commit();
         return new DocumentPidInitialization(documentPid, true);
     }
 

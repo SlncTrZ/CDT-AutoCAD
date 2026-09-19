@@ -10,7 +10,7 @@ namespace CDT.AutoCAD.Bridge;
 
 internal sealed record DocumentIdentityParams(Guid RuntimeDocumentId, string? DocumentPid);
 
-internal sealed record DocumentIdentityInitializeParams(Guid RuntimeDocumentId);
+internal sealed record DocumentIdentityInitializeParams(Guid RuntimeDocumentId, string? FaultStage);
 
 internal sealed record ViewportVisualStyleSetParams(
     Guid RuntimeDocumentId,
@@ -282,6 +282,7 @@ internal static class BridgeProtocol
     private static readonly HashSet<string> IdentityInitializeFields = new(StringComparer.Ordinal)
     {
         "runtime_document_id",
+        "fault_stage",
     };
 
     private static readonly HashSet<string> VisualStyleSetFields = new(StringComparer.Ordinal)
@@ -693,19 +694,46 @@ internal static class BridgeProtocol
             JsonElement parameters = RequireObject(root, "params", "INVALID_PARAMS", requestId);
             if (string.Equals(operation, "bridge.document.identity.initialize", StringComparison.Ordinal))
             {
-                ValidateExactFields(parameters, IdentityInitializeFields, "INVALID_PARAMS", requestId);
+                ValidateExactOrSubsetFields(
+                    parameters,
+                    IdentityInitializeFields,
+                    "INVALID_PARAMS",
+                    requestId
+                );
                 Guid bootstrapRuntimeDocumentId = RequireCanonicalGuid(
                     parameters,
                     "runtime_document_id",
                     "INVALID_RUNTIME_DOCUMENT_ID",
                     requestId
                 );
+                string? bootstrapFaultStage = null;
+                if (parameters.TryGetProperty("fault_stage", out JsonElement bootstrapFaultElement))
+                {
+                    bootstrapFaultStage = bootstrapFaultElement.ValueKind == JsonValueKind.String
+                        ? bootstrapFaultElement.GetString()
+                        : null;
+                    if (!string.Equals(
+                        bootstrapFaultStage,
+                        "after_pid_before_verify",
+                        StringComparison.Ordinal
+                    ))
+                    {
+                        throw new BridgeProtocolException(
+                            "INVALID_PARAMS",
+                            "document identity initialize fault_stage is not enabled",
+                            requestId
+                        );
+                    }
+                }
                 return new BridgeRequest(
                     requestId,
                     operation,
                     null,
                     null,
-                    DocumentIdentityInitialize: new DocumentIdentityInitializeParams(bootstrapRuntimeDocumentId)
+                    DocumentIdentityInitialize: new DocumentIdentityInitializeParams(
+                        bootstrapRuntimeDocumentId,
+                        bootstrapFaultStage
+                    )
                 );
             }
             if (string.Equals(operation, "viewport.visual_style.set", StringComparison.Ordinal))

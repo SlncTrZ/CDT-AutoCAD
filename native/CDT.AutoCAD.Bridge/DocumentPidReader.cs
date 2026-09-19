@@ -10,6 +10,11 @@ internal static class DocumentPidReader
     internal static string? Read(Database database)
     {
         using Transaction transaction = database.TransactionManager.StartOpenCloseTransaction();
+        return Read(database, transaction);
+    }
+
+    internal static string? Read(Database database, Transaction transaction)
+    {
         DBDictionary namedObjects = (DBDictionary)transaction.GetObject(
             database.NamedObjectsDictionaryId,
             OpenMode.ForRead

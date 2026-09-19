@@ -17,7 +17,7 @@ For a normal live AutoCAD workflow:
 
 1. call `system_status` and `system_capabilities`;
 2. open or create the drawing and configure units/layers as needed;
-3. for a new empty drawing without provider lineage, call `native_document_identity_initialize` exactly once; it refuses non-empty current space and never accepts a caller-supplied PID;
+3. for a new empty drawing without provider lineage, call `native_document_identity_initialize` exactly once; it refuses non-empty current space, requires the bound document to remain active, commits PID lineage only after same-transaction readback/semantic verification, and never accepts a caller-supplied PID;
 4. call `native_integrity_status` and retain the active `document_pid` + `document_fp` as the caller's planned predecessor;
 5. execute each strong-integrity write with that `document_pid` and `document_fp` as `expected_parent_fp`;
 6. after each accepted mutation, advance the caller predecessor to the returned final document fingerprint before the next write;
@@ -100,7 +100,7 @@ The three `batch_*` tools expose the underlying logical-batch primitive directly
 infrastructure and tests; production Domain Agents should normally prefer `feature_execute`.
 
 Native state uses persistent document/entity PIDs, fingerprint schema v3 and parent-fingerprint drift
-protection. `native_document_identity_initialize` is the explicit production bootstrap for a new empty current space; it never implicitly adopts legacy/non-empty geometry. `feature_execute`, the three `batch_*` write tools and `metadata_set` require caller-supplied
+protection. `native_document_identity_initialize` is the explicit production bootstrap for a new empty current space; D18 keeps provisional PID write/readback/semantic extraction inside one native transaction and commits only after the active-document and zero-entity invariants are verified. It never implicitly adopts legacy/non-empty geometry. `feature_execute`, the three `batch_*` write tools and `metadata_set` require caller-supplied
 `document_pid` + `expected_parent_fp`; read tools do not. A mutation must end as `COMMITTED_VERIFIED`
 or `ROLLED_BACK_VERIFIED`; uncertain state blocks dependent work.
 
@@ -123,7 +123,7 @@ numeric range. CDT-AutoCAD stores and compares values but does not interpret the
 - `system_status` — provider/runtime/build/certification state.
 - `system_capabilities` — backend capability map.
 - `native_integrity_status` — live bridge version, active document PID/fingerprint and G3 invariants.
-- `native_document_identity_initialize` — explicit verified PID/fingerprint bootstrap for one active empty current space.
+- `native_document_identity_initialize` — atomic verified PID/fingerprint bootstrap for one active empty current space; pre-commit failure aborts the provisional PID rather than leaving orphan lineage.
 
 Primary live certification target: **AutoCAD 2027 full / Windows x64 / `AutoCAD.Application.26`**.
 Other AutoCAD releases require their own compatibility evidence before they are called certified.

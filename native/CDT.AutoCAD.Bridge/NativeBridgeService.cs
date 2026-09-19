@@ -151,14 +151,38 @@ internal sealed class NativeBridgeService
                 "document identity initialize params are required"
             );
         Document document = _documents.ResolveTransientDocument(parameters.RuntimeDocumentId, null);
+        if (!ReferenceEquals(document, AcApplication.DocumentManager.MdiActiveDocument))
+        {
+            throw new BridgeServiceException(
+                "DOCUMENT_NOT_ACTIVE",
+                "document identity bootstrap requires the bound document to remain active"
+            );
+        }
+
         DocumentPidInitialization initialization;
         string documentPid;
         Dictionary<string, object?> snapshot;
         List<Dictionary<string, object?>> entities;
         using (DocumentLock documentLock = document.LockDocument())
+        using (Transaction transaction = document.Database.TransactionManager.StartTransaction())
         {
-            initialization = DocumentPidStore.InitializeEmptyCurrentSpace(document.Database);
-            documentPid = DocumentPidReader.Read(document.Database)
+            initialization = DocumentPidStore.InitializeEmptyCurrentSpace(
+                document.Database,
+                transaction
+            );
+            if (string.Equals(
+                parameters.FaultStage,
+                "after_pid_before_verify",
+                StringComparison.Ordinal
+            ))
+            {
+                throw new BridgeServiceException(
+                    "BOOTSTRAP_FAULT_INJECTED",
+                    "fault injected after provisional document PID write and before verification"
+                );
+            }
+
+            documentPid = DocumentPidReader.Read(document.Database, transaction)
                 ?? throw new BridgeServiceException(
                     "DOCUMENT_PID_MISSING",
                     "document PID read-back failed after identity bootstrap"
@@ -170,10 +194,11 @@ internal sealed class NativeBridgeService
                     "document PID read-back differs from the initialized lineage"
                 );
             }
-            snapshot = _semantic.Extract(
+            snapshot = _semantic.ExtractWithinTransaction(
                 document,
                 parameters.RuntimeDocumentId,
                 documentPid,
+                transaction,
                 BridgeConstants.MaxBatchSemanticEntities
             );
             entities = snapshot["entities"]
@@ -189,6 +214,14 @@ internal sealed class NativeBridgeService
                     "document current space changed during identity bootstrap"
                 );
             }
+            if (!ReferenceEquals(document, AcApplication.DocumentManager.MdiActiveDocument))
+            {
+                throw new BridgeServiceException(
+                    "DOCUMENT_NOT_ACTIVE",
+                    "document identity bootstrap lost the active-document binding before commit"
+                );
+            }
+            transaction.Commit();
         }
         return new Dictionary<string, object?>
         {
