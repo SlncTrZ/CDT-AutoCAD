@@ -9,6 +9,7 @@ import os
 import socket
 from pathlib import Path
 
+import httpx
 import pytest
 import uvicorn
 from fastmcp import Client
@@ -90,6 +91,18 @@ async def test_same_supervisor_url_serves_new_generation_after_reload(tmp_path: 
     url = f"http://127.0.0.1:{public_port}/mcp"
 
     try:
+        # Exercise both actual HTTP boundaries before authenticated MCP traffic.
+        async with supervisor.lease() as current:
+            worker_url = current.base_url + "/mcp"
+        async with httpx.AsyncClient(timeout=5.0) as http:
+            for endpoint in (url, worker_url):
+                for headers in ({}, {"Authorization": "Bearer invalid-test-token"}):
+                    denied = await http.post(
+                        endpoint,
+                        headers=headers,
+                        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+                    )
+                    assert denied.status_code == 401, (endpoint, denied.status_code)
         async with Client(url, auth=token, timeout=10.0) as client:
             first = await client.call_tool("system_status", {})
             first_status = first.structured_content or {}
