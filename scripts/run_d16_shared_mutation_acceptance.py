@@ -28,7 +28,7 @@ from cdt_autocad.native_bridge.client import BridgeRemoteError
 from cdt_autocad.native_bridge.public_runtime import NativePublicFacade
 from cdt_autocad.server import _run_native_mutation
 
-EXPECTED_BRIDGE_VERSION = "0.8.5-d15"
+EXPECTED_BRIDGE_VERSION = "0.8.6-d18"
 
 
 def _pid_from_hwnd(hwnd: int) -> int:

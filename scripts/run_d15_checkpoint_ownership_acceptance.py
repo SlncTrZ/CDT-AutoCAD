@@ -24,7 +24,7 @@ from cdt_autocad.native_bridge.transport_windows import (
     pipe_name_for_session,
 )
 
-EXPECTED_BRIDGE_VERSION = "0.8.5-d15"
+EXPECTED_BRIDGE_VERSION = "0.8.6-d18"
 
 
 def _session_id() -> int:
