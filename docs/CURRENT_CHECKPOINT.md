@@ -1,8 +1,8 @@
 # Current Checkpoint — CDT-AutoCAD
 
 > Updated: 2026-09-30
-> Status: **RC3 CANDIDATE — FINAL EXACT-SOURCE RECERTIFICATION REVIEW_PENDING / HOST RECOVERY; HISTORICAL LIVE CLOSURES RETAINED**
-> Last published/tagged release: `v0.4.0rc2` at `295a064`; current D18 source candidate is RC3 and awaits final exact-source recertification
+> Status: **RC3 CANDIDATE — EXACT-SOURCE TECHNICAL RECERTIFICATION PASS FOR DECLARED PROVIDER SCOPE**
+> Last published/tagged release: `v0.4.0rc2` at `295a064`; current D18 source candidate is RC3; exact-source technical recertification passed on 2026-09-30, publication remains separate
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
 
 This file is the canonical **public current-state authority**. It reports what is true now. It does not define architecture or future roadmap.
@@ -78,7 +78,25 @@ Normative behavior is defined in [`SEMANTIC_STATE_PROTOCOL.md`](SEMANTIC_STATE_P
 
 ## 5. Latest measured gates
 
-### 2026-09-30 RC3 execution candidate — partial recertification
+### 2026-09-30 final recertification — PASS for declared RC provider scope
+
+Execution source remains clean `9c69430bafc77ac854684e03ebaf677afd191050`; the Python/native tree and unchanged canonical locks match the previously recorded full-suite and wheel identities. No implementation changed between the partial run and this closure.
+
+The owner identified the 2026-09-19 drawing as an old test fixture. Its checkpoint manifest/DWG and original drawing were archived with verified SHA-256 before retiring only that checkpoint from the live queue. The original drawing remains unchanged. This is owner-approved fixture retirement, not a claim of native recovery/finalization.
+
+| Final rerun | Result |
+| --- | --- |
+| D15 ownership/lost response | LIVE PASS; owner rediscovery, exact R2 restore, foreign refusals before mutation, pending recoveries 0 |
+| U1 typed annotation floorplan | LIVE PASS; LINE/TEXT/MTEXT/two DIMENSION types, semantic readback, Saved=true and DBMOD=0 |
+| MP-2 COM + required native bridge | LIVE PASS; 20 success cycles, 10 injected failure cycles and 10 successful recoveries; zero incidental failures |
+| MP-2 terminal health | 87 tools, contract RC3, bridge ready in Session 1, pending recovery count 0 |
+| Runtime identity and cleanup | Loaded DLL unchanged before/after each profile; all three Session-1 tasks deleted and cleanup verified |
+
+This closes the remaining technical recertification gates for this committed execution candidate together with the Linux/Windows suites, installed-wheel smoke and D16–D18 live evidence recorded below. The earlier REVIEW_PENDING event and failed artifacts are retained as history.
+
+The acceptance remains bounded to the documented Generic CAD Execution Engine RC scope. D18 fault rollback does not claim DBMOD preservation; existing B1/geometry/recovery assurance limits remain. No GA, portfolio integration, version bump, tag, push or public-release claim is made. Default provider environment and gateway routing were not replaced.
+
+### Earlier 2026-09-30 observation — partial recertification
 
 Clean execution source `9c69430bafc77ac854684e03ebaf677afd191050` was reconstructed with the unchanged canonical platform locks.
 
