@@ -1,14 +1,14 @@
 # Operations Runbook — CDT-AutoCAD
 
 > Operational start: 2026-09-12
-> Updated: 2026-09-19 +07:00
+> Updated: 2026-09-30 +07:00
 > Current source product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools`
 > Current native bridge candidate: `0.8.6-d18` · last published/tagged release remains `v0.4.0rc2`
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
 
 ## 1. Operating boundary
 
-CDT-AutoCAD is operating as an **RC/preview Generic CAD Execution Engine**. Operational use does not convert the version into GA or expand capability claims beyond current evidence.
+CDT-AutoCAD is operating as an **RC/preview Generic CAD Execution Engine**. Operational use does not convert the version into GA or expand capability claims beyond current evidence. Scoped technical recertification passed on 2026-09-30 for execution source `9c69430`; a deployment must still pass health checks for its actual host/session.
 
 The provider owns generic CAD execution, persistent identity, semantic state, bounded mutation, recovery and artifact evidence. Domain standards, engineering calculations and design judgment remain outside the provider.
 
@@ -102,6 +102,10 @@ Immediately stop dependent mutations when any of these occurs:
 - artifact/journal/checkpoint integrity is uncertain.
 
 Do **not** blindly retry a mutation after unknown completion.
+
+The Windows native pipe client uses overlapped I/O with a default 5-second connection budget and a separate 60-second budget shared by request write, response header and response body. Partial progress never renews the I/O deadline. Local cancellation drains the outstanding I/O before releasing buffers/handles; it does not prove that CAD work stopped. A post-connection deadline is completion-unknown and the shared mutation coordinator fences later COM/native writes until authoritative reconciliation. These transport budgets are implementation defaults, distinct from `CDT_AUTOCAD_COM_TIMEOUT`; no native-pipe environment override is advertised.
+
+A historical checkpoint must not be removed merely to clear a health gate. For a confirmed disposable test fixture, obtain the owner's disposition, verify checkpoint/document bindings, retain byte-verified backups of manifest/checkpoint/original and a reversible path mapping, then retire only that fixture from live inventory. Re-read global pending recovery and health afterwards. Fixture retirement is not native rollback/finalization evidence; real unfinished work follows owner-bound semantic recovery.
 
 Preserve:
 

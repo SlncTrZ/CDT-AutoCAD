@@ -6,12 +6,15 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 
 ### Planned
 
-- Final exact-source recertification on the committed D18 tree before advancing the internal assurance score to 99/100.
+- Publication/version promotion is a separate release action; completed technical acceptance does not imply a tagged RC3 or GA release.
 - Production-driven AutoCAD capability expansion only where a concrete CDT-Engineer/Domain workflow requires it and defines a verification invariant.
 - No standing COM-to-native parity program; existing COM/headless/native routes remain intentional according to their documented assurance scope.
 
 ### Changed
 
+- Bounded Windows named pipe I/O with overlapped write/read, one default 60-second budget shared by request write/header/body, local cancellation/drain and completion-unknown shared mutation fencing.
+- Added real Windows stalled-write/read/partial/drip/fragmented-reply regression and actual HTTP supervisor/worker missing/wrong-token negatives.
+- Pinned D15/D16/U1 acceptance to current bridge `0.8.6-d18` without changing the 87-tool RC3 contract or C# implementation.
 - D15 closed request/checkpoint ownership: durable recovery metadata exposes only owner fingerprints, foreign adoption refuses before CAD mutation, and the originating owner can restore the exact predecessor after lost response.
 - D16 unified COM/native mutation ownership under one provider-local writer authority and one uncertainty quarantine; timeout, cancellation, process loss and late completion block cross-lane mutation fail-closed.
 - D17 unified Save/SaveAs persisted-clean verification: success requires the same bound target plus `Saved=true` and `DBMOD=0`; dirty or unverifiable post-state quarantines later mutation.
@@ -20,8 +23,10 @@ All notable product and operational changes to CDT-AutoCAD are recorded here. Hi
 
 ### Verification
 
-- D18 closure: exact-lock Linux **446 passed / 11 skipped + Ruff PASS**; exact-lock Windows **445 passed / 12 skipped + Ruff PASS**; C# Release/x64 **0 errors**; AutoCAD 2027 Session-1 active-switch/post-PID-fault/success acceptance PASS.
-- Final exact-source recertification remains a separate pending gate and is not claimed complete by this changelog entry.
+- Historical D18 closure on 2026-09-19: exact-lock Linux **446 passed / 11 skipped + Ruff PASS**; exact-lock Windows **445 passed / 12 skipped + Ruff PASS**; C# Release/x64 **0 errors**; AutoCAD 2027 Session-1 active-switch/post-PID-fault/success acceptance PASS.
+- Final exact-source technical recertification on 2026-09-30: clean `9c69430`, Linux **461/16**, Windows **465/12**, Ruff/dependency checks and both installed-wheel smokes PASS; C# Release/x64 **0 errors / 3 inherited reference warnings**; AutoCAD 2027 Session-1 D15–D18/U1 LIVE PASS; MP-2 **20 success + 10 injected failure + 10 recovery** cycles PASS, zero pending recovery and verified task cleanup.
+- Earlier host-recovery refusal was resolved by owner-approved archival of a disposable historical test checkpoint with verified backup; the original drawing stayed unchanged. This is fixture retirement, not a native recovery claim. Historical failed/pending evidence retains its original verdict.
+- Last published/tagged release remains `v0.4.0rc2`; these Unreleased results describe the tested RC3 source candidate.
 
 
 ## [0.4.0rc3] - 2026-09-17

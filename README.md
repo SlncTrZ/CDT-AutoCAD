@@ -16,9 +16,9 @@ It deliberately does **not** own engineering-domain rules. Civil, structural, me
 
 ## Current position
 
-As of 2026-09-19, CDT-AutoCAD is **launch-ready for its intended execution-engine mission** with D15–D18 assurance closures live-accepted on AutoCAD 2027. New empty drawings use the D18 atomic document-lineage bootstrap before native strong-integrity execution, and bounded native create batches cover LINE/CIRCLE/ARC/simple-LWPOLYLINE plus TEXT/MTEXT/aligned/linear dimensions with optional layer/color assignment.
+As of 2026-09-30, CDT-AutoCAD is **launch-ready for its intended execution-engine mission** with D15–D18 assurance closures live-accepted on AutoCAD 2027. New empty drawings use the D18 atomic document-lineage bootstrap before native strong-integrity execution, and bounded native create batches cover LINE/CIRCLE/ARC/simple-LWPOLYLINE plus TEXT/MTEXT/aligned/linear dimensions with optional layer/color assignment.
 
-Native strong-integrity writes require the caller's planned `document_pid` + predecessor fingerprint and refuse wrong-document/stale-state requests before mutation. `document_save` and `document_save_as` require immediate persisted-clean verification; COM/native mutations share one fail-closed writer/quarantine boundary; and D18 commits document PID lineage only after same-transaction readback/semantic verification. B1 filesystem containment remains closed with a split guarantee: provider-owned file I/O uses descriptor/handle-bound actual-I/O primitives against concurrent descendant namespace mutation, while AutoCAD APIs that accept pathname strings only remain explicitly bounded by pre/post verification rather than advertised as race-free. The remaining assurance gate is final exact-source recertification on the committed D18 tree; future CAD capability is demand-driven from concrete blocked workflows.
+Native strong-integrity writes require the caller's planned `document_pid` + predecessor fingerprint and refuse wrong-document/stale-state requests before mutation. `document_save` and `document_save_as` require immediate persisted-clean verification; COM/native mutations share one fail-closed writer/quarantine boundary; and D18 commits document PID lineage only after same-transaction readback/semantic verification. B1 filesystem containment remains closed with a split guarantee: provider-owned file I/O uses descriptor/handle-bound actual-I/O primitives against concurrent descendant namespace mutation, while AutoCAD APIs that accept pathname strings only remain explicitly bounded by pre/post verification rather than advertised as race-free. Exact-source technical recertification passed on 2026-09-30 for execution candidate `9c69430` within the declared RC provider scope; public release remains separate. Future CAD capability is demand-driven from concrete blocked workflows.
 
 This is not a claim of full AutoCAD API parity, and the project is not pursuing parity as an independent roadmap.
 
@@ -177,6 +177,8 @@ Current accepted scale tiers on real AutoCAD 2027:
 | 5,000 | PASS | beginning / middle / end | 0 |
 | 10,000 | PASS | beginning / middle / end | 0 |
 
+Current RC3 execution candidate `9c69430` passed clean exact-lock Linux **461 / 16 skipped** and Windows **465 / 12 skipped**, Ruff/dependency checks, installed-wheel smoke on both platforms, C# Release/x64 and D15–D18/U1 live acceptance. MP-2 passed **20 success cycles + 10 injected failure cycles + 10 recoveries**, with zero pending recovery and verified Session-1 task cleanup. These results are scoped technical acceptance, not a GA or portfolio-integration certificate.
+
 At the historical RC2 release-provenance checkpoint `bcb5c66`:
 
 - canonical exact-lock Linux reconstruction A/B: **405 passed / 11 skipped + Ruff PASS** in both fresh environments;
@@ -195,6 +197,7 @@ See [`docs/CURRENT_CHECKPOINT.md`](docs/CURRENT_CHECKPOINT.md) and [`docs/LIVE_A
 - file/XREF paths are bounded to configured roots/policy;
 - native requests, metadata and semantic extraction are bounded;
 - strong-integrity mutation is fenced by runtime/document identity and predecessor state;
+- native pipe I/O uses a shared default 60-second write/header/body deadline after connection; timeout completion is unknown and fences later COM/native mutation;
 - unknown completion is not blindly retried;
 - credentials are never returned by tools;
 - unsupported/unproven capability fails explicitly rather than widening claims.

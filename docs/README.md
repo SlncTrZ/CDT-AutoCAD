@@ -1,6 +1,6 @@
 # CDT-AutoCAD Documentation Index
 
-> Updated: 2026-09-19
+> Updated: 2026-09-30
 
 This page defines the **published documentation structure** and authority boundaries for CDT-AutoCAD.
 
@@ -45,7 +45,7 @@ To prevent documentation drift:
 
 ## 3. Current product position
 
-As of 2026-09-19, CDT-AutoCAD is **launch-ready / operational RC** for its intended role as a Generic CAD Execution Engine, with D15–D18 assurance closures live-accepted on AutoCAD 2027.
+As of 2026-09-30, CDT-AutoCAD is **launch-ready / operational RC** for its intended role as a Generic CAD Execution Engine, with D15–D18 assurance closures live-accepted on AutoCAD 2027.
 
 Current source/public contract identity is:
 
@@ -57,7 +57,7 @@ execution_model: feature-based-chunks-streaming-v1
 native_bridge: 0.8.6-d18
 ```
 
-The last published/tagged release remains `v0.4.0rc2`; RC3 is the current source candidate and still requires final exact-source recertification. See [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) for measured current state and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the stable product boundary.
+The last published/tagged release remains `v0.4.0rc2`; RC3 is the current source candidate; exact-source technical recertification passed on 2026-09-30 for clean execution source `9c69430` in the declared provider scope. Publication and integrated production acceptance remain separate. See [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) for measured current state and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the stable product boundary.
 
 ## 4. Change routing
 

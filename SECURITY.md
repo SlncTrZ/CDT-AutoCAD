@@ -6,7 +6,7 @@ CDT-AutoCAD controls a live CAD application and can mutate engineering data. Sec
 
 | Version | Security support |
 | --- | --- |
-| `0.4.0rc3` source candidate | Current operational RC source; final exact-source recertification is still pending |
+| `0.4.0rc3` source candidate | Current operational RC source; scoped exact-source technical recertification PASS on 2026-09-30; not a published GA release |
 | `0.4.0rc2` | Last published/tagged operational RC |
 | `0.4.0rc1` and older snapshots / historical checkpoints | Not supported unless reproduced on the current contract |
 

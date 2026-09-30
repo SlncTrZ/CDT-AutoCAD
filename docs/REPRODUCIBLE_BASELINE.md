@@ -1,6 +1,6 @@
 # Reproducible Baseline — CDT-AutoCAD
 
-> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-19 +07:00
+> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-30 +07:00
 > Canonical resolver workflow: **`cdt_autocad.dependency_lock` + pip 26.1.2 `pip lock` → LF-normalized PEP 751 platform lock → install from that lock**.
 
 ## 1. Decision
@@ -117,7 +117,7 @@ MP0-T00 reproducibility is accepted only when:
 
 MP-8 rechecks SBOM/license/dependency risk and release artifacts against these same lock/build identities. MP-8 is not the first point where dependency reproducibility is established.
 
-## 8. B2 measured closure — 2026-09-15/16
+## 8. Historical B2 measured closure — 2026-09-15/16
 
 B2 is **CLOSED / EXACT-LOCK PASS** at release-provenance checkpoint `bcb5c661bc6e01961525cd08c2ac5e0c0714b790`.
 
@@ -147,3 +147,11 @@ autocad_session = 1
 ```
 
 The machine-readable manifests used for this historical closure remain maintainer-local evidence; the hashes and verdict above are the public audit summary. A future source, dependency, bridge or runtime identity change requires a fresh provenance run rather than reusing this closure record.
+
+## 9. Current RC3 exact-source recertification — 2026-09-30
+
+Clean execution source `9c69430bafc77ac854684e03ebaf677afd191050` was reconstructed using the unchanged platform locks above. Current source-tree SHA-256 is `a6ccedad7ec9746ff65784b3dfa4ed4358a5cd82b22bff6ee071a6489bbcc4f2`. Linux passed **461/16** and Windows **465/12**, with Ruff/dependency checks PASS; installed wheels outside the repository passed help/87-tool/DXF smoke on both platforms.
+
+C# Release/x64 built with 0 errors/3 inherited reference warnings. The candidate and AutoCAD-loaded bridge SHA-256 matched `f2de981dc6fb9dd903c0c1ec127510a4b45f20350751bd0da4d906887fc36b36`; current D15–D18/U1 and native-required MP-2 live gates passed. This current recertification is one fresh locked reconstruction per platform; it does not relabel the historical B2 A/B reconstructions as new RC3 A/B runs. Later documentation-only HEADs remain distinct from the tested execution commit.
+
+Measured gate details and scope belong to [CURRENT_CHECKPOINT.md](CURRENT_CHECKPOINT.md) and [LIVE_ACCEPTANCE.md](LIVE_ACCEPTANCE.md). Publication is separate from technical acceptance.

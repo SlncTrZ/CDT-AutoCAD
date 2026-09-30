@@ -1,7 +1,7 @@
 # Architecture — CDT-AutoCAD
 
 > Canonical public architecture authority for the CDT-AutoCAD provider.
-> Updated: 2026-09-19
+> Updated: 2026-09-30
 
 ## 1. Mission
 
@@ -61,6 +61,8 @@ AutoCAD Database
 ```
 
 This lane owns the strongest execution guarantees where implemented: provider-owned persistent PID, versioned fingerprints, expected-parent drift protection, bounded transactions, independent semantic read-back and verified recovery.
+
+The Windows native pipe client uses overlapped I/O with a default 5-second connection budget and a separate 60-second budget shared by request write, response header and response body. Partial progress never renews the I/O deadline. Local cancellation drains the outstanding I/O before releasing buffers/handles; it does not prove that CAD work stopped. A post-connection deadline is completion-unknown and the shared mutation coordinator fences later COM/native writes until authoritative reconciliation.
 
 ### 3.2 COM / ActiveX compatibility lane
 

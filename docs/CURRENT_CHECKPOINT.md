@@ -86,6 +86,11 @@ The owner identified the 2026-09-19 drawing as an old test fixture. Its checkpoi
 
 | Final rerun | Result |
 | --- | --- |
+| Linux exact-lock | 461 passed / 16 skipped; Ruff/dependency check PASS |
+| Windows exact-lock | 465 passed / 12 skipped; Ruff/dependency check PASS |
+| Installed-wheel smoke | Both platforms PASS outside repository: packaged help, 87 tools, DXF create/save |
+| C# Release/x64 | 0 errors / 3 inherited reference warnings |
+| D16/D17/D18 | LIVE PASS: shared mutation/process loss, persisted-clean save, PID bootstrap |
 | D15 ownership/lost response | LIVE PASS; owner rediscovery, exact R2 restore, foreign refusals before mutation, pending recoveries 0 |
 | U1 typed annotation floorplan | LIVE PASS; LINE/TEXT/MTEXT/two DIMENSION types, semantic readback, Saved=true and DBMOD=0 |
 | MP-2 COM + required native bridge | LIVE PASS; 20 success cycles, 10 injected failure cycles and 10 successful recoveries; zero incidental failures |
@@ -115,7 +120,7 @@ Source-tree SHA-256: `a6ccedad7ec9746ff65784b3dfa4ed4358a5cd82b22bff6ee071a6489b
 Candidate and AutoCAD-loaded bridge SHA-256: `f2de981dc6fb9dd903c0c1ec127510a4b45f20350751bd0da4d906887fc36b36`; bridge identity remains `0.8.6-d18`.
 D16 observed process replacement and retained uncertainty fences. D18 again restored PID/entity identity after the injected fault while DBMOD changed 0→1; persisted-clean rollback is not claimed.
 
-One unrelated checkpoint from 2026-09-19 remains on the host. After closing the restart's informational Drawing Recovery dialog, COM readiness and bridge readiness were true, current coordinator quarantine was false, and pending recovery count remained 1. D15 stopped at its global recovery inventory assertion; MP-2 correctly rejected activation as `ACTIVATION_HEALTH_FAILED`. U1 final rerun is pending. The old checkpoint/document were preserved. No final clean-recovery certification or score promotion is claimed.
+At this earlier observation, one unrelated checkpoint from 2026-09-19 remained on the host. After closing the restart's informational Drawing Recovery dialog, COM and bridge readiness were true, coordinator quarantine was false, and pending recovery count was 1. D15 stopped at its inventory assertion; MP-2 rejected activation as `ACTIVATION_HEALTH_FAILED`; U1 had not yet been rerun. The old checkpoint/document were preserved and that event remained REVIEW_PENDING. The subsequent owner-approved fixture retirement and passing final reruns are recorded above; this historical refusal is not the current host state.
 
 The public contract remains RC3 / 87 tools. No tag, push or public release occurred; `v0.4.0rc2` remains the last published release. Older measurements below retain their original source/runtime identities.
 
