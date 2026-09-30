@@ -1,7 +1,7 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-19
-> Status: **LAUNCH-READY / OPERATIONAL RC — B0–B4, D8 AND D15–D18 CLOSED / LIVE PASS; FINAL EXACT-SOURCE RECERTIFICATION PENDING**
+> Updated: 2026-09-30
+> Status: **RC3 CANDIDATE — FINAL EXACT-SOURCE RECERTIFICATION REVIEW_PENDING / HOST RECOVERY; HISTORICAL LIVE CLOSURES RETAINED**
 > Last published/tagged release: `v0.4.0rc2` at `295a064`; current D18 source candidate is RC3 and awaits final exact-source recertification
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
 
@@ -77,6 +77,31 @@ Feature-based Chunks Streaming is the approved production orchestration model. N
 Normative behavior is defined in [`SEMANTIC_STATE_PROTOCOL.md`](SEMANTIC_STATE_PROTOCOL.md).
 
 ## 5. Latest measured gates
+
+### 2026-09-30 RC3 execution candidate — partial recertification
+
+Clean execution source `9c69430bafc77ac854684e03ebaf677afd191050` was reconstructed with the unchanged canonical platform locks.
+
+| Gate | Result |
+| --- | --- |
+| Linux CPython 3.12 | 461 passed / 16 skipped; Ruff and dependency check PASS |
+| Windows x64 CPython 3.12 | 465 passed / 12 skipped; Ruff and dependency check PASS |
+| Installed wheel, outside repository | Both platforms PASS: packaged help, 87 tools and DXF create/save |
+| C# Release/x64 | Build PASS, 0 errors / 3 inherited reference warnings |
+| AutoCAD 2027 Session 1 | D16 shared writer/process loss, D17 persisted-clean save, D18 PID bootstrap LIVE PASS |
+| Final host-wide recertification | REVIEW_PENDING: one pre-existing unresolved logical recovery |
+
+The named pipe client now uses overlapped I/O with one default 60-second budget for request write, response header and response body. Progress does not renew that budget. Local I/O cancellation retains buffers until completion; it does not cancel CAD work. A deadline is completion-unknown and fences later COM/native writes. Real Windows tests cover silent peers, partial bodies, drip headers, blocked writes and fragmented successful replies. Actual supervisor and worker HTTP boundaries reject absent/invalid Bearer tokens while authenticated 87-tool traffic survives reload.
+
+Source-tree SHA-256: `a6ccedad7ec9746ff65784b3dfa4ed4358a5cd82b22bff6ee071a6489bbcc4f2`.
+Candidate and AutoCAD-loaded bridge SHA-256: `f2de981dc6fb9dd903c0c1ec127510a4b45f20350751bd0da4d906887fc36b36`; bridge identity remains `0.8.6-d18`.
+D16 observed process replacement and retained uncertainty fences. D18 again restored PID/entity identity after the injected fault while DBMOD changed 0→1; persisted-clean rollback is not claimed.
+
+One unrelated checkpoint from 2026-09-19 remains on the host. After closing the restart's informational Drawing Recovery dialog, COM readiness and bridge readiness were true, current coordinator quarantine was false, and pending recovery count remained 1. D15 stopped at its global recovery inventory assertion; MP-2 correctly rejected activation as `ACTIVATION_HEALTH_FAILED`. U1 final rerun is pending. The old checkpoint/document were preserved. No final clean-recovery certification or score promotion is claimed.
+
+The public contract remains RC3 / 87 tools. No tag, push or public release occurred; `v0.4.0rc2` remains the last published release. Older measurements below retain their original source/runtime identities.
+
+### Historical measured gates
 
 U1 RC3 source candidate on 2026-09-17:
 

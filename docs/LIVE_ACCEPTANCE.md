@@ -1,6 +1,6 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-19 +07:00
+> Updated: 2026-09-30 +07:00
 > Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening + D8 stale-COM recovery + D15–D18 assurance closures
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
 > Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.6-d18` · last published/tagged release remains `v0.4.0rc2`
@@ -9,7 +9,7 @@
 
 The reviewed public-promotion tree preserves both the historical COM/A3 acceptance below and the newer strong-integrity native evidence.
 
-Current live native requirements already measured PASS on `.171` AutoCAD 2027 Session 1:
+Historical accepted native requirements measured PASS on `.171` AutoCAD 2027 Session 1:
 
 - current D18 bridge `0.8.6-d18`, document fingerprint schema v3; historical `0.8.5-d15`, `0.8.3-u1`, `0.8.2-mp7` and earlier G1/G2/G3/scale/Feature Streaming artifacts below retain their original identities and are not rewritten;
 - schema-agnostic metadata commit/readback/query plus exact R0/R1 recovery;
@@ -58,6 +58,31 @@ d18-pid-bootstrap-final-2026-09-19.json
 The B4 caller-binding acceptance on 2026-09-15 intentionally used a transient JSON report under the Windows temp directory and deleted it during verified cleanup; its measured result is summarized here rather than presented as a retained artifact.
 
 Final close-gate result on the original promotion tree remains: contract identity **86 tools / 0.4.0rc1 / autocad-generic-v1-rc1**; Linux **316 passed / 5 skipped**; Windows `.171` **315 passed / 6 skipped**; C# Release/x64 with SDK `10.0.401` **0 errors / 3 known MSB3277 warning families**. The RC2 caller-binding tree at `872da68` independently passed Linux **398 / 9 skipped**, Windows `.171` **397 / 10 skipped**, focused public-native/schema **32/32**, B4 AutoCAD 2027 Session-1 live acceptance PASS, plus the preceding B0 live SaveAs/artifact-seal **2/2** closure. B1 later closed provider-owned actual-I/O containment at `abeb9d9`. B2/B3 then closed release reproducibility/tooling governance at clean checkpoint `bcb5c66`: two fresh exact-lock reconstructions per platform reproduced the same source/package identity, with Linux **405 / 11 + Ruff PASS** and Windows `.171` **404 / 12 + Ruff PASS** in both A/B environments. No C# source changed in B1/B2/B3, so those historical closure claims remain bound to `0.8.2-mp7`. U1 subsequently introduced bridge `0.8.3-u1` and the RC3/87-tool source identity with the live evidence summarized above. Older sections below preserve their historical identities and wording.
+
+## 0.1. RC3 recertification observation — 2026-09-30
+
+### 2026-09-30 RC3 execution candidate — partial recertification
+
+Clean execution source `9c69430bafc77ac854684e03ebaf677afd191050` was reconstructed with the unchanged canonical platform locks.
+
+| Gate | Result |
+| --- | --- |
+| Linux CPython 3.12 | 461 passed / 16 skipped; Ruff and dependency check PASS |
+| Windows x64 CPython 3.12 | 465 passed / 12 skipped; Ruff and dependency check PASS |
+| Installed wheel, outside repository | Both platforms PASS: packaged help, 87 tools and DXF create/save |
+| C# Release/x64 | Build PASS, 0 errors / 3 inherited reference warnings |
+| AutoCAD 2027 Session 1 | D16 shared writer/process loss, D17 persisted-clean save, D18 PID bootstrap LIVE PASS |
+| Final host-wide recertification | REVIEW_PENDING: one pre-existing unresolved logical recovery |
+
+The named pipe client now uses overlapped I/O with one default 60-second budget for request write, response header and response body. Progress does not renew that budget. Local I/O cancellation retains buffers until completion; it does not cancel CAD work. A deadline is completion-unknown and fences later COM/native writes. Real Windows tests cover silent peers, partial bodies, drip headers, blocked writes and fragmented successful replies. Actual supervisor and worker HTTP boundaries reject absent/invalid Bearer tokens while authenticated 87-tool traffic survives reload.
+
+Source-tree SHA-256: `a6ccedad7ec9746ff65784b3dfa4ed4358a5cd82b22bff6ee071a6489bbcc4f2`.
+Candidate and AutoCAD-loaded bridge SHA-256: `f2de981dc6fb9dd903c0c1ec127510a4b45f20350751bd0da4d906887fc36b36`; bridge identity remains `0.8.6-d18`.
+D16 observed process replacement and retained uncertainty fences. D18 again restored PID/entity identity after the injected fault while DBMOD changed 0→1; persisted-clean rollback is not claimed.
+
+One unrelated checkpoint from 2026-09-19 remains on the host. After closing the restart's informational Drawing Recovery dialog, COM readiness and bridge readiness were true, current coordinator quarantine was false, and pending recovery count remained 1. D15 stopped at its global recovery inventory assertion; MP-2 correctly rejected activation as `ACTIVATION_HEALTH_FAILED`. U1 final rerun is pending. The old checkpoint/document were preserved. No final clean-recovery certification or score promotion is claimed.
+
+The public contract remains RC3 / 87 tools. No tag, push or public release occurred; `v0.4.0rc2` remains the last published release. Older measurements below retain their original source/runtime identities.
 
 ## 1. Certification policy
 
