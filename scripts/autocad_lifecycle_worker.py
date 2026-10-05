@@ -87,6 +87,9 @@ def main(action):
         if not observed["installed"]:
             return {"ok": False, "code": "APPLICATION_NOT_INSTALLED"}
         if observed["listeners"]:
+            if not observed["application"]:
+                powershell(r"""$ErrorActionPreference='Stop';if(-not(Get-Process acad -ErrorAction SilentlyContinue)){Start-Process 'C:\Program Files\Autodesk\AutoCAD 2027\acad.exe';Start-Sleep -Seconds 5}""")
+                return {"ok": True, "state": "APPLICATION_START_REQUESTED"}
             return {"ok": True, "state": "ALREADY_RUNNING"}
         if observed["task_state"] == "Disabled":
             return {"ok": False, "code": "TASK_DISABLED"}
