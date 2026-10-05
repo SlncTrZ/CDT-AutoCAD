@@ -6,7 +6,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
 
-    [string]$RepoRoot = 'H:\Develop\CDT-AutoCAD',
+    [string]$RepoRoot = '',
     [string]$PythonExe = "$env:USERPROFILE\.venvs\CDT-AutoCAD\Scripts\python.exe",
     [int]$TimeoutSeconds = 900
 )
@@ -14,6 +14,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) { $RepoRoot = Split-Path -Parent $PSScriptRoot }
 if (-not (Test-Path -LiteralPath $RepoRoot -PathType Container)) {
     throw "RepoRoot does not exist: $RepoRoot"
 }

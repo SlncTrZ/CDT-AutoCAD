@@ -1,5 +1,5 @@
 """Hot reload supervisor — stable authenticated endpoint over replaceable FastMCP workers.
-Wing: code | Topic: mp2-hot-reload | Updated: 2026-10-03 20:42
+Wing: code | Topic: mp2-hot-reload | Updated: 2026-10-05 21:16
 """
 
 from __future__ import annotations
@@ -271,8 +271,23 @@ class McpWorkerProbe:
         return True
 
 
+class _RequestTooLarge(RuntimeError):
+    """Raised when the inbound request body exceeds the configured admission budget."""
+
+
 class SupervisorProxyApp:
-    """Minimal ASGI proxy that authenticates before routing and leases one generation per request."""
+    """Minimal ASGI proxy that authenticates before routing and leases one generation per request.
+
+    Admission is explicitly bounded: at most ``max_concurrent_requests`` proxied
+    requests may hold a worker lease at once, inbound bodies larger than
+    ``max_request_body_bytes`` are refused before a lease is acquired, and each
+    request carries a ``request_timeout_seconds`` upstream budget so a dead
+    worker fails closed with 504 instead of hanging the facade.
+    """
+
+    _DEFAULT_MAX_CONCURRENT_REQUESTS = 16
+    _DEFAULT_MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024
+    _DEFAULT_REQUEST_TIMEOUT_SECONDS = 120.0
 
     def __init__(
         self,
@@ -280,10 +295,31 @@ class SupervisorProxyApp:
         *,
         auth_token: str,
         upstream_client: httpx.AsyncClient | None = None,
+        max_concurrent_requests: int = _DEFAULT_MAX_CONCURRENT_REQUESTS,
+        max_request_body_bytes: int = _DEFAULT_MAX_REQUEST_BODY_BYTES,
+        request_timeout_seconds: float = _DEFAULT_REQUEST_TIMEOUT_SECONDS,
     ):
+        if max_concurrent_requests <= 0:
+            raise ValueError("max_concurrent_requests must be > 0")
+        if max_request_body_bytes <= 0:
+            raise ValueError("max_request_body_bytes must be > 0")
+        if request_timeout_seconds <= 0:
+            raise ValueError("request_timeout_seconds must be > 0")
         self.supervisor = supervisor
         self.auth_token = auth_token
         self._client = upstream_client or httpx.AsyncClient(timeout=None)
+        self._max_concurrent_requests = max_concurrent_requests
+        self._max_request_body_bytes = max_request_body_bytes
+        self._request_timeout_seconds = request_timeout_seconds
+        self._inflight_requests = 0
+
+    def admission_limits(self) -> dict[str, Any]:
+        return {
+            "max_concurrent_requests": self._max_concurrent_requests,
+            "max_request_body_bytes": self._max_request_body_bytes,
+            "request_timeout_seconds": self._request_timeout_seconds,
+            "inflight_requests": self._inflight_requests,
+        }
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -298,22 +334,47 @@ class SupervisorProxyApp:
             await self._json(send, 401, {"error": "unauthorized"})
             return
         if scope.get("path") == "/__cdt/status":
-            await self._json(send, 200, self.supervisor.status())
+            status = self.supervisor.status()
+            status["admission"] = self.admission_limits()
+            await self._json(send, 200, status)
             return
-
-        try:
-            async with self.supervisor.lease() as worker:
-                body = await self._read_body(receive)
-                await self._proxy(scope, send, worker, body)
-        except ReloadUnavailableError:
+        if self._inflight_requests >= self._max_concurrent_requests:
             await self._json(
                 send,
                 503,
-                {"error": "reload_in_progress"},
+                {"error": "concurrency_limit_exceeded"},
                 headers=[(b"retry-after", b"1")],
             )
-        except httpx.HTTPError:
-            await self._json(send, 502, {"error": "active_worker_unavailable"})
+            return
+
+        try:
+            body = await self._read_body(receive, self._max_request_body_bytes)
+        except _RequestTooLarge:
+            await self._json(send, 413, {"error": "request_too_large"})
+            return
+        self._inflight_requests += 1
+        try:
+            try:
+                async with self.supervisor.lease() as worker:
+                    await asyncio.wait_for(
+                        self._proxy(scope, send, worker, body),
+                        timeout=self._request_timeout_seconds,
+                    )
+            except ReloadUnavailableError:
+                await self._json(
+                    send,
+                    503,
+                    {"error": "reload_in_progress"},
+                    headers=[(b"retry-after", b"1")],
+                )
+            except TimeoutError:
+                await self._json(send, 504, {"error": "upstream_timeout"})
+            except httpx.TimeoutException:
+                await self._json(send, 504, {"error": "upstream_timeout"})
+            except httpx.HTTPError:
+                await self._json(send, 502, {"error": "active_worker_unavailable"})
+        finally:
+            self._inflight_requests -= 1
 
     def _authorized(self, headers: list[tuple[bytes, bytes]]) -> bool:
         if not self.auth_token:
@@ -372,15 +433,20 @@ class SupervisorProxyApp:
                 await send({"type": "http.response.body", "body": b"", "more_body": False})
 
     @staticmethod
-    async def _read_body(receive) -> bytes:
+    async def _read_body(receive, max_bytes: int) -> bytes:
         chunks: list[bytes] = []
+        total = 0
         while True:
             message = await receive()
             if message["type"] == "http.disconnect":
                 break
             if message["type"] != "http.request":
                 continue
-            chunks.append(bytes(message.get("body") or b""))
+            chunk = bytes(message.get("body") or b"")
+            total += len(chunk)
+            if total > max_bytes:
+                raise _RequestTooLarge(f"request body exceeds {max_bytes} byte admission budget")
+            chunks.append(chunk)
             if not message.get("more_body", False):
                 break
         return b"".join(chunks)
@@ -500,7 +566,13 @@ async def _serve(args: argparse.Namespace) -> None:
         drain_timeout_seconds=args.drain_timeout,
     )
     await supervisor.bootstrap(source_build_id(repo_root))
-    proxy = SupervisorProxyApp(supervisor, auth_token=auth_token)
+    proxy = SupervisorProxyApp(
+        supervisor,
+        auth_token=auth_token,
+        max_concurrent_requests=args.max_concurrent_requests,
+        max_request_body_bytes=args.max_request_body_bytes,
+        request_timeout_seconds=args.request_timeout,
+    )
     stop_event = asyncio.Event()
     watcher = SourceWatcher(repo_root, poll_seconds=args.watch_interval)
     watcher_task = asyncio.create_task(watcher.run(supervisor, stop_event))
@@ -535,6 +607,9 @@ def main() -> None:
     parser.add_argument("--startup-timeout", type=float, default=15.0)
     parser.add_argument("--worker-port-start", type=int, default=18100)
     parser.add_argument("--worker-port-end", type=int, default=18299)
+    parser.add_argument("--max-concurrent-requests", type=int, default=16)
+    parser.add_argument("--max-request-body-bytes", type=int, default=8 * 1024 * 1024)
+    parser.add_argument("--request-timeout", type=float, default=120.0)
     parser.add_argument("--require-bridge", action="store_true")
     parser.add_argument("--log-level", default="info")
     args = parser.parse_args()

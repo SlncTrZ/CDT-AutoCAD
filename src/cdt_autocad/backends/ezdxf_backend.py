@@ -468,13 +468,19 @@ class EzdxfBackend(AutoCADBackend):
         resolved = resolve_dxf_path(path, self.settings, must_exist=True)
 
         def _open_sync():
+            # Read through the handle-bound binary channel (byte-identical to
+            # disk) and normalize CRLF before text parsing: real-world DXF
+            # files use CRLF, and ezdxf.read() on a CRLF text stream silently
+            # misparses (empty model space), which would turn an existing
+            # drawing reopen into a phantom empty document (D9).
             with open_contained_reader(
                 resolved,
                 self.settings,
-                binary=False,
-                encoding="utf-8",
+                binary=True,
             ) as stream:
-                return ezdxf.read(stream)
+                raw = stream.read()
+            text = raw.decode("utf-8").replace("\r\n", "\n")
+            return ezdxf.read(io.StringIO(text))
 
         doc = await self._run(_open_sync, quarantine_exit=True)
         self._doc = doc
