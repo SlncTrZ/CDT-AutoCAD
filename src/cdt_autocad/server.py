@@ -1,5 +1,5 @@
 """FastMCP entrypoint for the CDT_Engineer AutoCAD provider.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 16:13
+Wing: code | Topic: autocad-a2 | Updated: 2026-10-03 20:45
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from fastmcp.server.auth import StaticTokenVerifier
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 from fastmcp.utilities.types import Image
+from pydantic import FiniteFloat
 
 from . import __version__
 from .backends.base import AutoCADBackend
@@ -883,10 +884,10 @@ def create_mcp(
     async def object_query(
         type_filter: str | None = None,
         layer_filter: str | None = None,
-        min_x: float | None = None,
-        min_y: float | None = None,
-        max_x: float | None = None,
-        max_y: float | None = None,
+        min_x: FiniteFloat | None = None,
+        min_y: FiniteFloat | None = None,
+        max_x: FiniteFloat | None = None,
+        max_y: FiniteFloat | None = None,
         limit: int = 200,
         offset: int = 0,
     ) -> dict[str, Any]:
@@ -966,36 +967,36 @@ def create_mcp(
 
     @provider_tool(tags={"object", "write"})
     async def object_move(
-        object_id: str, dx: float, dy: float, dz: float = 0.0
+        object_id: str, dx: FiniteFloat, dy: FiniteFloat, dz: FiniteFloat = 0.0
     ) -> dict[str, Any]:
         return (await backend.object_move(object_id, dx, dy, dz)).to_dict()
 
     @provider_tool(tags={"object", "write"})
     async def object_copy(
-        object_id: str, dx: float, dy: float, dz: float = 0.0
+        object_id: str, dx: FiniteFloat, dy: FiniteFloat, dz: FiniteFloat = 0.0
     ) -> dict[str, Any]:
         return (await backend.object_copy(object_id, dx, dy, dz)).to_dict()
 
     @provider_tool(tags={"object", "write"})
     async def object_rotate(
-        object_id: str, base_x: float, base_y: float, angle_deg: float
+        object_id: str, base_x: FiniteFloat, base_y: FiniteFloat, angle_deg: FiniteFloat
     ) -> dict[str, Any]:
         return (await backend.object_rotate(object_id, base_x, base_y, angle_deg)).to_dict()
 
     @provider_tool(tags={"object", "write"})
     async def object_scale(
-        object_id: str, base_x: float, base_y: float, factor: float
+        object_id: str, base_x: FiniteFloat, base_y: FiniteFloat, factor: FiniteFloat
     ) -> dict[str, Any]:
         return (await backend.object_scale(object_id, base_x, base_y, factor)).to_dict()
 
     @provider_tool(tags={"entity", "write"})
     async def entity_create_line(
-        x1: float,
-        y1: float,
-        x2: float,
-        y2: float,
-        z1: float = 0.0,
-        z2: float = 0.0,
+        x1: FiniteFloat,
+        y1: FiniteFloat,
+        x2: FiniteFloat,
+        y2: FiniteFloat,
+        z1: FiniteFloat = 0.0,
+        z2: FiniteFloat = 0.0,
         layer: str | None = None,
         color: int | None = None,
     ) -> dict[str, Any]:
@@ -1005,9 +1006,9 @@ def create_mcp(
 
     @provider_tool(tags={"entity", "write"})
     async def entity_create_circle(
-        cx: float,
-        cy: float,
-        radius: float,
+        cx: FiniteFloat,
+        cy: FiniteFloat,
+        radius: FiniteFloat,
         layer: str | None = None,
         color: int | None = None,
     ) -> dict[str, Any]:
@@ -1015,11 +1016,11 @@ def create_mcp(
 
     @provider_tool(tags={"entity", "write"})
     async def entity_create_arc(
-        cx: float,
-        cy: float,
-        radius: float,
-        start_angle: float,
-        end_angle: float,
+        cx: FiniteFloat,
+        cy: FiniteFloat,
+        radius: FiniteFloat,
+        start_angle: FiniteFloat,
+        end_angle: FiniteFloat,
         layer: str | None = None,
         color: int | None = None,
     ) -> dict[str, Any]:
@@ -1031,13 +1032,13 @@ def create_mcp(
 
     @provider_tool(tags={"entity", "write"})
     async def entity_create_polyline(
-        points: list[list[float]],
+        points: list[list[FiniteFloat]],
         closed: bool = False,
         layer: str | None = None,
         color: int | None = None,
-        bulges: list[float] | None = None,
-        widths: list[list[float]] | None = None,
-        elevation: float = 0.0,
+        bulges: list[FiniteFloat] | None = None,
+        widths: list[list[FiniteFloat]] | None = None,
+        elevation: FiniteFloat = 0.0,
     ) -> dict[str, Any]:
         return (
             await backend.entity_create_polyline(
@@ -1048,10 +1049,10 @@ def create_mcp(
     @provider_tool(tags={"entity", "write"})
     async def entity_create_text(
         text: str,
-        x: float,
-        y: float,
-        height: float = 2.5,
-        rotation: float = 0.0,
+        x: FiniteFloat,
+        y: FiniteFloat,
+        height: FiniteFloat = 2.5,
+        rotation: FiniteFloat = 0.0,
         layer: str | None = None,
         color: int | None = None,
     ) -> dict[str, Any]:
@@ -1061,10 +1062,10 @@ def create_mcp(
 
     @provider_tool(tags={"hatch", "write"})
     async def hatch_create(
-        boundary_points: list[list[float]],
+        boundary_points: list[list[FiniteFloat]],
         pattern: str = "SOLID",
-        scale: float = 1.0,
-        angle: float = 0.0,
+        scale: FiniteFloat = 1.0,
+        angle: FiniteFloat = 0.0,
         layer: str | None = None,
         color: int | None = None,
     ) -> dict[str, Any]:
@@ -1074,13 +1075,13 @@ def create_mcp(
 
     @provider_tool(tags={"dimension", "write"})
     async def dimension_linear(
-        x1: float,
-        y1: float,
-        x2: float,
-        y2: float,
-        dim_x: float,
-        dim_y: float,
-        rotation: float = 0.0,
+        x1: FiniteFloat,
+        y1: FiniteFloat,
+        x2: FiniteFloat,
+        y2: FiniteFloat,
+        dim_x: FiniteFloat,
+        dim_y: FiniteFloat,
+        rotation: FiniteFloat = 0.0,
         layer: str | None = None,
     ) -> dict[str, Any]:
         return (
@@ -1089,12 +1090,12 @@ def create_mcp(
 
     @provider_tool(tags={"dimension", "write"})
     async def dimension_aligned(
-        x1: float,
-        y1: float,
-        x2: float,
-        y2: float,
-        dim_x: float,
-        dim_y: float,
+        x1: FiniteFloat,
+        y1: FiniteFloat,
+        x2: FiniteFloat,
+        y2: FiniteFloat,
+        dim_x: FiniteFloat,
+        dim_y: FiniteFloat,
         layer: str | None = None,
     ) -> dict[str, Any]:
         return (
@@ -1103,14 +1104,14 @@ def create_mcp(
 
     @provider_tool(tags={"dimension", "write"})
     async def dimension_angular(
-        vertex_x: float,
-        vertex_y: float,
-        first_x: float,
-        first_y: float,
-        second_x: float,
-        second_y: float,
-        text_x: float,
-        text_y: float,
+        vertex_x: FiniteFloat,
+        vertex_y: FiniteFloat,
+        first_x: FiniteFloat,
+        first_y: FiniteFloat,
+        second_x: FiniteFloat,
+        second_y: FiniteFloat,
+        text_x: FiniteFloat,
+        text_y: FiniteFloat,
         layer: str | None = None,
     ) -> dict[str, Any]:
         return (
@@ -1121,11 +1122,11 @@ def create_mcp(
 
     @provider_tool(tags={"dimension", "write"})
     async def dimension_radial(
-        center_x: float,
-        center_y: float,
-        chord_x: float,
-        chord_y: float,
-        leader_length: float,
+        center_x: FiniteFloat,
+        center_y: FiniteFloat,
+        chord_x: FiniteFloat,
+        chord_y: FiniteFloat,
+        leader_length: FiniteFloat,
         layer: str | None = None,
     ) -> dict[str, Any]:
         return (
@@ -1136,11 +1137,11 @@ def create_mcp(
 
     @provider_tool(tags={"dimension", "write"})
     async def dimension_diametric(
-        center_x: float,
-        center_y: float,
-        chord_x: float,
-        chord_y: float,
-        leader_length: float,
+        center_x: FiniteFloat,
+        center_y: FiniteFloat,
+        chord_x: FiniteFloat,
+        chord_y: FiniteFloat,
+        leader_length: FiniteFloat,
         layer: str | None = None,
     ) -> dict[str, Any]:
         return (
@@ -1151,10 +1152,10 @@ def create_mcp(
 
     @provider_tool(tags={"dimension", "write"})
     async def dimension_ordinate(
-        definition_x: float,
-        definition_y: float,
-        leader_x: float,
-        leader_y: float,
+        definition_x: FiniteFloat,
+        definition_y: FiniteFloat,
+        leader_x: FiniteFloat,
+        leader_y: FiniteFloat,
         axis: str = "x",
         layer: str | None = None,
     ) -> dict[str, Any]:
@@ -1217,19 +1218,19 @@ def create_mcp(
     async def block_create(
         name: str,
         object_ids: list[str],
-        base_x: float = 0.0,
-        base_y: float = 0.0,
+        base_x: FiniteFloat = 0.0,
+        base_y: FiniteFloat = 0.0,
     ) -> dict[str, Any]:
         return (await backend.block_create(name, object_ids, base_x, base_y)).to_dict()
 
     @provider_tool(tags={"block", "write"})
     async def block_insert(
         name: str,
-        x: float,
-        y: float,
-        scale_x: float = 1.0,
-        scale_y: float = 1.0,
-        rotation: float = 0.0,
+        x: FiniteFloat,
+        y: FiniteFloat,
+        scale_x: FiniteFloat = 1.0,
+        scale_y: FiniteFloat = 1.0,
+        rotation: FiniteFloat = 0.0,
         layer: str | None = None,
     ) -> dict[str, Any]:
         return (
@@ -1245,13 +1246,13 @@ def create_mcp(
         path: str,
         name: str | None = None,
         overlay: bool = True,
-        x: float = 0.0,
-        y: float = 0.0,
-        z: float = 0.0,
-        scale_x: float = 1.0,
-        scale_y: float = 1.0,
-        scale_z: float = 1.0,
-        rotation: float = 0.0,
+        x: FiniteFloat = 0.0,
+        y: FiniteFloat = 0.0,
+        z: FiniteFloat = 0.0,
+        scale_x: FiniteFloat = 1.0,
+        scale_y: FiniteFloat = 1.0,
+        scale_z: FiniteFloat = 1.0,
+        rotation: FiniteFloat = 0.0,
         layer: str | None = None,
     ) -> dict[str, Any]:
         return await backend.xref_attach(
@@ -1295,13 +1296,13 @@ def create_mcp(
     @provider_tool(tags={"viewport", "write"})
     async def viewport_create(
         layout: str,
-        center_x: float,
-        center_y: float,
-        width: float,
-        height: float,
-        view_center_x: float,
-        view_center_y: float,
-        scale: float = 1.0,
+        center_x: FiniteFloat,
+        center_y: FiniteFloat,
+        width: FiniteFloat,
+        height: FiniteFloat,
+        view_center_x: FiniteFloat,
+        view_center_y: FiniteFloat,
+        scale: FiniteFloat = 1.0,
     ) -> dict[str, Any]:
         return await backend.viewport_create(
             layout,
@@ -1319,7 +1320,7 @@ def create_mcp(
         return await backend.viewport_list(layout)
 
     @provider_tool(tags={"viewport", "write"})
-    async def viewport_set_scale(handle: str, scale: float) -> dict[str, Any]:
+    async def viewport_set_scale(handle: str, scale: FiniteFloat) -> dict[str, Any]:
         return await backend.viewport_set_scale(handle, scale)
 
     @provider_tool(tags={"viewport", "write"})
@@ -1336,10 +1337,10 @@ def create_mcp(
 
     @provider_tool(tags={"view", "write"})
     async def view_zoom_window(
-        x1: float,
-        y1: float,
-        x2: float,
-        y2: float,
+        x1: FiniteFloat,
+        y1: FiniteFloat,
+        x2: FiniteFloat,
+        y2: FiniteFloat,
     ) -> dict[str, Any]:
         return await backend.view_zoom_window(x1, y1, x2, y2)
 
@@ -1348,7 +1349,7 @@ def create_mcp(
         return Image(data=await backend.view_screenshot(), format="png")
 
     @provider_tool(tags={"view", "write"})
-    async def view_set_direction(dx: float, dy: float, dz: float) -> dict[str, Any]:
+    async def view_set_direction(dx: FiniteFloat, dy: FiniteFloat, dz: FiniteFloat) -> dict[str, Any]:
         return await backend.view_set_direction(dx, dy, dz)
 
     @provider_tool(tags={"view", "write"})
@@ -1378,7 +1379,7 @@ def create_mcp(
     @provider_tool(tags={"solid", "write"})
     async def solid_create_primitive(
         kind: str,
-        parameters: dict[str, float],
+        parameters: dict[str, FiniteFloat],
         layer: str | None = None,
     ) -> dict[str, Any]:
         normalized = str(kind).strip().lower()
@@ -1407,8 +1408,8 @@ def create_mcp(
     @provider_tool(tags={"solid", "write"})
     async def solid_extrude(
         profile_object_id: str,
-        height: float,
-        taper_angle: float = 0.0,
+        height: FiniteFloat,
+        taper_angle: FiniteFloat = 0.0,
         layer: str | None = None,
     ) -> dict[str, Any]:
         return await backend.solid_extrude(
@@ -1433,13 +1434,13 @@ def create_mcp(
     @provider_tool(tags={"solid", "write"})
     async def solid_revolve(
         profile_object_id: str,
-        axis_x1: float,
-        axis_y1: float,
-        axis_z1: float,
-        axis_x2: float,
-        axis_y2: float,
-        axis_z2: float,
-        angle_deg: float = 360.0,
+        axis_x1: FiniteFloat,
+        axis_y1: FiniteFloat,
+        axis_z1: FiniteFloat,
+        axis_x2: FiniteFloat,
+        axis_y2: FiniteFloat,
+        axis_z2: FiniteFloat,
+        angle_deg: FiniteFloat = 360.0,
         layer: str | None = None,
     ) -> dict[str, Any]:
         return await backend.solid_revolve(
@@ -1466,7 +1467,7 @@ def create_mcp(
     async def solid_transform(
         handle: str,
         operation: str,
-        parameters: dict[str, float],
+        parameters: dict[str, FiniteFloat],
     ) -> dict[str, Any]:
         normalized = str(operation).strip().lower()
         if normalized == "move":

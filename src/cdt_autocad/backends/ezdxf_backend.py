@@ -1,5 +1,5 @@
 """Headless DXF backend for the CDT_Engineer AutoCAD provider.
-Wing: code | Topic: autocad-a3-analysis | Updated: 2026-09-14 23:00
+Wing: code | Topic: autocad-a3-analysis | Updated: 2026-10-03 20:45
 
 Implemented for the CDT-AutoCAD provider contract using ezdxf through its public
 API, with provider behavior normalized to CDT project invariants and schemas.
@@ -406,11 +406,11 @@ class EzdxfBackend(AutoCADBackend):
             self._reap_uncertain_task()
             if quarantine_exit and self._uncertain_task is not None:
                 raise BackendQuarantinedError(
-                    "Document cannot be rebound while a timed-out mutation worker is still running"
+                    "Document cannot be rebound while a mutation worker with unknown completion is still running"
                 )
             if self._quarantined and not quarantine_exit:
                 raise BackendQuarantinedError(
-                    "Document is quarantined after a timed-out mutation; rebind with "
+                    "Document is quarantined after a mutation with unknown completion; rebind with "
                     "document_new or document_open before continuing"
                 )
 
@@ -432,6 +432,11 @@ class EzdxfBackend(AutoCADBackend):
             deadline = timeout_seconds or self.settings.call_timeout_seconds
             try:
                 return await asyncio.wait_for(asyncio.shield(task), timeout=deadline)
+            except asyncio.CancelledError:
+                if integrity_sensitive:
+                    self._quarantined = True
+                    self._uncertain_task = task
+                raise
             except TimeoutError as exc:
                 if integrity_sensitive:
                     self._quarantined = True

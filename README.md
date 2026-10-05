@@ -1,5 +1,7 @@
 # CDT-AutoCAD
 
+> **Integration boundary — 2026-10-05 17:06 (Asia/Ho_Chi_Minh):** Launch-ready evidence is bound to its historical source. The integrity patch committed here is not yet Windows/AutoCAD2027 recertified; see [Current Checkpoint](docs/CURRENT_CHECKPOINT.md).
+
 > Provider `0.4.0rc3` · Contract `autocad-generic-v1-rc3` · 87 public MCP tools · AutoCAD 2027 primary certification lane · **Launch-ready / Operational RC**
 >
 > **CDT certified host target:** AutoCAD **2027 full on Windows x64**. Current

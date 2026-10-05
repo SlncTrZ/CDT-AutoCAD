@@ -60,6 +60,21 @@ packages = ["src/cdt_autocad"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 asyncio_mode = "strict"
+testpaths = ["tests"]
+norecursedirs = [
+  "artifacts",
+  "_test_workspace",
+  "_private",
+  "prototypes",
+  "native",
+  "__pycache__",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".venv",
+  ".git",
+  "build",
+  "dist",
+]
 
 [tool.ruff]
 line-length = 100

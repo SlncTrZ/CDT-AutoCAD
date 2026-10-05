@@ -1,5 +1,5 @@
 """G3 logical batch executor — durable all-or-nothing orchestration across yielded native chunks.
-Wing: code | Topic: native-g3-logical-batch | Updated: 2026-09-11 18:35
+Wing: code | Topic: native-g3-logical-batch | Updated: 2026-10-03 20:42
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ class LogicalBatchError(RuntimeError):
             "LOGICAL_FINALIZE_UNKNOWN",
             "LOGICAL_STATE_UNCERTAIN",
             "LOGICAL_ROLLBACK_FAILED",
+            "LOGICAL_JOURNAL_FAILED",
         }
         super().__init__(f"{code}: {message}")
 
@@ -79,6 +80,16 @@ class NativeLogicalBatchExecutor:
     def __init__(self, client: Any, journal_path: str | Path):
         self.client = client
         self.journal = LogicalBatchJournal(journal_path)
+
+    def _append_journal(self, event: Mapping[str, Any]) -> None:
+        try:
+            self.journal.append(event)
+        except Exception as exc:
+            # A durable evidence failure must never hide unresolved CAD completion.
+            raise LogicalBatchError(
+                "LOGICAL_JOURNAL_FAILED",
+                "durable logical transaction evidence could not be recorded; mutation remains blocked",
+            ) from exc
 
     def create_entities(
         self,
@@ -194,7 +205,7 @@ class NativeLogicalBatchExecutor:
                 owner_request_id,
             )
             if binding is None:
-                self.journal.append(
+                self._append_journal(
                     {
                         "event": "logical_uncertain",
                         "operation": operation,
@@ -206,7 +217,7 @@ class NativeLogicalBatchExecutor:
                     "LOGICAL_BEGIN_UNKNOWN",
                     "logical begin completion is unknown and no unique predecessor checkpoint can be recovered",
                 ) from exc
-            self.journal.append(
+            self._append_journal(
                 {
                     "event": "logical_begin_unknown",
                     "operation": operation,
@@ -230,7 +241,7 @@ class NativeLogicalBatchExecutor:
             )
 
         binding_payload = binding.to_dict()
-        self.journal.append(
+        self._append_journal(
             {
                 "event": "logical_begin",
                 "operation": operation,
@@ -300,7 +311,7 @@ class NativeLogicalBatchExecutor:
                 affected.extend(pids)
                 current_fp = post_fp
                 committed_chunks += 1
-                self.journal.append(
+                self._append_journal(
                     {
                         "event": "chunk_committed",
                         "operation": operation,
@@ -323,7 +334,7 @@ class NativeLogicalBatchExecutor:
                     detail=independent,
                 )
 
-            self.journal.append(
+            self._append_journal(
                 {
                     "event": "logical_finalize_pending",
                     "operation": operation,
@@ -348,7 +359,7 @@ class NativeLogicalBatchExecutor:
                         document_pid=document_pid,
                     )
                     if reconciled.get("document_fp") == current_fp:
-                        self.journal.append(
+                        self._append_journal(
                             {
                                 "event": "logical_commit_reconciled",
                                 "operation": operation,
@@ -377,7 +388,7 @@ class NativeLogicalBatchExecutor:
                     "bridge did not confirm logical checkpoint finalization",
                     detail=finalized,
                 )
-            self.journal.append(
+            self._append_journal(
                 {
                     "event": "logical_commit",
                     "operation": operation,
@@ -518,7 +529,7 @@ class NativeLogicalBatchExecutor:
                 strategy="R2_CHECKPOINT_RESTORE",
             )
         except Exception as exc:
-            self.journal.append(
+            self._append_journal(
                 {
                     "event": "logical_uncertain",
                     "operation": operation,
@@ -547,7 +558,7 @@ class NativeLogicalBatchExecutor:
             and rollback.get("actual_restore_fp") == expected_parent_fp
         )
         if not restored:
-            self.journal.append(
+            self._append_journal(
                 {
                     "event": "logical_rollback_failed",
                     "operation": operation,
@@ -563,7 +574,7 @@ class NativeLogicalBatchExecutor:
         restored_runtime = recovery.get("runtime_document_id")
         if not isinstance(restored_runtime, str) or not restored_runtime:
             restored_runtime = runtime_document_id
-        self.journal.append(
+        self._append_journal(
             {
                 "event": "logical_rollback",
                 "operation": operation,

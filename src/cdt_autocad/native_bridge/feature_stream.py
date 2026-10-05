@@ -1,5 +1,5 @@
 """Production feature streaming — feature-local atomic orchestration over generic native CAD chunks.
-Wing: code | Topic: production-feature-streaming | Updated: 2026-09-11 20:18
+Wing: code | Topic: production-feature-streaming | Updated: 2026-10-03 20:42
 """
 
 from __future__ import annotations
@@ -186,7 +186,7 @@ class FeatureStreamExecutor(NativeLogicalBatchExecutor):
                 owner_request_id,
             )
             if binding is None:
-                self.journal.append(
+                self._append_journal(
                     self._event(
                         request,
                         "feature_uncertain",
@@ -216,11 +216,11 @@ class FeatureStreamExecutor(NativeLogicalBatchExecutor):
                 operation=None,
                 cause="feature begin completion became unknown",
             )
-            self.journal.append(self._event(request, "feature_rollback", failure=failure))
+            self._append_journal(self._event(request, "feature_rollback", failure=failure))
             return self._from_logical(request, logical, failure=failure)
 
         binding_payload = binding.to_dict()
-        self.journal.append(
+        self._append_journal(
             self._event(
                 request,
                 "feature_begin",
@@ -292,7 +292,7 @@ class FeatureStreamExecutor(NativeLogicalBatchExecutor):
                             cause=f"native chunk returned {outcome}",
                             native_outcome=str(outcome),
                         )
-                        self.journal.append(
+                        self._append_journal(
                             self._event(request, "feature_rollback", failure=failure)
                         )
                         return self._from_logical(request, logical, failure=failure)
@@ -310,7 +310,7 @@ class FeatureStreamExecutor(NativeLogicalBatchExecutor):
                             affected_seen.add(pid)
                             affected_ordered.append(pid)
                     post_fp = str(receipt["post_document_fp"])
-                    self.journal.append(
+                    self._append_journal(
                         self._event(
                             request,
                             "feature_native_chunk_committed",
@@ -338,7 +338,7 @@ class FeatureStreamExecutor(NativeLogicalBatchExecutor):
                     detail=independent,
                 )
 
-            self.journal.append(
+            self._append_journal(
                 self._event(
                     request,
                     "feature_finalize_pending",
@@ -363,7 +363,7 @@ class FeatureStreamExecutor(NativeLogicalBatchExecutor):
                         document_pid=document_pid,
                     )
                     if reconciled.get("document_fp") == current_fp:
-                        self.journal.append(
+                        self._append_journal(
                             self._event(
                                 request,
                                 "feature_commit_reconciled",
@@ -393,7 +393,7 @@ class FeatureStreamExecutor(NativeLogicalBatchExecutor):
                     detail=finalized,
                 )
 
-            self.journal.append(
+            self._append_journal(
                 self._event(
                     request,
                     "feature_commit",
@@ -435,7 +435,7 @@ class FeatureStreamExecutor(NativeLogicalBatchExecutor):
             operation=current_operation,
             cause=cause,
         )
-        self.journal.append(self._event(request, "feature_rollback", failure=failure))
+        self._append_journal(self._event(request, "feature_rollback", failure=failure))
         return self._from_logical(request, logical, failure=failure)
 
     @staticmethod

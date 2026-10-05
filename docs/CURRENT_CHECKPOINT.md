@@ -7,6 +7,9 @@
 
 This file is the canonical **public current-state authority**. It reports what is true now. It does not define architecture or future roadmap.
 
+> **Working-tree integrity patch — 2026-10-03 20:53 +07:00:** The independent review identified five P1 defects in headless cancellation, metadata recovery error propagation, logical/feature journal failure handling, reload safety probes, and non-finite public numeric inputs. The local patch adds fail-closed handling and 38 regression cases in `tests/test_independent_review_regressions.py`. A fresh CPython 3.12.3 environment installed from the unchanged `pylock.linux.toml` matches all 88 locked packages; full Linux regression passed **499 tests / 16 skips**, including actual subprocess/HTTP reload tests. Ruff 0.16.7, dependency checks, syntax compilation and diff hygiene passed. Public tool names/count remain 87. These changes are committed in this tree but have **not** been recertified on Windows .171 or live AutoCAD 2027. The launch decision and exact-source evidence below apply to their recorded historical execution identity; they do not certify this patched working tree. HTTP admission limits and public crash-recovery acceptance remain separate review follow-ups.
+
+
 ## 1. Launch decision
 
 CDT-AutoCAD is sufficiently complete to launch in its intended role as a **Generic CAD Execution Engine** for CDT-Engineer and other higher-level production domains.

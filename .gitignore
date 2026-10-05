@@ -42,3 +42,8 @@ native/**/*.bundle/Contents/
 
 # Local AutoCAD destructive/live test workspace (intentionally untracked)
 _test_workspace/
+
+# AutoCAD crash-report / machine-identifying residue (never commit: DEVICEID2/UUID)
+ErrorReports/
+*.log
+cer.log

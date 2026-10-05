@@ -1,5 +1,5 @@
 """Hot reload supervisor — stable authenticated endpoint over replaceable FastMCP workers.
-Wing: code | Topic: mp2-hot-reload | Updated: 2026-09-11 09:35
+Wing: code | Topic: mp2-hot-reload | Updated: 2026-10-03 20:42
 """
 
 from __future__ import annotations
@@ -246,11 +246,29 @@ class McpWorkerProbe:
             startup_ready=bool(status.get("provider") == "autocad" and len(tools) > 0),
             runtime_ready=bool(runtime.get("ready")),
             transaction_depth=int(status.get("transaction_depth") or 0),
-            timeout_uncertain=bool(status.get("timeout_uncertain")),
+            timeout_uncertain=self._mutation_state_uncertain(status),
             pending_recovery_count=int(status.get("pending_recovery_count") or 0),
             bridge_ready=bool(bridge.get("ready")),
             policy_fingerprint=str(status.get("runtime_policy_fingerprint") or ""),
         )
+
+    @staticmethod
+    def _mutation_state_uncertain(status: dict[str, Any]) -> bool:
+        if status.get("backend") == "com":
+            coordinator = status.get("mutation_coordinator")
+            return (
+                status.get("timeout_uncertain") is not False
+                or status.get("integrity_uncertain") is not False
+                or status.get("uncertain_call_running") is not False
+                or not isinstance(coordinator, dict)
+                or coordinator.get("quarantined") is not False
+            )
+        if status.get("backend") == "ezdxf":
+            return (
+                status.get("quarantined") is not False
+                or status.get("uncertain_worker_active") is not False
+            )
+        return True
 
 
 class SupervisorProxyApp:

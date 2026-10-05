@@ -1,5 +1,5 @@
 """Public native-integrity facade — active-document binding for G2/G3 product tools.
-Wing: code | Topic: production-native-surface | Updated: 2026-09-11 18:55
+Wing: code | Topic: production-native-surface | Updated: 2026-10-03 20:45
 """
 
 from __future__ import annotations
@@ -364,10 +364,12 @@ class NativePublicFacade:
                 checkpoint,
                 reason="metadata dispatch completion became unknown",
             )
+        if not isinstance(receipt, Mapping):
+            raise MutationCompletionUncertainError("native metadata dispatch returned an invalid receipt")
         outcome = receipt.get("outcome")
         if outcome == "ROLLED_BACK_VERIFIED":
             if receipt.get("post_document_fp") != active.document_fp:
-                raise StateConflictError(
+                raise MutationCompletionUncertainError(
                     "native metadata mutation reported rollback but did not restore the predecessor fingerprint"
                 )
             return {**receipt, "route": "native-managed-bridge", "fallback": False}
@@ -378,14 +380,16 @@ class NativePublicFacade:
                 raise StateConflictError(
                     "native metadata receipt checkpoint owner does not match the originating request"
                 )
-        except StateConflictError:
+        except StateConflictError as exc:
             checkpoint = self._discover_metadata_checkpoint(
                 client,
                 active,
                 owner_request_id,
             )
             if checkpoint is None:
-                raise
+                raise MutationCompletionUncertainError(
+                    "native metadata receipt has no uniquely bound recovery checkpoint"
+                ) from exc
         if outcome != "COMMITTED_VERIFIED":
             return self._recover_metadata(
                 client,
@@ -462,15 +466,21 @@ class NativePublicFacade:
         last: Mapping[str, Any] | None = None
         runtime_id = active.runtime_document_id
         for strategy in ("R1_COMPENSATE", "R2_CHECKPOINT_RESTORE"):
-            recovery = client.resolve_recovery(
-                runtime_id,
-                document_pid=active.document_pid,
-                checkpoint_id=checkpoint["checkpoint_id"],
-                checkpoint_artifact_fp=checkpoint["checkpoint_artifact_fp"],
-                owner_request_id=checkpoint["owner_request_id"],
-                expected_restore_fp=active.document_fp,
-                strategy=strategy,
-            )
+            try:
+                recovery = client.resolve_recovery(
+                    runtime_id,
+                    document_pid=active.document_pid,
+                    checkpoint_id=checkpoint["checkpoint_id"],
+                    checkpoint_artifact_fp=checkpoint["checkpoint_artifact_fp"],
+                    owner_request_id=checkpoint["owner_request_id"],
+                    expected_restore_fp=active.document_fp,
+                    strategy=strategy,
+                )
+                if not isinstance(recovery, Mapping):
+                    raise StateConflictError("native metadata recovery returned invalid evidence")
+            except Exception as exc:
+                last = {"recovery_error": type(exc).__name__, "strategy": strategy}
+                continue
             last = recovery
             rollback = recovery.get("rollback")
             if isinstance(rollback, Mapping) and (
@@ -509,14 +519,17 @@ class NativePublicFacade:
         owner_request_id: str,
     ) -> dict[str, str] | None:
         owner_request_fp = owner_request_fingerprint(owner_request_id)
-        matches = [
-            row
-            for row in client.recoveries_list()
-            if row.get("document_pid") == active.document_pid
-            and row.get("operation") == "metadata.set"
-            and row.get("expected_restore_fp") == active.document_fp
-            and row.get("owner_request_fp") == owner_request_fp
-        ]
+        try:
+            matches = [
+                row
+                for row in client.recoveries_list()
+                if row.get("document_pid") == active.document_pid
+                and row.get("operation") == "metadata.set"
+                and row.get("expected_restore_fp") == active.document_fp
+                and row.get("owner_request_fp") == owner_request_fp
+            ]
+        except Exception:
+            return None
         if len(matches) != 1:
             return None
         row = matches[0]
