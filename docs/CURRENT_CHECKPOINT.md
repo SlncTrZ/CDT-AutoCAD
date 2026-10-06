@@ -1,13 +1,13 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-09-30
-> Status: **RC3 CANDIDATE — EXACT-SOURCE TECHNICAL RECERTIFICATION PASS FOR DECLARED PROVIDER SCOPE**
-> Last published/tagged release: `v0.4.0rc2` at `295a064`; current D18 source candidate is RC3; exact-source technical recertification passed on 2026-09-30, publication remains separate
+> Updated: 2026-10-06
+> Status: **RC3 CANDIDATE — EXACT-SOURCE TECHNICAL RECERTIFICATION PASS FOR DECLARED PROVIDER SCOPE (certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64; HEAD `4dc7c75` pending live recert)**
+> Tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` at `295a064` remains the last published release record — tag existence and publication remain separate; current D18 source candidate is RC3; exact-source technical recertification passed on 2026-09-30, publication remains separate
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
 
 This file is the canonical **public current-state authority**. It reports what is true now. It does not define architecture or future roadmap.
 
-> **Working-tree integrity patch — 2026-10-03 20:53 +07:00:** The independent review identified five P1 defects in headless cancellation, metadata recovery error propagation, logical/feature journal failure handling, reload safety probes, and non-finite public numeric inputs. The local patch adds fail-closed handling and 38 regression cases in `tests/test_independent_review_regressions.py`. A fresh CPython 3.12.3 environment installed from the unchanged `pylock.linux.toml` matches all 88 locked packages; full Linux regression passed **499 tests / 16 skips**, including actual subprocess/HTTP reload tests. Ruff 0.16.7, dependency checks, syntax compilation and diff hygiene passed. Public tool names/count remain 87. These changes are committed in this tree but have **not** been recertified on Windows .171 or live AutoCAD 2027. The launch decision and exact-source evidence below apply to their recorded historical execution identity; they do not certify this patched working tree. HTTP admission limits and public crash-recovery acceptance remain separate review follow-ups.
+> **Post-certification delta — HEAD `4dc7c75` (2026-10-06, clean, sync origin/main):** live gates remain certified-at `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64. Delta after `9c69430`: `c35de8e` (core P1 integrity patch — five fail-closed fixes + 38 regressions in `tests/test_independent_review_regressions.py`; Linux exact-lock **499 passed / 16 skipped**, Windows/live recert pending) + `689dd03` (admission limits + crash-recovery acceptance + D9 CRLF + U1-reload harness; pending live recert; tag `v0.4.0rc3` points here) + 3 scripts-only relay commits (`4058812` lifecycle worker + relay, `6fa9601` auto-start fix, `4dc7c75` full-87-tool relay unblock). Relay `scripts/autocad_mcp_relay.py` now opens full 87 tools (pilot 5-tool restriction removed); lifecycle worker is `scripts/autocad_lifecycle_worker.py`. Writes remain allowed on disposable fixtures; production-document writes default-refuse. The launch decision and exact-source evidence below apply to their recorded historical execution identity (`9c69430`); they do not certify HEAD. HTTP admission limits and public crash-recovery acceptance coverage for HEAD remain pending live recert.
 
 
 ## 1. Launch decision
@@ -125,7 +125,7 @@ D16 observed process replacement and retained uncertainty fences. D18 again rest
 
 At this earlier observation, one unrelated checkpoint from 2026-09-19 remained on the host. After closing the restart's informational Drawing Recovery dialog, COM and bridge readiness were true, coordinator quarantine was false, and pending recovery count was 1. D15 stopped at its inventory assertion; MP-2 rejected activation as `ACTIVATION_HEALTH_FAILED`; U1 had not yet been rerun. The old checkpoint/document were preserved and that event remained REVIEW_PENDING. The subsequent owner-approved fixture retirement and passing final reruns are recorded above; this historical refusal is not the current host state.
 
-The public contract remains RC3 / 87 tools. No tag, push or public release occurred; `v0.4.0rc2` remains the last published release. Older measurements below retain their original source/runtime identities.
+The public contract remains RC3 / 87 tools. Tag `v0.4.0rc3` exists at `689dd03`; `v0.4.0rc2` remains the last published release record — tag existence and publication/release remain separate. Older measurements below retain their original source/runtime identities.
 
 ### Historical measured gates
 

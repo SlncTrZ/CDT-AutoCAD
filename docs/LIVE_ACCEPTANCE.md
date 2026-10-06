@@ -1,9 +1,9 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-09-30 +07:00
+> Updated: 2026-10-06 +07:00
 > Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening + D8 stale-COM recovery + D15–D18 assurance closures
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.6-d18` · last published/tagged release remains `v0.4.0rc2`
+> Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.6-d18` · tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` remains the last published release record — tag and publication separate · live gates certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64; HEAD `4dc7c75` pending live recert
 
 ## 0. Current production live gate
 
@@ -100,7 +100,7 @@ D16 observed process replacement and retained uncertainty fences. D18 again rest
 
 At this earlier observation, one unrelated checkpoint from 2026-09-19 remained on the host. After closing the restart's informational Drawing Recovery dialog, COM and bridge readiness were true, coordinator quarantine was false, and pending recovery count was 1. D15 stopped at its inventory assertion; MP-2 rejected activation as `ACTIVATION_HEALTH_FAILED`; U1 had not yet been rerun. The old checkpoint/document were preserved and that event remained REVIEW_PENDING. The subsequent owner-approved fixture retirement and passing final reruns are recorded above; this historical refusal is not the current host state.
 
-The public contract remains RC3 / 87 tools. No tag, push or public release occurred; `v0.4.0rc2` remains the last published release. Older measurements below retain their original source/runtime identities.
+The public contract remains RC3 / 87 tools. Tag `v0.4.0rc3` exists at `689dd03`; `v0.4.0rc2` remains the last published release record — tag existence and publication/release remain separate. Older measurements below retain their original source/runtime identities.
 
 ## 1. Certification policy
 

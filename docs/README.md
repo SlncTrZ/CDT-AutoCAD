@@ -1,6 +1,6 @@
 # CDT-AutoCAD Documentation Index
 
-> Updated: 2026-09-30
+> Updated: 2026-10-06
 
 This page defines the **published documentation structure** and authority boundaries for CDT-AutoCAD.
 
@@ -57,7 +57,7 @@ execution_model: feature-based-chunks-streaming-v1
 native_bridge: 0.8.6-d18
 ```
 
-The last published/tagged release remains `v0.4.0rc2`; RC3 is the current source candidate; exact-source technical recertification passed on 2026-09-30 for clean execution source `9c69430` in the declared provider scope. Publication and integrated production acceptance remain separate. See [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) for measured current state and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the stable product boundary.
+The tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` remains the last published release record — tag existence and publication/integrated-production acceptance remain separate. RC3 is the current source candidate; exact-source technical recertification passed on 2026-09-30 for clean execution source `9c69430` in the declared provider scope (certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64; later HEADs pending, see [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md)). See [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) for measured current state and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the stable product boundary.
 
 ## 4. Change routing
 

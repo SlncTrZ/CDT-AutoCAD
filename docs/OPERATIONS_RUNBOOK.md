@@ -1,14 +1,15 @@
 # Operations Runbook — CDT-AutoCAD
 
 > Operational start: 2026-09-12
-> Updated: 2026-09-30 +07:00
-> Current source product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools`
-> Current native bridge candidate: `0.8.6-d18` · last published/tagged release remains `v0.4.0rc2`
+> Updated: 2026-10-06 +07:00
+> Current source product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · HEAD `4dc7c75` (2026-10-06, clean sync origin/main)
+> Current native bridge candidate: `0.8.6-d18` · tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` remains the last published release record — tag and publication separate
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
+> Live gates: certified-at `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64; `c35de8e` + `689dd03` + relay delta (`4058812`, `6fa9601`, `4dc7c75`) pending live recert — pending is an operational stamp, not a use prohibition; deployment health checks still govern each host/session
 
 ## 1. Operating boundary
 
-CDT-AutoCAD is operating as an **RC/preview Generic CAD Execution Engine**. Operational use does not convert the version into GA or expand capability claims beyond current evidence. Scoped technical recertification passed on 2026-09-30 for execution source `9c69430`; a deployment must still pass health checks for its actual host/session.
+CDT-AutoCAD is operating as an **RC/preview Generic CAD Execution Engine**. Operational use does not convert the version into GA or expand capability claims beyond current evidence. Scoped technical recertification passed on 2026-09-30 for execution source `9c69430` (certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64); a deployment must still pass health checks for its actual host/session. Writes are allowed on disposable fixtures; production-document writes default-refuse.
 
 The provider owns generic CAD execution, persistent identity, semantic state, bounded mutation, recovery and artifact evidence. Domain standards, engineering calculations and design judgment remain outside the provider.
 

@@ -1,6 +1,6 @@
 # CDT-AutoCAD
 
-> **Integration boundary — 2026-10-05 17:06 (Asia/Ho_Chi_Minh):** Launch-ready evidence is bound to its historical source. The integrity patch committed here is not yet Windows/AutoCAD2027 recertified; see [Current Checkpoint](docs/CURRENT_CHECKPOINT.md).
+> **Integration boundary — 2026-10-06 (Asia/Ho_Chi_Minh), HEAD `4dc7c75` clean sync origin/main:** live gates certified-at `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64. Delta: `c35de8e` (core patch, Linux 499/16, Windows/live pending) + `689dd03` (tag `v0.4.0rc3` points here) + 3 scripts-only relay commits to full 87 tools; see [Current Checkpoint](docs/CURRENT_CHECKPOINT.md).
 
 > Provider `0.4.0rc3` · Contract `autocad-generic-v1-rc3` · 87 public MCP tools · AutoCAD 2027 primary certification lane · **Launch-ready / Operational RC**
 >
