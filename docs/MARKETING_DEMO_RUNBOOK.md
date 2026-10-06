@@ -143,7 +143,7 @@ Recommended proof line:
 
 Do **not** say:
 
-- “production GA” — current source candidate is `0.4.0rc3` (HEAD `4dc7c75`), tag `v0.4.0rc3` exists at `689dd03` while `v0.4.0rc2` remains the last published release record — tag and publication separate; say **RC/preview**;
+- “production GA” — current source candidate is `0.4.0rc3` (HEAD `a3faa7b`), tag `v0.4.0rc3` exists at `689dd03` while `v0.4.0rc2` remains the last published release record — tag and publication separate; say **RC/preview**;
 - “supports every AutoCAD version” — only the documented target is certified;
 - “understands civil/mechanical/architectural standards” — domain rules belong to Domain Agents;
 - “10,000 entities instantly” or “no freeze at 10k” — the scale evidence proves bounded execution/recovery, not instantaneous completion;

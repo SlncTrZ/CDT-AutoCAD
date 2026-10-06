@@ -2,10 +2,10 @@
 
 > Operational start: 2026-09-12
 > Updated: 2026-10-06 +07:00
-> Current source product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · HEAD `4dc7c75` (2026-10-06, clean sync origin/main)
-> Current native bridge candidate: `0.8.6-d18` · tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` remains the last published release record — tag and publication separate
+> Current source product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · HEAD `a3faa7b` (2026-10-06, clean sync origin/main)
+> Current native bridge candidate: `0.8.6-d18` · deployed DLL SHA-256 `9A877C66EBBBE70BFD634F7434B41269BD73035F066FC1F1951C9513366995FC` · tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` remains the last published release record — tag and publication separate
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
-> Live gates: certified-at `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64; `c35de8e` + `689dd03` + relay delta (`4058812`, `6fa9601`, `4dc7c75`) pending live recert — pending is an operational stamp, not a use prohibition; deployment health checks still govern each host/session
+> Live gates: certified-at `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64, extended by affected-scoped requal at `a3faa7b` + 2026-10-06 (smoke, 320-scale, 10k-scale, U1, D15–D18, hot-reload — see LIVE_ACCEPTANCE) — pending is an operational stamp, not a use prohibition; deployment health checks still govern each host/session
 
 ## 1. Operating boundary
 

@@ -3,11 +3,21 @@
 > Updated: 2026-10-06 +07:00
 > Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening + D8 stale-COM recovery + D15–D18 assurance closures
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.6-d18` · tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` remains the last published release record — tag and publication separate · live gates certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64; HEAD `4dc7c75` pending live recert
+> Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.6-d18` · deployed DLL SHA-256 `9A877C66…` · tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` remains the last published release record — tag and publication separate · live gates certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64, extended by affected-scoped requal at HEAD `a3faa7b` + 2026-10-06 (below)
 
 ## 0. Current production live gate
 
 The reviewed public-promotion tree preserves both the historical COM/A3 acceptance below and the newer strong-integrity native evidence.
+
+Accepted 2026-10-06 on `.171` AutoCAD 2027 Session 1 at HEAD `a3faa7b` (affected-scoped `entity.batch.create`, fixtures disposable, closed + deleted after run):
+
+- smoke init + 2-LINE batch: `COMMITTED_VERIFIED`, affected 2/2, rolling chain OK, `recovery.finalize` FINALIZED;
+- 320-entity scale (10×32): p50 115,6 ms / p95 125,0 ms, R0 `ROLLED_BACK_VERIFIED` exact, COM count exact, all finalized;
+- 10.000-entity scale (313×32): p50 694,6 ms / p95 1.127,8 ms / max 1.669,0 ms, COM count exact 10.000, all receipts `affected_scoped`;
+- U1 floorplan (LINE/TEXT/MTEXT/aligned+linear DIM): PASS, bootstrap readback, persisted_clean, 0 pending;
+- D15/D17/D18: PASS; D16: PASS with real process kill/restart (PID 59944→27916);
+- hot-reload COM (3 success + 2 failure cycles): PASS, generations fenced, pending 0;
+- full pytest Windows: 517 passed / 12 skipped (incl. new `test_affected_scoped_verify.py`).
 
 Historical accepted native requirements measured PASS on `.171` AutoCAD 2027 Session 1:
 
