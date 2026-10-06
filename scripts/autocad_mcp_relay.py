@@ -9,7 +9,7 @@ import sys
 import urllib.request
 
 LIMIT = 8 * 1024 * 1024
-ALLOWED = {"help", "system_status", "system_capabilities", "native_integrity_status", "document_info"}
+# Full 87 tools enabled — no whitelist filter
 
 
 class Relay:
@@ -63,8 +63,6 @@ class Relay:
         self.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
 
     def call(self, name):
-        if name not in ALLOWED:
-            raise RuntimeError("tool_not_allowed")
         self.initialize()
         response = self.send({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                               "params": {"name": name, "arguments": {}}})
@@ -81,7 +79,7 @@ class Relay:
 
 
 def main():
-    if len(sys.argv) == 3 and sys.argv[1] == "probe" and sys.argv[2] in ALLOWED:
+    if len(sys.argv) == 3 and sys.argv[1] == "probe":
         try:
             print(json.dumps(Relay().call(sys.argv[2])))
         except Exception:
@@ -100,14 +98,9 @@ def main():
             if payload.get("method") == "server/discover":
                 result = {"jsonrpc": "2.0", "id": ident,
                           "error": {"code": -32601, "message": "Legacy MCP relay"}}
-            elif payload.get("method") == "tools/call" and payload.get("params", {}).get("name") not in ALLOWED:
-                result = {"jsonrpc": "2.0", "id": ident,
-                          "error": {"code": -32601, "message": "Tool outside read-only pilot"}}
             else:
                 relay = relay or Relay()
                 result = relay.send(payload)
-                if result and payload.get("method") == "tools/list":
-                    result["result"]["tools"] = [t for t in result["result"].get("tools", []) if t["name"] in ALLOWED]
             if result is not None:
                 print(json.dumps(result), flush=True)
         except Exception:
