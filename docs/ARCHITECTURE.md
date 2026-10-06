@@ -104,6 +104,11 @@ ActionSpec + caller-planned document_pid + expected_parent_fp
   -> canonicalization + fingerprint/diff
   -> deterministic validation
   -> commit or verified rollback
+  -> affected-scoped post-commit verify for `entity.batch.create`
+     (`verification_mode: affected_scoped`, per-PID re-read vs provisional,
+     `affected_fp` + `full_reconcile: pending:recovery_finalize`);
+     full-scope proof stays at the pre-batch drift guard, the next batch
+     pre-extract (rolling fingerprint chain) and the `recovery.finalize` boundary
   -> independent persisted read-back
   -> state/evidence receipt
 ```

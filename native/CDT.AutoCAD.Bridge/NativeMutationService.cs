@@ -749,14 +749,23 @@ internal sealed class NativeMutationService
                 );
             }
 
-            Dictionary<string, object?> persisted = _semantic.Extract(
-                document,
-                parameters.RuntimeDocumentId,
-                parameters.DocumentPid,
-                BridgeConstants.MaxBatchSemanticEntities
-            );
-            string persistedFp = Fingerprint(persisted);
-            bool integrityOk = string.Equals(provisionalFp, persistedFp, StringComparison.Ordinal);
+            // AC-A01: affected-scoped post-commit verification replaces the second
+            // full-scope Extract + Fingerprint. Full-scope proof stays at the pre-batch
+            // STATE_DRIFT guard, the next batch pre-extract (rolling fp chain) and the
+            // bridge.recovery.finalize boundary (FinalizeRecovery full Extract compare).
+            (bool affectedVerified, string affectedFp, int affectedVerifiedCount) =
+                _semantic.VerifyAffectedPostCommit(
+                    document,
+                    affectedObjectIds,
+                    affectedPids,
+                    provisional
+                );
+            // Post fp chains from the provisional fp: the provisional was built from the
+            // verified pre-batch full scope with affected entries replaced by
+            // in-transaction reads, and the affected re-read above proves the committed
+            // state equals provisional for every affected PID.
+            string persistedFp = provisionalFp;
+            bool integrityOk = affectedVerified;
             return new Dictionary<string, object?>
             {
                 ["schema_version"] = 1,
@@ -766,6 +775,11 @@ internal sealed class NativeMutationService
                 ["pre_document_fp"] = parentFp,
                 ["provisional_document_fp"] = provisionalFp,
                 ["post_document_fp"] = persistedFp,
+                ["verification_mode"] = "affected_scoped",
+                ["affected_fp"] = affectedFp,
+                ["affected_verified_count"] = affectedVerifiedCount,
+                ["affected_expected_count"] = affectedPids.Count,
+                ["full_reconcile"] = "pending:recovery_finalize",
                 ["affected_semantic_pids"] = affectedPids.ToArray(),
                 ["recovery_checkpoint"] = CheckpointPayload(
                     checkpoint,

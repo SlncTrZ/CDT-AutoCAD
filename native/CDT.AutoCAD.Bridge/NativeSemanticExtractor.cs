@@ -268,6 +268,94 @@ internal sealed class NativeSemanticExtractor
         };
     }
 
+    /// <summary>
+    /// Post-commit affected-scoped verification (AC-A01 optimization).
+    /// Re-reads ONLY the affected entities in a fresh transaction after commit and
+    /// compares each against its provisional entry. Returns the affected-scope
+    /// fingerprint. Full-scope proof stays at the pre-batch STATE_DRIFT guard, the
+    /// next batch pre-extract (rolling chain) and bridge.recovery.finalize boundary.
+    /// </summary>
+    internal (bool Verified, string AffectedFp, int VerifiedCount) VerifyAffectedPostCommit(
+        Document document,
+        IReadOnlyCollection<ObjectId> affectedObjectIds,
+        IReadOnlyCollection<string> affectedPids,
+        Dictionary<string, object?> provisional
+    )
+    {
+        if (!ReferenceEquals(document, AcApplication.DocumentManager.MdiActiveDocument))
+        {
+            throw new BridgeServiceException(
+                "DOCUMENT_NOT_ACTIVE",
+                "native affected post-commit verification requires the bound document to be active"
+            );
+        }
+        if (provisional["entities"] is not List<Dictionary<string, object?>> provisionalEntities)
+        {
+            throw new BridgeServiceException(
+                "INVALID_SNAPSHOT",
+                "provisional snapshot has invalid entity collection"
+            );
+        }
+        HashSet<string> expected = new(affectedPids, StringComparer.Ordinal);
+        Dictionary<string, string> provisionalByPid = new(StringComparer.Ordinal);
+        foreach (Dictionary<string, object?> entity in provisionalEntities)
+        {
+            string pid = Convert.ToString(entity["semantic_pid"]) ?? string.Empty;
+            if (expected.Contains(pid))
+            {
+                provisionalByPid[pid] = SemanticFingerprint.CanonicalLinearSortKey(
+                    RemoveNativeHandle(entity));
+            }
+        }
+
+        Database database = document.Database;
+        using Transaction transaction = database.TransactionManager.StartOpenCloseTransaction();
+        BlockTableRecord space = (BlockTableRecord)transaction.GetObject(
+            database.CurrentSpaceId,
+            OpenMode.ForRead
+        );
+        List<string> verifiedCanonicals = new(expected.Count);
+        int verifiedCount = 0;
+        foreach (ObjectId objectId in affectedObjectIds)
+        {
+            if (objectId.IsNull || objectId.IsErased)
+            {
+                return (false, string.Empty, verifiedCount);
+            }
+            if (transaction.GetObject(objectId, OpenMode.ForRead, false) is not Entity entity)
+            {
+                return (false, string.Empty, verifiedCount);
+            }
+            string semanticPid = EntityPidReader.ReadRequired(entity, transaction);
+            if (!provisionalByPid.TryGetValue(semanticPid, out string? expectedCanonical))
+            {
+                return (false, string.Empty, verifiedCount);
+            }
+            Dictionary<string, object?> reread = NativeEntityExtractor.Extract(
+                entity, semanticPid, space.Name, transaction);
+            string actualCanonical = SemanticFingerprint.CanonicalLinearSortKey(
+                RemoveNativeHandle(reread));
+            if (!string.Equals(actualCanonical, expectedCanonical, StringComparison.Ordinal))
+            {
+                return (false, string.Empty, verifiedCount);
+            }
+            verifiedCanonicals.Add(actualCanonical);
+            verifiedCount++;
+        }
+        if (verifiedCount != expected.Count)
+        {
+            return (false, string.Empty, verifiedCount);
+        }
+        verifiedCanonicals.Sort(StringComparer.Ordinal);
+        string affectedFp = SemanticFingerprint.Document(new Dictionary<string, object?>
+        {
+            ["schema_version"] = 1,
+            ["scope"] = "affected_post_commit",
+            ["entities"] = verifiedCanonicals.ToArray(),
+        });
+        return (true, affectedFp, verifiedCount);
+    }
+
     private static void AddReferencedBlockDefinition(
         ObjectId definitionId,
         Transaction transaction,
