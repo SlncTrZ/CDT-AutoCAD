@@ -9,7 +9,16 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import uuid4
 
-from cdt_autocad.semantic.models import SemanticSnapshot
+from cdt_autocad.envelope import (
+    METADATA_QUERY_RESULTS_MAX,
+    SNAPSHOT_BYTES_MAX,
+    SNAPSHOT_ENTITIES_MAX,
+    build_paged_envelope,
+    canonical_byte_size,
+    guard_full_snapshot,
+    validate_page_args,
+)
+from cdt_autocad.semantic.models import FingerprintSet, SemanticSnapshot
 
 from .protocol import (
     NATIVE_PROTOCOL_VERSION,
@@ -223,7 +232,12 @@ class NativeBridgeClient:
         document_pid: str | None = None,
         verify_fingerprint: bool = True,
     ) -> SemanticSnapshot:
-        """Read one authoritative native snapshot and verify N1 fingerprint compatibility."""
+        """Read one authoritative native snapshot and verify N1 fingerprint compatibility.
+
+        Full-snapshot reads are explicit opt-in (compact document_state stays the
+        default read path). Oversized full snapshots refuse with SNAPSHOT_OVERSIZED
+        instead of truncating; use document_snapshot_page for paged reads.
+        """
 
         params = DocumentIdentityParams.from_dict(
             {
@@ -233,9 +247,76 @@ class NativeBridgeClient:
         )
         result = self._request("bridge.document.snapshot", params.to_dict())
         try:
-            return parse_native_snapshot(result, verify_fingerprint=verify_fingerprint)
+            snapshot = parse_native_snapshot(result, verify_fingerprint=verify_fingerprint)
         except BridgeProtocolError as exc:
             raise BridgeClientProtocolError(exc.code, exc.safe_message) from exc
+        document_fp = snapshot.fingerprints.document_fp or ""
+        guard_full_snapshot(
+            document_fp=document_fp,
+            entity_count=len(snapshot.entities),
+            byte_size=canonical_byte_size(snapshot.to_dict()),
+        )
+        return snapshot
+
+    def document_snapshot_page(
+        self,
+        runtime_document_id: str,
+        *,
+        document_pid: str | None = None,
+        offset: int = 0,
+        limit: int = 200,
+        verify_fingerprint: bool = True,
+    ) -> tuple[SemanticSnapshot, dict[str, Any]]:
+        """Read one paged slice of the authoritative native snapshot.
+
+        The page is a transport slice, not a binding semantic state: only the full
+        snapshot carries the v3 document fingerprint used for expected_parent_fp.
+        """
+
+        validate_page_args(offset, limit, max_limit=SNAPSHOT_ENTITIES_MAX)
+        params = DocumentIdentityParams.from_dict(
+            {
+                "runtime_document_id": runtime_document_id,
+                **({"document_pid": document_pid} if document_pid is not None else {}),
+            }
+        )
+        result = self._request("bridge.document.snapshot", params.to_dict())
+        try:
+            snapshot = parse_native_snapshot(result, verify_fingerprint=verify_fingerprint)
+        except BridgeProtocolError as exc:
+            raise BridgeClientProtocolError(exc.code, exc.safe_message) from exc
+        entities = list(snapshot.entities)
+        page_entities = entities[offset : offset + limit]
+        page = SemanticSnapshot(
+            snapshot_id=snapshot.snapshot_id,
+            document_pid=snapshot.document_pid,
+            units=snapshot.units,
+            current_space=snapshot.current_space,
+            saved=snapshot.saved,
+            entities=tuple(page_entities),
+            relations=snapshot.relations,
+            styles=snapshot.styles,
+            extents=snapshot.extents,
+            fingerprints=FingerprintSet(),
+        )
+        page_bytes = canonical_byte_size(page.to_dict())
+        if page_bytes > SNAPSHOT_BYTES_MAX:
+            guard_full_snapshot(
+                document_fp=snapshot.fingerprints.document_fp or "",
+                entity_count=len(page_entities),
+                byte_size=page_bytes,
+                limit=limit,
+            )
+        envelope = build_paged_envelope(
+            items=[entity.to_dict() for entity in page_entities],
+            offset=offset,
+            limit=limit,
+            matched=len(entities),
+            source=len(entities),
+        )
+        envelope["document_pid"] = snapshot.document_pid
+        envelope["document_fp"] = snapshot.fingerprints.document_fp
+        return page, envelope
 
     def begin_logical_batch(
         self,
@@ -306,18 +387,77 @@ class NativeBridgeClient:
         path: str | None = None,
         equals: Any = None,
         limit: int = 200,
+        offset: int = 0,
     ) -> dict[str, Any]:
+        """Query one metadata namespace with Python-side offset paging over the wire limit.
+
+        The native wire contract keeps (namespace, path, equals, limit); offset is
+        applied here by over-fetching limit+offset rows (bounded by the wire max)
+        and slicing locally, so no native change is required.
+        """
+
+        validate_page_args(offset, limit, max_limit=METADATA_QUERY_RESULTS_MAX)
+        fetch_limit = min(METADATA_QUERY_RESULTS_MAX, limit + offset)
         payload: dict[str, Any] = {
             "runtime_document_id": runtime_document_id,
             "document_pid": document_pid,
             "namespace": namespace,
-            "limit": limit,
+            "limit": fetch_limit,
         }
         if path is not None:
             payload["path"] = path
             payload["equals"] = equals
         params = MetadataQueryParams.from_dict(payload)
-        return self._request("metadata.query", params.to_dict())
+        result = self._request("metadata.query", params.to_dict())
+        fetched = result.get("items")
+        fetched_items = list(fetched) if isinstance(fetched, list) else []
+        page = fetched_items[offset : offset + limit]
+        truncated = result.get("truncated") is True
+        scanned = result.get("scanned_entities")
+        source_total = int(scanned) if isinstance(scanned, int) and scanned >= 0 else len(
+            fetched_items
+        )
+        # matched is exact iff the bridge did not truncate; otherwise it is the
+        # fetched lower bound and complete stays False (never claim completeness).
+        matched_total = len(fetched_items)
+        envelope = build_paged_envelope(
+            items=page,
+            offset=offset,
+            limit=limit,
+            matched=matched_total,
+            source=source_total,
+        )
+        if truncated:
+            envelope["complete"] = False
+            envelope["next_offset"] = offset + len(page)
+        merged = dict(result)
+        if offset == 0:
+            # Default path stays wire-identical (items/count/limit/truncated);
+            # only additive envelope keys are overlaid.
+            merged.update(
+                {
+                    key: envelope[key]
+                    for key in (
+                        "envelope_version",
+                        "matched",
+                        "source",
+                        "matched_count",
+                        "source_count",
+                        "complete",
+                        "next_offset",
+                        "byte_size",
+                        "estimated_tokens",
+                    )
+                }
+            )
+            merged["offset"] = 0
+        else:
+            merged.update(envelope)
+            merged["limit"] = limit
+            merged["count"] = len(page)
+            merged["items"] = page
+            merged["truncated"] = truncated or offset + len(page) < len(fetched_items)
+        return merged
 
     def batch_create_chunk(
         self,

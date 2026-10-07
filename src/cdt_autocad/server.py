@@ -45,6 +45,13 @@ from .contract_identity import (
     contract_material as _contract_material,
 )
 from .diagnostics import DiagnosticSink, ProviderDiagnosticMiddleware
+from .envelope import (
+    ENVELOPE_VERSION,
+    DeltaOversizedError,
+    SnapshotOversizedError,
+    canonical_byte_size,
+    estimated_tokens,
+)
 from .errors import (
     BackendQuarantinedError,
     BackendTimeoutError,
@@ -498,6 +505,13 @@ def _error_chain(exc: Exception) -> list[BaseException]:
 def _classify_error(exc: Exception) -> tuple[str, dict[str, Any], str] | None:
     chain = _error_chain(exc)
     for item in chain:
+        if isinstance(item, SnapshotOversizedError | DeltaOversizedError):
+            return (
+                "oversized",
+                {"code": item.code, "retryable": False},
+                str(item),
+            )
+    for item in chain:
         if isinstance(item, UnsupportedCapabilityError):
             return (
                 "unsupported_capability",
@@ -799,13 +813,17 @@ def create_mcp(
         path: str | None = None,
         equals: Any = None,
         limit: int = 200,
+        offset: int = 0,
     ) -> dict[str, Any]:
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise ValueError("offset must be an integer >= 0")
         return await asyncio.to_thread(
             native_facade.metadata_query,
             namespace,
             path=path,
             equals=equals,
             limit=limit,
+            offset=offset,
         )
 
     @provider_tool(tags={"document", "write"})
@@ -938,6 +956,10 @@ def create_mcp(
                 payload["measurement"] = measured
             matched.append(payload)
         page = matched[int(offset): int(offset) + int(limit)]
+        next_offset = (
+            int(offset) + len(page) if int(offset) + len(page) < len(matched) else None
+        )
+        page_bytes = canonical_byte_size(page)
         return {
             "items": page,
             "count": len(page),
@@ -947,6 +969,12 @@ def create_mcp(
             "limit": int(limit),
             "complete": total <= scan_limit,
             "scan_limit": scan_limit,
+            "envelope_version": ENVELOPE_VERSION,
+            "matched": len(matched),
+            "source": total,
+            "next_offset": next_offset,
+            "byte_size": page_bytes,
+            "estimated_tokens": estimated_tokens(page_bytes),
         }
 
     @provider_tool(tags={"object", "write"})

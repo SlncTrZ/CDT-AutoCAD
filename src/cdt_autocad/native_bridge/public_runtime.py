@@ -290,6 +290,7 @@ class NativePublicFacade:
         path: str | None = None,
         equals: Any = None,
         limit: int = 200,
+        offset: int = 0,
     ) -> dict[str, Any]:
         client = self._client()
         active = self._active_document(client)
@@ -300,6 +301,7 @@ class NativePublicFacade:
             path=path,
             equals=equals,
             limit=limit,
+            offset=offset,
         )
 
     def metadata_set(
