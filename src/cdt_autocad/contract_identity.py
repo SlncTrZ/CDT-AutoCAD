@@ -1,5 +1,5 @@
 """Public contract identity — one source for protocol/version/guide fingerprint.
-Wing: code | Topic: mp2-hot-reload | Updated: 2026-09-11 09:40
+Wing: code | Topic: mp2-hot-reload | Updated: 2026-10-07 15:30
 """
 
 from __future__ import annotations
@@ -9,9 +9,9 @@ from importlib import resources
 from pathlib import Path
 
 PROTOCOL_VERSION = "MCP"
-CONTRACT_VERSION = "autocad-generic-v1-rc3"
+CONTRACT_VERSION = "autocad-generic-v1"
 COMMON_CONTRACT_VERSION = "cdt-common-v1-draft"
-UPDATED_AT = "2026-09-17"
+UPDATED_AT = "2026-10-07"
 PUBLIC_TOOL_COUNT = 87
 EXECUTION_MODEL = "feature-based-chunks-streaming-v1"
 

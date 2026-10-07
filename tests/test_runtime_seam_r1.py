@@ -325,8 +325,13 @@ def test_pipe_transport_budgets_and_fail_closed_semantics_preserved():
         pipe_name_for_session(-1)
 
 
-def test_native_facade_fails_closed_when_pipe_absent(settings):
+def test_native_facade_fails_closed_when_pipe_absent(settings, monkeypatch):
     adapter, _ = _adapter(replace(settings, backend="com"))
+    monkeypatch.setattr(
+        NativePublicFacade,
+        "_current_windows_session_id",
+        staticmethod(lambda: 99999),
+    )
     with pytest.raises((RuntimeError, UnsupportedCapabilityError)):
         adapter.native_facade.status()
 

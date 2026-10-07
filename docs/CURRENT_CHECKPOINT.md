@@ -1,8 +1,8 @@
 # Current Checkpoint — CDT-AutoCAD
 
 > Updated: 2026-10-07
-> Status: **RC3 CANDIDATE — EXACT-SOURCE TECHNICAL RECERTIFICATION PASS FOR DECLARED PROVIDER SCOPE (certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64; batch-create affected-scoped verify live-accepted at HEAD `a3faa7b` + 2026-10-06 + AutoCAD 2027/Windows x64; insert/transform affected-scoped verify (AC-P02) live-accepted at HEAD `a69289f` + 2026-10-07 + AutoCAD 2027/Windows x64)**
-> Tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` at `295a064` remains the last published release record — tag existence and publication remain separate; current D18 source candidate is RC3; exact-source technical recertification passed on 2026-09-30, publication remains separate
+> Status: **STABLE RELEASE v0.4.0 — PRODUCTION GENERIC CAD EXECUTION ENGINE (certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64; batch-create affected-scoped verify live-accepted at HEAD `a3faa7b` + 2026-10-06; insert/transform affected-scoped verify (AC-P02) live-accepted at HEAD `a69289f` + 2026-10-07; bounded payload envelope (AC-P03) at `765158a`; architecture migration R1–R4 parity verified at `9f51b8b`)**
+> Tag `v0.4.0` published (2026-10-07); public contract `autocad-generic-v1`; 87 public MCP tools
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
 > Native bridge deployed: DLL SHA-256 `13293B5E21F9E2B31A7B75D3EFFC107AB912F3C202AC70426CC65CBCB8C79070` (Release/x64, 0 errors / 3 inherited MSB3277 warnings; replaces `9A877C66…`), bridge `0.8.6-d18` unchanged, loaded from ApplicationPlugins bundle, pipe `SlncTrZ.CDT.AutoCAD.Bridge.v1.s1`
 
@@ -28,8 +28,8 @@ Launch-ready does not mean “every AutoCAD feature exists.” It means the prov
 ## 2. Current public identity
 
 ```text
-provider_version: 0.4.0rc3
-contract_version: autocad-generic-v1-rc3
+provider_version: 0.4.0
+contract_version: autocad-generic-v1
 public MCP tools: 87
 execution_model: feature-based-chunks-streaming-v1
 native bridge candidate: 0.8.6-d18

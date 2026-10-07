@@ -1,6 +1,6 @@
 # CDT-AutoCAD Tool Guide
 
-> Contract: `autocad-generic-v1-rc3` · Provider: `0.4.0rc3` · Public tools: `87` · Updated: 2026-09-17
+> Contract: `autocad-generic-v1` · Provider: `0.4.0` · Public tools: `87` · Updated: 2026-10-07
 
 CDT-AutoCAD is a generic CAD execution engine for AutoCAD workflows. It owns CAD execution,
 document state, persistent identity, fingerprints, transaction/recovery mechanics and bounded

@@ -1,8 +1,8 @@
 # Marketing Demo Runbook — CDT-AutoCAD
 
 > Updated: 2026-09-19 18:38 +07:00
-> Current product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools`
-> Positioning: **RC/preview — Generic CAD Execution Engine for AI agents**
+> Current product identity: `0.4.0 / autocad-generic-v1 / 87 tools`
+> Positioning: **Stable Release — Generic CAD Execution Engine for AI agents**
 > Primary demo target: AutoCAD 2027 full / Windows x64 / Interactive Session 1
 > Legacy camera-ready runner pin: `0.4.0rc2 / autocad-generic-v1-rc2 / 86 tools` with bridge `0.8.2-mp7`; current product bridge is `0.8.6-d18`, while the §4 evidence table intentionally preserves the older identity of the recorded historical demo run.
 

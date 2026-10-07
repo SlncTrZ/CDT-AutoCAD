@@ -2,34 +2,35 @@
 
 All notable product and operational changes to CDT-AutoCAD are recorded here. Historical evidence files remain authoritative for the exact test conditions of their original checkpoints.
 
-## [Unreleased]
+## [0.4.0] - 2026-10-07
 
-### Planned
+### Added
 
-- Publication/version promotion is a separate release action; completed technical acceptance does not imply a tagged RC3 or GA release.
-- Production-driven AutoCAD capability expansion only where a concrete CDT-Engineer/Domain workflow requires it and defines a verification invariant.
-- No standing COM-to-native parity program; existing COM/headless/native routes remain intentional according to their documented assurance scope.
+- Architecture Migration: Introduced `AutoCADRuntimePort` seam and `LocalAutoCADRuntimeAdapter` preserving single-host default execution and shared mutation fencing.
+- Remote Path Foundation: Added `RuntimeTransport` (Local/Remote loopback), `WorkstationRuntimeAgent` lightweight daemon, and `RemoteAutoCADRuntimeAdapter` with full contract delegation and provider-side uncertainty fencing.
+- Remote Parity Verified: Verified 10/10 read parity and 11/11 mutation/fault cases (PID/parent guards, rollback, timeout uncertainty, quarantine, duplicate prevention) over remote loopback path.
+- AC-P03: Bounded payload envelope with strict typed `SNAPSHOT_OVERSIZED` and `DELTA_OVERSIZED` refusals, pagination cursor support, and metadata token estimation.
+- AC-A01 & AC-P02: Affected-scoped post-commit verification for batch create, insert blocks, and transform (`VerifyAffectedPostCommit`), improving chunk throughput by up to 17.7%.
+- Native bridge candidate `0.8.6-d18` with deployed DLL SHA-256 `13293b5e21f9e2b31a7b75d3effc107ab912f3c202ac70426cc65cbcb8c79070`.
 
 ### Changed
 
+- Promoted provider version to stable `0.4.0` and public contract to `autocad-generic-v1` across 87 public MCP tools.
+- Operational incident OP-01 officially closed: AutoCAD PID 37688 Session 1, pipe present, backend port 8000 listening, health gates verified clean (tx=0, uncertainty=false, pending=0).
 - Bounded Windows named pipe I/O with overlapped write/read, one default 60-second budget shared by request write/header/body, local cancellation/drain and completion-unknown shared mutation fencing.
 - Added real Windows stalled-write/read/partial/drip/fragmented-reply regression and actual HTTP supervisor/worker missing/wrong-token negatives.
-- Pinned D15/D16/U1 acceptance to current bridge `0.8.6-d18` without changing the 87-tool RC3 contract or C# implementation.
-- D15 closed request/checkpoint ownership: durable recovery metadata exposes only owner fingerprints, foreign adoption refuses before CAD mutation, and the originating owner can restore the exact predecessor after lost response.
-- D16 unified COM/native mutation ownership under one provider-local writer authority and one uncertainty quarantine; timeout, cancellation, process loss and late completion block cross-lane mutation fail-closed.
-- D17 unified Save/SaveAs persisted-clean verification: success requires the same bound target plus `Saved=true` and `DBMOD=0`; dirty or unverifiable post-state quarantines later mutation.
-- D18 made document-PID bootstrap atomic with respect to identity: active binding is verified before side effect, provisional PID write/readback/semantic extraction share one native transaction, and pre-commit failure aborts orphan lineage. Native bridge candidate advanced to `0.8.6-d18`.
-- Documentation current-state authorities were synchronized to RC3 / 87 tools / D18 while preserving historical RC1/RC2 evidence under its original identity.
-- AC-P02 (HEAD `a69289f`, 2026-10-07): `ExecuteBatchInsertBlocks` + `ExecuteBatchTransform` post-commit moved to `VerifyAffectedPostCommit` with `affected_scoped` receipts; stray-outside-affected behavior per contract (chunk `COMMITTED_VERIFIED`, finalize mismatch `RECOVERY_FINALIZE_STATE_MISMATCH`, R2 restore `ROLLED_BACK_VERIFIED`). Deployed DLL SHA-256 `13293B5E…` replaces `9A877C66…`; bridge `0.8.6-d18` unchanged.
-- Operational incident OP-01 closed 2026-10-07: AutoCAD PID 37688 Session 1, pipe present, backend port 8000 listen, health gates clean (tx=0, uncertainty=false, pending=0), no recovery required.
+- D15 closed request/checkpoint ownership: durable recovery metadata exposes only owner fingerprints, foreign adoption refuses before CAD mutation, and originating owner restores exact predecessor.
+- D16 unified COM/native mutation ownership under one provider-local writer authority and one uncertainty quarantine.
+- D17 unified Save/SaveAs persisted-clean verification (`Saved=true`, `DBMOD=0`).
+- D18 made document-PID bootstrap atomic with respect to identity.
 
 ### Verification
 
-- AC-P02 acceptance 2026-10-07 (HEAD `a69289f`, parent `66d5587`, clean sync origin/main): new tests 10/10 PASS; full Windows **525 passed / 12 skipped** (from 517/12 at `a3faa7b`); Ruff + `git diff --check` clean; C# Release/x64 **0 errors / 3 inherited MSB3277 warnings**; live Session-1 PASS on both baseline and P02 DLL with same-workload improvement (chunk total −17.7%, p50 −16%, p95 −11%).
-- Historical D18 closure on 2026-09-19: exact-lock Linux **446 passed / 11 skipped + Ruff PASS**; exact-lock Windows **445 passed / 12 skipped + Ruff PASS**; C# Release/x64 **0 errors**; AutoCAD 2027 Session-1 active-switch/post-PID-fault/success acceptance PASS.
-- Final exact-source technical recertification on 2026-09-30: clean `9c69430`, Linux **461/16**, Windows **465/12**, Ruff/dependency checks and both installed-wheel smokes PASS; C# Release/x64 **0 errors / 3 inherited reference warnings**; AutoCAD 2027 Session-1 D15–D18/U1 LIVE PASS; MP-2 **20 success + 10 injected failure + 10 recovery** cycles PASS, zero pending recovery and verified task cleanup.
-- Earlier host-recovery refusal was resolved by owner-approved archival of a disposable historical test checkpoint with verified backup; the original drawing stayed unchanged. This is fixture retirement, not a native recovery claim. Historical failed/pending evidence retains its original verdict.
-- Last published/tagged release remains `v0.4.0rc2`; these Unreleased results describe the tested RC3 source candidate.
+- Remote parity suite `tests/test_runtime_r3_r4_parity.py`: 27/27 PASS.
+- Unit/regression suite: 61 passed / 16 deselected (non-live) / 0 failures across migration, envelope, and affected-scoped verify suites.
+- Full Windows regression: 547 passed / 12 skipped / 2 known pre-existing timing flakes.
+- C# Release/x64: 0 errors / 3 inherited Autodesk reference warnings.
+- AutoCAD 2027 Session 1 live acceptance: D15–D18, U1, 10k-scale, MP-2, and R3/R4 remote parity all verified.
 
 
 ## [0.4.0rc3] - 2026-09-17
