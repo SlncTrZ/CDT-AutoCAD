@@ -258,9 +258,11 @@ class RemoteAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
     async def _call(self, op: str, *args: Any, **kwargs: Any) -> Any:
         if op not in ALLOWED_OPS:
             raise RuntimeOpRefusedError(f"remote op refused (not in allowlist): {op!r}")
+        dispatched = False
         try:
             if op in MUTATION_OPS:
                 async with self._mutation_coordinator.writer("remote"):
+                    dispatched = True
                     result = await self._transport.call(
                         op,
                         args,
@@ -287,6 +289,13 @@ class RemoteAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
             if bool(exc.completion_unknown) and op in MUTATION_OPS:
                 self._mutation_coordinator.quarantine("remote", str(exc))
                 raise MutationCompletionUncertainError(str(exc)) from exc
+            raise
+        except asyncio.CancelledError:
+            if op in MUTATION_OPS and dispatched:
+                self._mutation_coordinator.quarantine(
+                    "remote",
+                    f"remote op {op!r} cancelled after dispatch; completion is unknown",
+                )
             raise
         self._last_available = True
         return result

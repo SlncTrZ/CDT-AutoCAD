@@ -271,6 +271,32 @@ def test_timeout_uncertain_quarantines_and_blocks_replay(live_pair):
     assert asyncio.run(adapter.document_info())["backend"] == "com"
 
 
+def test_cancellation_after_dispatch_quarantines_coordinator_and_blocks_replay(live_pair):
+    agent, port, transport, coordinator = live_pair
+    port.delays["object_delete"] = 1.0
+    adapter = RemoteAutoCADRuntimeAdapter(
+        transport, mutation_coordinator=coordinator, default_deadline_ms=5000
+    )
+
+    async def _cancel_run():
+        task = asyncio.create_task(adapter.object_delete("AAA"))
+        await asyncio.sleep(0.05)  # allow writer lane and dispatch to start
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(_cancel_run())
+    assert coordinator.status()["quarantined"] is True
+    assert coordinator.status()["quarantine_lane"] == "remote"
+
+    # Second mutation refused by quarantine without dispatching
+    calls_after_quarantine = list(port.calls)
+    with pytest.raises(BackendQuarantinedError):
+        asyncio.run(adapter.object_delete("AAA"))
+    assert port.calls == calls_after_quarantine
+
+
+
 def test_no_duplicate_coordinator_in_agent():
     agent_file = Path(__file__).resolve().parent.parent / "src" / "cdt_autocad" / "workstation_agent.py"
     lines = agent_file.read_text(encoding="utf-8").splitlines()
