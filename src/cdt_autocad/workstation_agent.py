@@ -288,7 +288,11 @@ class WorkstationRuntimeAgent:
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(raw)))
                 self.end_headers()
-                self.wfile.write(raw)
+                try:
+                    self.wfile.write(raw)
+                except OSError:
+                    pass  # client went away (e.g. transport deadline fired first);
+                    # the uncertainty is already fail-closed on the provider side.
 
             def _refuse_auth(self) -> None:
                 self._send(

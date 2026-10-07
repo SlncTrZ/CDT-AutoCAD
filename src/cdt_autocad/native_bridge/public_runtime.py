@@ -87,6 +87,55 @@ class NativePublicFacade:
             "active_document": self._context_payload(active),
         }
 
+    def document_state(self) -> dict[str, Any]:
+        """Read the compact semantic state bound to the one active document.
+
+        Transport-facing read alias over the same ``_active_document`` binding
+        used by ``status`` (documents_list + bridge.document.state compact
+        fingerprint/entity-count read-back). No mutation, no fallback.
+        """
+
+        client = self._client()
+        active = self._active_document(client)
+        return {
+            **self._context_payload(active),
+            "route": "native-managed-bridge",
+            "fallback": False,
+        }
+
+    def snapshot_page(self, offset: int = 0, limit: int = 50) -> dict[str, Any]:
+        """Read one bounded slice of the authoritative native semantic snapshot.
+
+        Paged transport slice only: the full-snapshot v3 document fingerprint
+        used for ``expected_parent_fp`` binding is reported in the envelope,
+        while the page itself carries no binding fingerprint. Bounds mirror the
+        metadata_query transport convention (1..200); full-snapshot reads stay
+        explicit opt-in via ``NativeBridgeClient.document_snapshot``.
+        """
+
+        if not isinstance(offset, int) or not isinstance(limit, int):
+            raise ValueError("snapshot page offset/limit must be integers")
+        if offset < 0 or not 1 <= limit <= 200:
+            raise ValueError("snapshot page requires offset >= 0 and 1 <= limit <= 200")
+        client = self._client()
+        active = self._active_document(client)
+        page, envelope = client.document_snapshot_page(
+            active.runtime_document_id,
+            document_pid=active.document_pid,
+            offset=offset,
+            limit=limit,
+        )
+        return {
+            "document_pid": active.document_pid,
+            "runtime_document_id": active.runtime_document_id,
+            "offset": offset,
+            "limit": limit,
+            "page": page.to_dict(),
+            "envelope": dict(envelope),
+            "route": "native-managed-bridge",
+            "fallback": False,
+        }
+
     def bootstrap_document_identity(self) -> dict[str, Any]:
         """Explicitly initialize provider lineage on one active empty current space."""
 

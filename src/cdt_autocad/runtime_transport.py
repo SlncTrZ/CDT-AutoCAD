@@ -146,6 +146,19 @@ ALLOWED_OPS: frozenset[str] = frozenset(
         "transaction_rollback",
         "undo",
         "redo",
+        # native strong-integrity surface (R3 reads / R4 mutations): the same
+        # NativePublicFacade methods the provider calls directly, exposed by
+        # name only. PID/fingerprint/recovery semantics stay inside the
+        # reused facade implementation on the workstation agent host.
+        "native_status",
+        "native_document_state",
+        "native_snapshot_page",
+        "native_metadata_get",
+        "native_metadata_query",
+        "native_feature_execute",
+        "native_batch_create_entities",
+        "native_batch_transform_entities",
+        "native_metadata_set",
     }
 )
 
@@ -221,6 +234,12 @@ MUTATION_OPS: frozenset[str] = frozenset(
         "transaction_rollback",
         "undo",
         "redo",
+        # native strong-integrity mutations enter the provider-side writer
+        # lane + uncertainty quarantine like any other mutation op.
+        "native_feature_execute",
+        "native_batch_create_entities",
+        "native_batch_transform_entities",
+        "native_metadata_set",
     }
 )
 

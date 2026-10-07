@@ -17,6 +17,16 @@ coordinator (plain serial lock only — see workstation_agent.py), so no
 duplicate quarantine authority can diverge across the process boundary.
 Timeout/disconnect after dispatch starts quarantines the provider coordinator
 and raises completion-unknown; blind replay stays forbidden.
+
+Loopback-topology rule (found by R4 parity): the agent-side backend/adapter
+pair must own a DISTINCT coordinator object from the provider-side one, even
+when both live in one process for loopback tests. Sharing a single
+MutationCoordinator across the transport boundary double-enters the same
+asyncio writer lock (provider ``writer("remote")`` held across the HTTP
+round-trip while the agent worker awaits ``writer("com")``) and deadlocks.
+Split-host deployment satisfies this rule structurally (separate processes);
+loopback harnesses must construct the agent side with its own coordinator.
+Uncertainty still fences both sides independently.
 """
 
 from __future__ import annotations
@@ -643,3 +653,103 @@ class RemoteAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
 
     async def redo(self) -> dict[str, Any]:
         return await self._call("redo")
+
+    # -- native strong-integrity surface (R3/R4): thin forwarders, zero CAD --
+    # -- logic. Reads bypass the writer lane; mutations enter the shared    --
+    # -- provider coordinator via _call (MUTATION_OPS) so quarantine blocks  --
+    # -- later mutation while reads stay available. Results are facade dicts --
+    # -- (JSON-safe); they pass through without reinterpretation.            --
+
+    async def native_status(self) -> dict[str, Any]:
+        return await self._call("native_status")
+
+    async def native_document_state(self) -> dict[str, Any]:
+        return await self._call("native_document_state")
+
+    async def native_snapshot_page(
+        self, offset: int = 0, limit: int = 50
+    ) -> dict[str, Any]:
+        return await self._call("native_snapshot_page", offset, limit)
+
+    async def native_metadata_get(
+        self, semantic_pid: str, namespace: str
+    ) -> dict[str, Any]:
+        return await self._call("native_metadata_get", semantic_pid, namespace)
+
+    async def native_metadata_query(
+        self,
+        namespace: str,
+        path: str | None = None,
+        equals: Any = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return await self._call(
+            "native_metadata_query",
+            namespace,
+            path=path,
+            equals=equals,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def native_feature_execute(
+        self,
+        document_pid: str,
+        expected_parent_fp: str,
+        feature_id: str,
+        feature_sequence: int,
+        correlation_id: str,
+        actions: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return await self._call(
+            "native_feature_execute",
+            document_pid,
+            expected_parent_fp,
+            feature_id,
+            feature_sequence,
+            correlation_id,
+            actions,
+        )
+
+    async def native_batch_create_entities(
+        self,
+        entities: list[dict[str, Any]],
+        document_pid: str,
+        expected_parent_fp: str,
+    ) -> dict[str, Any]:
+        return await self._call(
+            "native_batch_create_entities", entities, document_pid, expected_parent_fp
+        )
+
+    async def native_batch_transform_entities(
+        self,
+        semantic_pids: list[str],
+        transform: dict[str, Any],
+        document_pid: str,
+        expected_parent_fp: str,
+    ) -> dict[str, Any]:
+        return await self._call(
+            "native_batch_transform_entities",
+            semantic_pids,
+            transform,
+            document_pid,
+            expected_parent_fp,
+        )
+
+    async def native_metadata_set(
+        self,
+        semantic_pid: str,
+        namespace: str,
+        value: Any,
+        document_pid: str,
+        expected_parent_fp: str,
+    ) -> dict[str, Any]:
+        return await self._call(
+            "native_metadata_set",
+            semantic_pid,
+            namespace,
+            value,
+            document_pid,
+            expected_parent_fp,
+        )

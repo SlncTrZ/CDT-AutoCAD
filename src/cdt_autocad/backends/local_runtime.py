@@ -103,6 +103,96 @@ class LocalAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
             "mutation_coordinator": coordinator,
         }
 
+    # -- native strong-integrity surface (R3/R4): sync 1:1 delegation over the
+    # -- SAME NativePublicFacade instance the provider uses directly. No new
+    # -- semantics: PID/fingerprint binding, recovery and read-back stay inside
+    # -- the facade. Writer fencing for these ops stays at the caller layer
+    # -- (server _run_native_mutation), exactly as on the direct provider path.
+
+    def native_status(self) -> dict[str, Any]:
+        return self._native_facade.status()
+
+    def native_document_state(self) -> dict[str, Any]:
+        return self._native_facade.document_state()
+
+    def native_snapshot_page(self, offset: int = 0, limit: int = 50) -> dict[str, Any]:
+        return self._native_facade.snapshot_page(offset, limit)
+
+    def native_metadata_get(self, semantic_pid: str, namespace: str) -> dict[str, Any]:
+        return self._native_facade.metadata_get(semantic_pid, namespace)
+
+    def native_metadata_query(
+        self,
+        namespace: str,
+        path: str | None = None,
+        equals: Any = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return self._native_facade.metadata_query(
+            namespace, path=path, equals=equals, limit=limit, offset=offset
+        )
+
+    def native_feature_execute(
+        self,
+        document_pid: str,
+        expected_parent_fp: str,
+        feature_id: str,
+        feature_sequence: int,
+        correlation_id: str,
+        actions: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return self._native_facade.feature_execute(
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
+            feature_id=feature_id,
+            feature_sequence=feature_sequence,
+            correlation_id=correlation_id,
+            actions=actions,
+        )
+
+    def native_batch_create_entities(
+        self,
+        entities: list[dict[str, Any]],
+        document_pid: str,
+        expected_parent_fp: str,
+    ) -> dict[str, Any]:
+        return self._native_facade.batch_create_entities(
+            entities,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
+        )
+
+    def native_batch_transform_entities(
+        self,
+        semantic_pids: list[str],
+        transform: dict[str, Any],
+        document_pid: str,
+        expected_parent_fp: str,
+    ) -> dict[str, Any]:
+        return self._native_facade.batch_transform_entities(
+            semantic_pids,
+            transform,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
+        )
+
+    def native_metadata_set(
+        self,
+        semantic_pid: str,
+        namespace: str,
+        value: Any,
+        document_pid: str,
+        expected_parent_fp: str,
+    ) -> dict[str, Any]:
+        return self._native_facade.metadata_set(
+            semantic_pid,
+            namespace,
+            value,
+            document_pid=document_pid,
+            expected_parent_fp=expected_parent_fp,
+        )
+
     # -- AutoCADBackend contract: explicit 1:1 delegation, no semantics change --
 
     async def document_new(self) -> dict[str, Any]:
