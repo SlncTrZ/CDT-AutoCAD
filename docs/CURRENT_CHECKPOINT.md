@@ -1,14 +1,14 @@
 # Current Checkpoint — CDT-AutoCAD
 
-> Updated: 2026-10-06
-> Status: **RC3 CANDIDATE — EXACT-SOURCE TECHNICAL RECERTIFICATION PASS FOR DECLARED PROVIDER SCOPE (certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64; batch-create affected-scoped verify live-accepted at HEAD `a3faa7b` + 2026-10-06 + AutoCAD 2027/Windows x64)**
+> Updated: 2026-10-07
+> Status: **RC3 CANDIDATE — EXACT-SOURCE TECHNICAL RECERTIFICATION PASS FOR DECLARED PROVIDER SCOPE (certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64; batch-create affected-scoped verify live-accepted at HEAD `a3faa7b` + 2026-10-06 + AutoCAD 2027/Windows x64; insert/transform affected-scoped verify (AC-P02) live-accepted at HEAD `a69289f` + 2026-10-07 + AutoCAD 2027/Windows x64)**
 > Tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` at `295a064` remains the last published release record — tag existence and publication remain separate; current D18 source candidate is RC3; exact-source technical recertification passed on 2026-09-30, publication remains separate
 > Primary certification lane: AutoCAD 2027 full · Windows x64 · COM `26.0` / `AutoCAD.Application.26` · Managed .NET `net10.0-windows`
-> Native bridge deployed: DLL SHA-256 `9A877C66EBBBE70BFD634F7434B41269BD73035F066FC1F1951C9513366995FC` (Release/x64, 0 errors / 3 inherited MSB3277 warnings), loaded from ApplicationPlugins bundle, pipe `SlncTrZ.CDT.AutoCAD.Bridge.v1.s1`
+> Native bridge deployed: DLL SHA-256 `13293B5E21F9E2B31A7B75D3EFFC107AB912F3C202AC70426CC65CBCB8C79070` (Release/x64, 0 errors / 3 inherited MSB3277 warnings; replaces `9A877C66…`), bridge `0.8.6-d18` unchanged, loaded from ApplicationPlugins bundle, pipe `SlncTrZ.CDT.AutoCAD.Bridge.v1.s1`
 
 This file is the canonical **public current-state authority**. It reports what is true now. It does not define architecture or future roadmap.
 
-> **Current HEAD `a3faa7b` (2026-10-06, clean, sync origin/main):** AC-A01 affected-scoped post-commit verify for `entity.batch.create` implemented (`VerifyAffectedPostCommit` + receipt `verification_mode: affected_scoped`, `affected_fp`, `full_reconcile: pending:recovery_finalize`) and live-accepted on AutoCAD 2027 Session 1: smoke + 320-entity scale (p50 115,6 ms / p95 125,0 ms) + **10.000-entity scale (313 chunks, p50 694,6 ms / p95 1.127,8 ms, COM count exact)** + U1 floorplan + D15/D16 (process kill/restart)/D17/D18 + hot-reload 3+2 cycles, all PASS; full pytest Windows **517 passed / 12 skipped**. Historical delta after `9c69430` now covered: `c35de8e` (core P1 patch) + `689dd03` (tag `v0.4.0rc3` points here) + relay commits. Remaining historical note: `v0.4.0rc2` at `295a064` is still the last published release record. Writes allowed on disposable fixtures; production-document writes default-refuse.
+> **Current HEAD `a69289f` (2026-10-07, clean, sync origin/main; parent `66d5587`):** AC-P02 affected-scoped post-commit verify for `entity.batch.insert_blocks` + `entity.batch.transform` implemented (`ExecuteBatchInsertBlocks` + `ExecuteBatchTransform` → `VerifyAffectedPostCommit`, receipt `affected_scoped`) and live-accepted on AutoCAD 2027 Session 1 (baseline + P02 DLL both PASS; same-workload chunk total −17.7%, p50 −16%, p95 −11%; stray-outside-affected per contract: chunk `COMMITTED_VERIFIED`, finalize mismatch `RECOVERY_FINALIZE_STATE_MISMATCH`, R2 restore `ROLLED_BACK_VERIFIED`); full pytest Windows **525 passed / 12 skipped** (from 517/12 at `a3faa7b`), 10/10 new tests PASS, Ruff + `git diff --check` clean, C# Release/x64 0 errors / 3 inherited MSB3277. AC-A01 batch-create affected-scoped verify at `a3faa7b` (2026-10-06) retained as history: smoke + 320-entity scale (p50 115,6 ms / p95 125,0 ms) + 10.000-entity scale (313 chunks, p50 694,6 ms / p95 1.127,8 ms, COM count exact) + U1 + D15/D16/D17/D18 + hot-reload 3+2, all PASS; full pytest Windows 517/12 at that HEAD. Operational incident OP-01 **CLOSED 2026-10-07** (AutoCAD PID 37688 Session 1, pipe present, backend port 8000 listen, health gates clean: tx=0, uncertainty=false, pending=0, no recovery required). Historical delta after `9c69430` now covered: `c35de8e` (core P1 patch) + `689dd03` (tag `v0.4.0rc3` points here) + relay commits + `a3faa7b` (AC-A01) + `a69289f` (AC-P02). Remaining historical note: `v0.4.0rc2` at `295a064` is still the last published release record. Writes allowed on disposable fixtures; production-document writes default-refuse.
 
 
 ## 1. Launch decision
@@ -81,6 +81,10 @@ Feature-based Chunks Streaming is the approved production orchestration model. N
 Normative behavior is defined in [`SEMANTIC_STATE_PROTOCOL.md`](SEMANTIC_STATE_PROTOCOL.md).
 
 ## 5. Latest measured gates
+
+### 2026-10-07 AC-P02 insert/transform affected-scoped verify — PASS (HEAD `a69289f`)
+
+`ExecuteBatchInsertBlocks` + `ExecuteBatchTransform` post-commit moved to `VerifyAffectedPostCommit` with `affected_scoped` receipts. New tests 10/10 PASS; full Windows **525 passed / 12 skipped** (from 517/12 at `a3faa7b`); Ruff + `git diff --check` clean; C# Release/x64 0 errors / 3 inherited MSB3277. Live Session-1 PASS on both baseline and P02 DLL; same-workload improvement: chunk total −17.7%, p50 −16%, p95 −11%. Stray-outside-affected behavior per contract (chunk `COMMITTED_VERIFIED`, finalize mismatch `RECOVERY_FINALIZE_STATE_MISMATCH`, R2 restore `ROLLED_BACK_VERIFIED`). Deployed DLL SHA-256 `13293B5E…` (replaces `9A877C66…`); bridge `0.8.6-d18` unchanged. Historical AC-A01/U1/D15–D18 figures below retain their original HEAD/scope identities.
 
 ### 2026-09-30 final recertification — PASS for declared RC provider scope
 

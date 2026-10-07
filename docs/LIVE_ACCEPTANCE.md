@@ -1,13 +1,20 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-10-06 +07:00
-> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening + D8 stale-COM recovery + D15–D18 assurance closures
+> Updated: 2026-10-07 +07:00
+> Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening + D8 stale-COM recovery + D15–D18 assurance closures + AC-P02 insert/transform affected-scoped verify
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.6-d18` · deployed DLL SHA-256 `9A877C66…` · tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` remains the last published release record — tag and publication separate · live gates certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64, extended by affected-scoped requal at HEAD `a3faa7b` + 2026-10-06 (below)
+> Current source identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · bridge `0.8.6-d18` · deployed DLL SHA-256 `13293B5E…` (replaces `9A877C66…`) · tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` remains the last published release record — tag and publication separate · live gates certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64, extended by affected-scoped requal at HEAD `a3faa7b` + 2026-10-06 and AC-P02 requal at HEAD `a69289f` + 2026-10-07 (below)
 
 ## 0. Current production live gate
 
 The reviewed public-promotion tree preserves both the historical COM/A3 acceptance below and the newer strong-integrity native evidence.
+
+Accepted 2026-10-07 AC-P02 on `.171` AutoCAD 2027 Session 1 at HEAD `a69289f` (parent `66d5587`, clean, sync origin/main; DLL SHA-256 `13293B5E…`, bridge `0.8.6-d18` unchanged; OP-01 closed same day: PID 37688 Session 1, pipe present, backend 8000 listen, tx=0, uncertainty=false, pending=0):
+
+- `ExecuteBatchInsertBlocks` + `ExecuteBatchTransform` post-commit moved to `VerifyAffectedPostCommit` with `affected_scoped` receipts;
+- live Session-1 PASS on both baseline and P02 DLL; same-workload improvement: chunk total −17.7%, p50 −16%, p95 −11%;
+- stray-outside-affected behavior per contract: chunk `COMMITTED_VERIFIED`, finalize mismatch `RECOVERY_FINALIZE_STATE_MISMATCH`, R2 restore `ROLLED_BACK_VERIFIED`;
+- full pytest Windows 525 passed / 12 skipped (from 517/12 at `a3faa7b`), new tests 10/10 PASS, Ruff + `git diff --check` clean, C# Release/x64 0 errors / 3 inherited MSB3277.
 
 Accepted 2026-10-06 on `.171` AutoCAD 2027 Session 1 at HEAD `a3faa7b` (affected-scoped `entity.batch.create`, fixtures disposable, closed + deleted after run):
 

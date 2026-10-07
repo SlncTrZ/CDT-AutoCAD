@@ -1,6 +1,6 @@
 # CDT-AutoCAD
 
-> **Integration boundary — 2026-10-06 (Asia/Ho_Chi_Minh), HEAD `a3faa7b` clean sync origin/main:** batch-create post-commit verify is affected-scoped live on AutoCAD 2027/Windows x64 (bridge DLL SHA-256 `9A877C66…`, 10k-scale + D15–D18/U1/hot-reload PASS 2026-10-06). Gates certified-at `9c69430` + 2026-09-30 remain the historical execution identity; see [Current Checkpoint](docs/CURRENT_CHECKPOINT.md).
+> **Integration boundary — 2026-10-07 (Asia/Ho_Chi_Minh), HEAD `a69289f` clean sync origin/main (parent `66d5587`):** insert/transform post-commit verify is affected-scoped live on AutoCAD 2027/Windows x64 (bridge DLL SHA-256 `13293B5E…` replaces `9A877C66…`, bridge `0.8.6-d18` unchanged; Session-1 baseline + P02 both PASS, same-workload chunk total −17.7% / p50 −16% / p95 −11%; OP-01 closed 2026-10-07). Gates certified-at `9c69430` + 2026-09-30 and AC-A01 at `a3faa7b` remain the historical execution identities; see [Current Checkpoint](docs/CURRENT_CHECKPOINT.md).
 
 > Provider `0.4.0rc3` · Contract `autocad-generic-v1-rc3` · 87 public MCP tools · AutoCAD 2027 primary certification lane · **Launch-ready / Operational RC**
 >

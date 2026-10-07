@@ -1,7 +1,7 @@
 # Architecture — CDT-AutoCAD
 
 > Canonical public architecture authority for the CDT-AutoCAD provider.
-> Updated: 2026-09-30
+> Updated: 2026-10-07
 
 ## 1. Mission
 
@@ -104,7 +104,7 @@ ActionSpec + caller-planned document_pid + expected_parent_fp
   -> canonicalization + fingerprint/diff
   -> deterministic validation
   -> commit or verified rollback
-  -> affected-scoped post-commit verify for `entity.batch.create`
+   -> affected-scoped post-commit verify for `entity.batch.create` / `entity.batch.insert_blocks` / `entity.batch.transform`
      (`verification_mode: affected_scoped`, per-PID re-read vs provisional,
      `affected_fp` + `full_reconcile: pending:recovery_finalize`);
      full-scope proof stays at the pre-batch drift guard, the next batch

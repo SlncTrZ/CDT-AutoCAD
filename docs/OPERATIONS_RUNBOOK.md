@@ -1,11 +1,12 @@
 # Operations Runbook — CDT-AutoCAD
 
 > Operational start: 2026-09-12
-> Updated: 2026-10-06 +07:00
-> Current source product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · HEAD `a3faa7b` (2026-10-06, clean sync origin/main)
-> Current native bridge candidate: `0.8.6-d18` · deployed DLL SHA-256 `9A877C66EBBBE70BFD634F7434B41269BD73035F066FC1F1951C9513366995FC` · tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` remains the last published release record — tag and publication separate
+> Updated: 2026-10-07 +07:00
+> Current source product identity: `0.4.0rc3 / autocad-generic-v1-rc3 / 87 tools` · HEAD `a69289f` (2026-10-07, clean sync origin/main; parent `66d5587`)
+> Current native bridge candidate: `0.8.6-d18` · deployed DLL SHA-256 `13293B5E21F9E2B31A7B75D3EFFC107AB912F3C202AC70426CC65CBCB8C79070` (replaces `9A877C66…`) · tag `v0.4.0rc3` exists at `689dd03` (2026-10-05); `v0.4.0rc2` remains the last published release record — tag and publication separate
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
-> Live gates: certified-at `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64, extended by affected-scoped requal at `a3faa7b` + 2026-10-06 (smoke, 320-scale, 10k-scale, U1, D15–D18, hot-reload — see LIVE_ACCEPTANCE) — pending is an operational stamp, not a use prohibition; deployment health checks still govern each host/session
+> Live gates: certified-at `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64, extended by affected-scoped requal at `a3faa7b` + 2026-10-06 and AC-P02 requal at `a69289f` + 2026-10-07 (smoke, 320-scale, 10k-scale, U1, D15–D18, hot-reload — see LIVE_ACCEPTANCE) — pending is an operational stamp, not a use prohibition; deployment health checks still govern each host/session
+> Operational incident OP-01 CLOSED 2026-10-07: AutoCAD PID 37688 Session 1, pipe present, backend port 8000 listen, health gates clean (tx=0, uncertainty=false, pending=0), no recovery required
 
 ## 1. Operating boundary
 
