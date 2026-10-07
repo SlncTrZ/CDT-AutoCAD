@@ -19,6 +19,7 @@ from . import __version__
 from .backends.base import AutoCADBackend
 from .backends.com_backend import ComBackend
 from .backends.ezdxf_backend import EzdxfBackend
+from .backends.local_runtime import LocalAutoCADRuntimeAdapter
 from .config import Settings
 from .contract_identity import (
     COMMON_CONTRACT_VERSION as _COMMON_CONTRACT_VERSION,
@@ -626,11 +627,19 @@ def create_mcp(
     runtime_identity = RuntimeIdentity.from_env()
     mutation_coordinator = MutationCoordinator()
     backend: AutoCADBackend
+    local_runtime: LocalAutoCADRuntimeAdapter | None = None
     if settings.backend == "com":
-        backend = ComBackend(settings, mutation_coordinator=mutation_coordinator)
+        com_backend = ComBackend(settings, mutation_coordinator=mutation_coordinator)
+        local_runtime = LocalAutoCADRuntimeAdapter(
+            com_backend,
+            mutation_coordinator=mutation_coordinator,
+            native_facade=NativePublicFacade(settings),
+        )
+        backend = local_runtime
+        native_facade: NativePublicFacade = local_runtime.native_facade
     else:
         backend = EzdxfBackend(settings)
-    native_facade = NativePublicFacade(settings)
+        native_facade = NativePublicFacade(settings)
     auth = None
     if settings.auth_token:
         auth = StaticTokenVerifier(
@@ -1554,6 +1563,7 @@ def create_mcp(
 
     app._cdt_backend = backend  # type: ignore[attr-defined]
     app._cdt_mutation_coordinator = mutation_coordinator  # type: ignore[attr-defined]
+    app._cdt_runtime = local_runtime  # type: ignore[attr-defined]
     app._cdt_settings = settings  # type: ignore[attr-defined]
     return app
 

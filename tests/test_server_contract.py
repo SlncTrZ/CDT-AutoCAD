@@ -15,6 +15,7 @@ from fastmcp import Client
 from cdt_autocad import __version__
 from cdt_autocad.backends.com_backend import ComBackend
 from cdt_autocad.backends.ezdxf_backend import EzdxfBackend
+from cdt_autocad.backends.local_runtime import LocalAutoCADRuntimeAdapter
 from cdt_autocad.config import Settings
 from cdt_autocad.contract_identity import (
     CONTRACT_VERSION,
@@ -107,7 +108,8 @@ async def test_public_tool_catalog_has_unique_semantic_descriptions_and_read_onl
 
 def test_backend_factory_selects_com(settings):
     app = create_mcp(replace(settings, backend="com"))
-    assert isinstance(app._cdt_backend, ComBackend)
+    assert isinstance(app._cdt_backend, LocalAutoCADRuntimeAdapter)
+    assert isinstance(app._cdt_backend.backend, ComBackend)
     assert app._cdt_backend.name == "com"
 
 

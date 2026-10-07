@@ -220,6 +220,8 @@ def test_create_mcp_injects_one_shared_coordinator_into_com_backend(settings):
     app = create_mcp(replace(settings, backend="com"))
 
     assert app._cdt_backend._mutation_coordinator is app._cdt_mutation_coordinator
+    assert app._cdt_backend.mutation_coordinator is app._cdt_mutation_coordinator
+    assert app._cdt_backend.backend._mutation_coordinator is app._cdt_mutation_coordinator
 
 
 def test_native_completion_uncertain_error_is_machine_readable():
