@@ -1,5 +1,5 @@
 """R2 remote path — transport/agent/remote-adapter gates.
-Wing: code | Topic: migration-r2-remote | Updated: 2026-10-07 15:45
+Wing: code | Topic: migration-r2-remote | Updated: 2026-10-08 09:26
 """
 
 from __future__ import annotations
@@ -370,3 +370,63 @@ def test_allowlist_covers_port_identity_surface():
     assert ALLOWED_OPS.issuperset({"document_info", "object_list", "object_count"})
     assert isinstance(LocalAutoCADRuntimeAdapter, type)
     assert isinstance(RemoteAutoCADRuntimeAdapter, type)
+
+@pytest.mark.parametrize("body", [
+    b"{", b"\xff", b"null", b"[]", b"{}", b'{"ok":"true","result":{}}',
+    b"x" * (4 * 1024 * 1024 + 1),
+    b'{"ok":true,"result":{},"generation":"g2"}',
+    b'{"ok":true,"result":{}}',
+], ids=['invalid-json', 'invalid-utf8', 'null', 'array', 'missing-ok', 'nonboolean-ok', 'oversized', 'wrong-success-generation', 'missing-success-generation'])
+def test_untrusted_post_dispatch_reply_fences_writer(monkeypatch, body):
+    import cdt_autocad.runtime_transport as transport_mod
+
+    attempts = []
+    monkeypatch.setattr(transport_mod, "_preflight_connect", lambda *a: "connected")
+
+    def reply(*args, **kwargs):
+        attempts.append("dispatch")
+        return 200, body
+
+    monkeypatch.setattr(transport_mod, "_post_json", reply)
+    coordinator = MutationCoordinator()
+    adapter = RemoteAutoCADRuntimeAdapter(
+        RemoteRuntimeTransport("http://127.0.0.1:9", _TOKEN),
+        mutation_coordinator=coordinator,
+        expected_generation="g1",
+    )
+    with pytest.raises(MutationCompletionUncertainError):
+        asyncio.run(adapter.object_delete("AAA"))
+    with pytest.raises(BackendQuarantinedError):
+        asyncio.run(adapter.object_delete("AAA"))
+    assert len(attempts) == 1
+    assert coordinator.status()["quarantined"] is True
+
+
+@pytest.mark.parametrize("status,body,error", [
+    (401, b"{}", RuntimeAuthError),
+    (403, b"{}", RuntimeAuthError),
+    (404, b"{}", RuntimeUnavailableError),
+    (200, b'{"ok":false,"error_code":"op_refused","generation":"g1"}', RuntimeOpRefusedError),
+    (200, b'{"ok":false,"error_code":"generation_mismatch","generation":"g2"}', RuntimeGenerationMismatchError),
+])
+def test_authoritative_pre_dispatch_refusal_does_not_fence_writer(monkeypatch, status, body, error):
+    import cdt_autocad.runtime_transport as transport_mod
+
+    attempts = []
+    monkeypatch.setattr(transport_mod, "_preflight_connect", lambda *a: "connected")
+
+    def reply(*args, **kwargs):
+        attempts.append("dispatch")
+        return status, body
+
+    monkeypatch.setattr(transport_mod, "_post_json", reply)
+    coordinator = MutationCoordinator()
+    adapter = RemoteAutoCADRuntimeAdapter(
+        RemoteRuntimeTransport("http://127.0.0.1:9", _TOKEN),
+        mutation_coordinator=coordinator,
+    )
+    for _ in range(2):
+        with pytest.raises(error):
+            asyncio.run(adapter.object_delete("AAA"))
+    assert len(attempts) == 2
+    assert coordinator.status()["quarantined"] is False
