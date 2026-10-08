@@ -1,0 +1,24 @@
+CDT-AutoCAD
+Copyright (c) 2026 Trương Công Định (SlncTrZ). All rights reserved.
+
+CDT-AutoCAD is independently developed project software. The repository does
+not vendor Autodesk binaries or third-party package source code. External
+libraries and APIs used at runtime/build time remain under their own licenses
+and terms; see THIRD_PARTY_NOTICES.md.
+
+CDT-AutoCAD is independently developed software. External technical
+documentation and public APIs may be consulted for interoperability and
+implementation correctness, but third-party implementation source is not part
+of the CDT-AutoCAD codebase unless explicitly identified and licensed. See
+SOURCE_PROVENANCE.md for the provenance record and its limitations.
+
+Autodesk and AutoCAD are names and marks associated with Autodesk, Inc.
+CDT-AutoCAD is an independent project and is not presented as an Autodesk-owned
+product. Other third-party names and marks remain the property of their
+respective owners.
+
+License: LICENSE
+Copyright record: COPYRIGHT.md
+Third-party notices: THIRD_PARTY_NOTICES.md
+Source provenance: SOURCE_PROVENANCE.md
+Contribution/IP policy: CONTRIBUTING.md

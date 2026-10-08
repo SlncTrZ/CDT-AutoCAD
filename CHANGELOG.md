@@ -1,0 +1,141 @@
+# Changelog
+
+All notable product and operational changes to CDT-AutoCAD are recorded here. Historical evidence files remain authoritative for the exact test conditions of their original checkpoints.
+
+## [0.4.0] - 2026-10-07
+
+### Added
+
+- Architecture Migration: Introduced `AutoCADRuntimePort` seam and `LocalAutoCADRuntimeAdapter` preserving single-host default execution and shared mutation fencing.
+- Remote Path Foundation: Added `RuntimeTransport` (Local/Remote loopback), `WorkstationRuntimeAgent` lightweight daemon, and `RemoteAutoCADRuntimeAdapter` with full contract delegation and provider-side uncertainty fencing.
+- Remote Parity Verified: Verified 10/10 read parity and 11/11 mutation/fault cases (PID/parent guards, rollback, timeout uncertainty, quarantine, duplicate prevention) over remote loopback path.
+- AC-P03: Bounded payload envelope with strict typed `SNAPSHOT_OVERSIZED` and `DELTA_OVERSIZED` refusals, pagination cursor support, and metadata token estimation.
+- AC-A01 & AC-P02: Affected-scoped post-commit verification for batch create, insert blocks, and transform (`VerifyAffectedPostCommit`), improving chunk throughput by up to 17.7%.
+- Native bridge candidate `0.8.6-d18` with deployed DLL SHA-256 `13293b5e21f9e2b31a7b75d3effc107ab912f3c202ac70426cc65cbcb8c79070`.
+
+### Changed
+
+- Promoted provider version to stable `0.4.0` and public contract to `autocad-generic-v1` across 87 public MCP tools.
+- Operational incident OP-01 officially closed: AutoCAD PID 37688 Session 1, pipe present, backend port 8000 listening, health gates verified clean (tx=0, uncertainty=false, pending=0).
+- Bounded Windows named pipe I/O with overlapped write/read, one default 60-second budget shared by request write/header/body, local cancellation/drain and completion-unknown shared mutation fencing.
+- Added real Windows stalled-write/read/partial/drip/fragmented-reply regression and actual HTTP supervisor/worker missing/wrong-token negatives.
+- D15 closed request/checkpoint ownership: durable recovery metadata exposes only owner fingerprints, foreign adoption refuses before CAD mutation, and originating owner restores exact predecessor.
+- D16 unified COM/native mutation ownership under one provider-local writer authority and one uncertainty quarantine.
+- D17 unified Save/SaveAs persisted-clean verification (`Saved=true`, `DBMOD=0`).
+- D18 made document-PID bootstrap atomic with respect to identity.
+
+### Verification
+
+- Remote parity suite `tests/test_runtime_r3_r4_parity.py`: 27/27 PASS.
+- Unit/regression suite: 61 passed / 16 deselected (non-live) / 0 failures across migration, envelope, and affected-scoped verify suites.
+- Full Windows regression: 547 passed / 12 skipped / 2 known pre-existing timing flakes.
+- C# Release/x64: 0 errors / 3 inherited Autodesk reference warnings.
+- AutoCAD 2027 Session 1 live acceptance: D15–D18, U1, 10k-scale, MP-2, and R3/R4 remote parity all verified.
+
+
+## [0.4.0rc3] - 2026-09-17
+
+### Added
+
+- Added public `native_document_identity_initialize` for explicit provider-owned document-lineage bootstrap on a new **empty current space**. The PID is generated internally, persisted in the DWG NOD, independently read back and paired with the schema-v3 zero-entity predecessor fingerprint; caller-supplied PID and implicit legacy/non-empty adoption are refused.
+- Expanded bounded native batch/feature create payloads with TEXT, MTEXT, aligned dimension and linear dimension plus optional layer/color assignment, preserving caller PID/fingerprint binding and verified recovery.
+- Added reusable Session-1 U1 acceptance profiles for exact bridge reload and floor-plan hardening verification.
+
+### Fixed
+
+- `document_save` now returns success only after immediate persisted-clean verification (`Saved=true`, `DBMOD=0`) and quarantines a dirty/ambiguous postcondition instead of reporting a weak acknowledgement as success.
+- Cached live COM application reuse now repairs connection readiness after successful metadata probing, closing the reproduced `document_info`-works / status-disconnected path.
+- Fixed D8 stale COM application reuse after real AutoCAD process replacement: cached proxies are liveness-probed before use; confirmed-dead generation state is evicted and an idle backend reattaches through the configured attach/start policy. COM busy is not classified as process death, and process loss during a tracked transaction quarantines fail-closed rather than blind-retrying a mutation.
+- Native dimension creation now forces AutoCAD layout/recompute before provisional fingerprinting and validates equivalent dimension-line geometry instead of requiring an unstable definition-point parameterization.
+- Provisional semantic rebuild now re-extracts style resources in the active transaction, so AutoCAD side effects such as automatic `Defpoints` creation are present in both provisional and persisted fingerprints. Create validation preserves every predecessor resource while allowing additive native resources; non-create invariants remain exact.
+
+### Verification
+
+- Focused native/public/schema suite: **81/81 passed**.
+- Full Linux: **412 passed / 11 skipped**.
+- Full Windows `.171`: **411 passed / 12 skipped**.
+- Managed .NET Release/x64 build against AutoCAD 2027 SDK: PASS / 0 errors; inherited Autodesk/.NET MSB3277 warning families remain unchanged.
+- Exact-source AutoCAD 2027 Session-1 U1 live acceptance: PID bootstrap read-back verified; LINE/TEXT/MTEXT/aligned-dimension/linear-dimension each `COMMITTED_VERIFIED`; zero pending recovery; final save `Saved=true`, `DBMOD=0`, `persisted_clean=true`.
+- Document fingerprint schema remains v3; callers must re-read/rebaseline predecessor state after upgrading bridge/provider implementation.
+- D8 verification on 2026-09-18: focused stale/busy/transaction recovery tests **3/3 passed**; full Linux **415 / 11 skipped**; full Windows `.171` **414 / 12 skipped**; AutoCAD 2027 Session-1 live process-replacement fixture rebound the same backend object from cached PID `25048` to replacement PID `26788` with `connected=true` and zero tracked transaction depth.
+
+
+## [0.4.0rc2] - 2026-09-16
+
+### Changed
+
+- Closed B1 filesystem containment at implementation checkpoint `abeb9d9` under an explicit split-assurance threat model: provider-owned file I/O now uses descriptor/handle-bound actual-I/O primitives with adversarial descendant namespace-swap coverage on Linux and Windows; AutoCAD pathname-only COM operations remain bounded by pre/post verification and are not advertised as race-free. Closure tree measured Linux **405 / 11 skipped** with Ruff PASS and Windows `.171` **404 / 12 skipped**.
+- Closed B2 reproducible release proof at clean checkpoint `bcb5c66`: two fresh exact-lock reconstructions per platform reproduce the same Git/source/package identity and pass full regression + Ruff; Linux lock SHA-256 `e7fe668b…bf06`, Windows lock SHA-256 `acbbc28b…869e`, common source-tree SHA-256 `3f4b45b1…db3d8`.
+- Closed B3 repo/tooling governance: `uv.lock` is explicitly non-canonical ignored residue, the two platform `pylock.*` files are the sole exact dependency authority, Ruff is repeatable on Linux + Windows locked environments, and the release tree is clean.
+- Declared CDT-AutoCAD launch-ready for its Generic CAD Execution Engine mission; no known top-level AutoCAD blocker remains before CDT-Engineer work begins.
+- Standardized documentation authority so provider architecture, current status, live evidence, roadmap, technical debt and session notes no longer compete as sources of truth.
+- Added `docs/ARCHITECTURE.md` as the canonical provider-local architecture authority; `specs/**` remains a frozen upstream CDT-Engineer baseline.
+
+### Maintenance checkpoint — 2026-09-12 (`31186f5`)
+
+- Native bridge maintenance candidate advanced to `0.8.2-mp7` without changing provider `0.4.0rc1`, contract `autocad-generic-v1-rc1` or the 86-tool public catalog.
+- Added typed Managed .NET visual-style state read/restore with exact handle read-back and drift guard.
+- Added canonical Session-1 acceptance lifecycle wrapper and current-identity MP-2 `20 success + 10 injected failure` rerun.
+- Added 10/100-part ACIS soak/adversarial acceptance and destructive Boolean uncertainty quarantine coverage.
+- Hardened XREF/source/artifact/solid provenance and cleanup paths covered by the maintenance test set.
+- Fixed a live `RPC_E_CALL_REJECTED` viewport regression by routing viewport create/read/scale/lock/delete through the shared bounded COM-busy primitives.
+- Final maintenance gates: Linux **365 passed / 6 skipped**, Windows `.171` **364 passed / 7 skipped**, targeted live suite **5/5 twice consecutively**, C# Release/x64 **0 errors / 3 inherited warning families**. Ruff was unavailable in the prepared Linux environment and is not claimed as PASS.
+
+### Integrity / contract
+
+- Closed B0 document provenance gaps: `document_save_as` verifies the bound document's canonical post-SaveAs path before success, and artifact sealing re-binds the same saved source before hashing/copy/manifest acceptance.
+- Closed B4 caller-state binding at implementation checkpoint `872da68`: `feature_execute`, `batch_create_entities`, `batch_insert_blocks`, `batch_transform_entities` and `metadata_set` now require caller-supplied `document_pid` + `expected_parent_fp`.
+- Wrong-document and stale-parent requests fail before logical journal/checkpoint creation or CAD mutation; the caller predecessor remains the native executor drift guard after binding.
+- Public identity advanced intentionally to provider `0.4.0rc2` / contract `autocad-generic-v1-rc2`; public tool count remains 86 and the execution model remains `feature-based-chunks-streaming-v1`.
+
+### Verification
+
+- Focused public native/schema regression: **32/32 passed**.
+- Full Linux regression: **398 passed / 9 skipped**.
+- Full Windows `.171` regression: **397 passed / 10 skipped**.
+- B0 AutoCAD 2027 Session-1 SaveAs + artifact-seal closure: **2/2 passed**.
+- B4 AutoCAD 2027 Session-1 disposable-DWG acceptance: wrong document PID, stale parent and stale replay refused with zero mutation; valid caller predecessor committed and independently read back.
+- C# bridge source did not change; accepted native bridge remains `0.8.2-mp7`. Ruff was unavailable in the prepared Linux/Windows environments and is not claimed as PASS.
+
+
+## [0.4.0rc1] - 2026-09-12
+
+### Operational baseline
+
+- CDT-AutoCAD begins operational use on 2026-09-12 as an **RC/preview** product; this is not a GA/stable-version declaration.
+- Public contract: `autocad-generic-v1-rc1`.
+- Public MCP surface: 86 tools.
+- Production orchestration model: `feature-based-chunks-streaming-v1`.
+- Primary certified live lane: AutoCAD 2027 full / Windows x64.
+
+### Added
+
+- Operational repository baseline: security/support policy, operations runbook, release checklist, documentation index, CODEOWNERS, pull-request template and headless GitHub CI.
+- Package metadata now carries the project owner, proprietary license reference, README and repository/documentation URLs.
+- Feature-based Chunks Streaming with feature-local predecessor checkpoints and verified rollback.
+- Generic native batch create, persistent-PID block insertion and PID-targeted transforms.
+- Schema-agnostic bounded entity metadata participating in document fingerprint schema v3.
+- Managed .NET native bridge line `0.8.1-g3` with bounded native chunks of at most 32 entities.
+- Content-addressed accepted-artifact sealing and SAT export provenance.
+- Public-safe synthetic marketing integrity demo and runbook.
+- Proprietary license, copyright record, source provenance, third-party notices and contribution provenance policy.
+
+### Verified
+
+- Operational-readiness maintenance gate: Linux 320 passed / 5 skipped, Windows `.171` 319 passed / 6 skipped, Ruff clean, wheel build/metadata PASS and MP-2 `1 success + 1 injected failure + recovery` smoke PASS.
+- Live scale graduation at 100 / 1,000 / 5,000 / 10,000 entities.
+- Exact predecessor recovery under beginning/middle/end injected failures with zero pending recovery at accepted scale gates.
+- Feature-stream live acceptance: prior committed features remain intact when the current feature rolls back, and later work can continue from the verified predecessor.
+- Final promotion gates: Linux 316 passed / 5 skipped; Windows `.171` 315 passed / 6 skipped; C# Release/x64 0 errors with 3 documented inherited Autodesk-reference warning families.
+
+### Fixed
+
+- MP-2 standalone acceptance fixture now includes the bounded command-preset registry required by worker startup.
+- MP-2 acceptance runner uses canonical `PUBLIC_TOOL_COUNT` instead of stale 50-tool assertions and binds loop-state predicates safely.
+- Existing safe Ruff findings were cleaned without changing the public contract; intentional contract-mixin/string-enum compatibility exceptions are documented in scoped Ruff configuration.
+
+### Notes
+
+- Domain semantics and design judgment remain outside CDT-AutoCAD.
+- The broader live product surface still includes COM; public native promotion is capability-specific rather than a claim that every tool uses the G3 native route.
+- Deterministic face/edge topology, STEP/STL export, and typed edge fillet/chamfer/shell remain outside the current verified public claims.

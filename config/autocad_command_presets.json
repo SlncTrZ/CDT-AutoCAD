@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "workflow_defaults": {
+    "step_delay_ms": 300,
+    "default_3d_view": "se_isometric",
+    "default_3d_visual_style": "shades_of_gray"
+  },
+  "view_presets": {
+    "top": [0.0, 0.0, 1.0],
+    "bottom": [0.0, 0.0, -1.0],
+    "front": [0.0, -1.0, 0.0],
+    "back": [0.0, 1.0, 0.0],
+    "left": [-1.0, 0.0, 0.0],
+    "right": [1.0, 0.0, 0.0],
+    "se_isometric": [1.0, -1.0, 1.0],
+    "sw_isometric": [-1.0, -1.0, 1.0],
+    "ne_isometric": [1.0, 1.0, 1.0],
+    "nw_isometric": [-1.0, 1.0, 1.0]
+  },
+  "bounded_command_presets": {
+    "visual.2d_wireframe": {
+      "command": "_.VSCURRENT\n_2dwireframe\n",
+      "purpose": "Switch the active model viewport to 2D Wireframe."
+    },
+    "visual.wireframe": {
+      "command": "_.VSCURRENT\n_wireframe\n",
+      "purpose": "Switch the active model viewport to Wireframe."
+    },
+    "visual.hidden": {
+      "command": "_.VSCURRENT\n_hidden\n",
+      "purpose": "Switch the active model viewport to Hidden."
+    },
+    "visual.realistic": {
+      "command": "_.VSCURRENT\n_realistic\n",
+      "purpose": "Switch the active model viewport to Realistic."
+    },
+    "visual.conceptual": {
+      "command": "_.VSCURRENT\n_conceptual\n",
+      "purpose": "Switch the active model viewport to Conceptual."
+    },
+    "visual.shades_of_gray": {
+      "command": "_.VSCURRENT\n_Shadesofgray\n",
+      "purpose": "Switch the active model viewport to Shades of Gray."
+    },
+    "visual.shaded": {
+      "command": "_.VSCURRENT\n_shaded\n",
+      "purpose": "Switch the active model viewport to Shaded."
+    },
+    "visual.shaded_with_edges": {
+      "command": "_.VSCURRENT\n_shadedwithedges\n",
+      "purpose": "Switch the active model viewport to Shaded with Edges."
+    },
+    "display.regen": {
+      "command": "_.REGEN\n",
+      "purpose": "Regenerate the active viewport after a bounded display-state change."
+    }
+  }
+}
