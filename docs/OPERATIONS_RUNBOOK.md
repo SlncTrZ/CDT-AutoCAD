@@ -134,7 +134,7 @@ For important drawing steps:
 
 Runtime directories, local artifacts, test workspaces and maintainer-only evidence are intentionally local/ignored operational areas. They are not publication targets by default.
 
-Raw machine evidence must never be swept into a public/product commit. Published acceptance claims belong in `CURRENT_CHECKPOINT.md` and `LIVE_ACCEPTANCE.md`; structured diagnostics are operational evidence, not recovery authority. See `OBSERVABILITY.md`.
+Raw machine evidence must never be swept into a public/product commit. Published acceptance claims belong in `COMPATIBILITY.md` and `LIVE_ACCEPTANCE.md`; structured diagnostics are operational evidence, not recovery authority. See `OBSERVABILITY.md`.
 
 ## 9. Verification environment
 
@@ -154,7 +154,7 @@ Linux/headless verification may use the Linux venv/lock or a clean CI environmen
 Before publishing a product change:
 
 - follow the maintainer-internal release checklist;
-- update the owning authority when truth changes: `ARCHITECTURE.md` for architecture/boundary/invariants, `CURRENT_CHECKPOINT.md` for current runtime/release state, and `LIVE_ACCEPTANCE.md` for accepted evidence;
+- update the owning authority when truth changes: `ARCHITECTURE.md` for architecture/boundary/invariants, `COMPATIBILITY.md` for runtime support/assurance limits, and `LIVE_ACCEPTANCE.md` for accepted evidence;
 - rerun the exact gates required by the changed scope;
 - perform live Windows/AutoCAD acceptance for any capability that requires AutoCAD;
 - update threat-model deltas for materially new risky authority;

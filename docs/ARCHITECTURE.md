@@ -163,7 +163,7 @@ This file is the only provider-local **public architecture source of truth**.
 
 Related documents have narrower roles:
 
-- [`CURRENT_CHECKPOINT.md`](CURRENT_CHECKPOINT.md) — current public release/runtime status, not architecture design;
+- [`COMPATIBILITY.md`](COMPATIBILITY.md) — public runtime support/assurance limits, not architecture design;
 - [`SEMANTIC_STATE_PROTOCOL.md`](SEMANTIC_STATE_PROTOCOL.md) — normative semantic-state/recovery protocol;
 - [`LIVE_ACCEPTANCE.md`](LIVE_ACCEPTANCE.md) — accepted live evidence and scope;
 - [`OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) — operational procedure;

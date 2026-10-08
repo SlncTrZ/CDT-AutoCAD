@@ -40,14 +40,14 @@ Do not substitute one for the other.
 - Historical extraction identity at the pinned split: `0.3.0rc1 / autocad-a2-v1-rc1`.
 - Expected pre-extraction generic regression: `54 passed, 2 skipped`.
 
-Those values describe extraction history only; they do not override the current provider identity in `docs/CURRENT_CHECKPOINT.md`.
+Those values describe extraction history only; they do not override the provider identity discovered from runtime help/status.
 
 ## Provider-local overlay
 
 Provider-local behavior is defined by current CDT-AutoCAD public authorities rather than by mutating the pinned snapshots:
 
 - `docs/ARCHITECTURE.md` — provider-local architecture;
-- `docs/CURRENT_CHECKPOINT.md` — current runtime/release state;
+- `docs/COMPATIBILITY.md` — runtime support/assurance limits;
 - `docs/SEMANTIC_STATE_PROTOCOL.md` — semantic-state/recovery contract;
 - `docs/LIVE_ACCEPTANCE.md` — accepted live evidence;
 - `docs/DRAWING_EXECUTION_QA_WORKFLOW.md` and `docs/DRAWING_QUALITY_ACCEPTANCE.md` — drawing workflow/quality concerns.

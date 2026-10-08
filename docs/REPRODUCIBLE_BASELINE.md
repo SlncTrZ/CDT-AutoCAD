@@ -1,6 +1,6 @@
 # Reproducible Baseline — CDT-AutoCAD
 
-> Baseline: MP0-T00 · Version: 1 · Updated: 2026-09-30 +07:00
+> Updated: 2026-10-08 14:48 +07:00
 > Canonical resolver workflow: **`cdt_autocad.dependency_lock` + pip 26.1.2 `pip lock` → LF-normalized PEP 751 platform lock → install from that lock**.
 
 ## 1. Decision
@@ -65,7 +65,7 @@ A locked-install acceptance run must report the interpreter/platform and verify 
 
 ## 5. Runtime/build provenance manifest
 
-`src/cdt_autocad/provenance.py` generates a JSON manifest that binds. The historical `0.8.2-mp7` maintenance acceptance additionally proved that the Release/x64 candidate hash equaled the bridge DLL observed loaded in AutoCAD Session 1; historical runs lacking a runtime DLL hash are intentionally not rebound retroactively. Current D18 bridge/runtime provenance is recorded in `docs/CURRENT_CHECKPOINT.md` and `docs/LIVE_ACCEPTANCE.md`.
+`src/cdt_autocad/provenance.py` generates a manifest binding the exact source, dependency, build and observed runtime identities. Historical native acceptance retains its original scope in [LIVE_ACCEPTANCE](LIVE_ACCEPTANCE.md); current runtime limits are described in [COMPATIBILITY](COMPATIBILITY.md).
 
 The manifest binds:
 
@@ -94,17 +94,11 @@ python -m cdt_autocad.provenance `
   --output <evidence-dir>\runtime-windows.json
 ```
 
-Provenance output is a maintainer-local observation record, not a published artifact. Published certification claims must be distilled into the canonical current-status/live-acceptance documents rather than making raw manifests part of the public contract.
+Provenance output is a maintainer-local observation record, not a published artifact. Published certification claims must be distilled into the compatibility/live-acceptance documents rather than making raw manifests part of the public contract.
 
 A manifest records **what was observed**, not certification. A DLL hash that differs from accepted evidence must remain explicitly unaccepted until the corresponding native gate passes.
 
-## 6. Baseline drift found while establishing MP0-T00
-
-Before platform locks were introduced, the Windows global Python environment was not a valid reproducible project environment: observed `pytest-asyncio 1.4.0` exceeded the project constraint `<1`, `pillow 12.2.0` exceeded the COM extra constraint `<12`, and `ezdxf` was absent. Those observations are evidence against using global-package state as a release baseline; they are not dependency defects in the locked environment.
-
-The Windows lock resolves `pytest-asyncio 0.26.0`, `pillow 11.3.0`, `pywin32 312` and the project runtime/development transitive graph. The Linux lock excludes Windows-only `pywin32` by platform marker.
-
-## 7. Acceptance and change policy
+## 6. Acceptance and change policy
 
 MP0-T00 reproducibility is accepted only when:
 
@@ -116,42 +110,3 @@ MP0-T00 reproducibility is accepted only when:
 6. dependency updates are deliberate: change `pyproject.toml` → regenerate both locks → inspect diff → run locked smoke/regression gates → record evidence.
 
 MP-8 rechecks SBOM/license/dependency risk and release artifacts against these same lock/build identities. MP-8 is not the first point where dependency reproducibility is established.
-
-## 8. Historical B2 measured closure — 2026-09-15/16
-
-B2 is **CLOSED / EXACT-LOCK PASS** at release-provenance checkpoint `bcb5c661bc6e01961525cd08c2ac5e0c0714b790`.
-
-Two independent fresh reconstructions were created per platform from the canonical lock only; each pair reproduced the same package map and `pip freeze --all` output and passed the same gates:
-
-| Platform | Canonical lock SHA-256 | Locked packages | Fresh A | Fresh B |
-| --- | --- | ---: | --- | --- |
-| Linux x86_64 / Python 3.12.3 | `e7fe668b159c56233be4d008600fe80dd0778689a58b48ab55cecc670c45bf06` | 88 | 405 passed / 11 skipped + Ruff PASS | 405 passed / 11 skipped + Ruff PASS |
-| Windows x64 `.171` / Python 3.12.0 | `acbbc28bc07d26c2e07c76ab5d24f2e474945ba10cc14a0c9e94cca29867869e` | 89 | 404 passed / 12 skipped + Ruff PASS | 404 passed / 12 skipped + Ruff PASS |
-
-Both platform manifests bind the same clean Git HEAD and source tree:
-
-```text
-git_head = bcb5c661bc6e01961525cd08c2ac5e0c0714b790
-git_dirty = false
-tracked_diff_sha256 = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-source_tree_sha256 = 3f4b45b13aa8ab4a60f92c02b99c97eff1aca8baf8a9ac84246b41e5d36db3d8
-provider_version = 0.4.0rc2
-```
-
-Windows provenance additionally binds the installed native bridge and observed AutoCAD process:
-
-```text
-bridge_sha256 = 18740fc6cc35a4e9117efed29fc98bd9c2d4836b77140d751e8d1628abd75a43
-autocad_pid = 7888
-autocad_session = 1
-```
-
-The machine-readable manifests used for this historical closure remain maintainer-local evidence; the hashes and verdict above are the public audit summary. A future source, dependency, bridge or runtime identity change requires a fresh provenance run rather than reusing this closure record.
-
-## 9. Current RC3 exact-source recertification — 2026-09-30
-
-Clean execution source `9c69430bafc77ac854684e03ebaf677afd191050` was reconstructed using the unchanged platform locks above. Current source-tree SHA-256 is `a6ccedad7ec9746ff65784b3dfa4ed4358a5cd82b22bff6ee071a6489bbcc4f2`. Linux passed **461/16** and Windows **465/12**, with Ruff/dependency checks PASS; installed wheels outside the repository passed help/87-tool/DXF smoke on both platforms.
-
-C# Release/x64 built with 0 errors/3 inherited reference warnings. The candidate and AutoCAD-loaded bridge SHA-256 matched `f2de981dc6fb9dd903c0c1ec127510a4b45f20350751bd0da4d906887fc36b36`; current D15–D18/U1 and native-required MP-2 live gates passed. This current recertification is one fresh locked reconstruction per platform; it does not relabel the historical B2 A/B reconstructions as new RC3 A/B runs. AC-A01 optimization at HEAD `a3faa7b` rebuilt Release/x64 with 0 errors/3 inherited warnings; deployed + AutoCAD-loaded DLL SHA-256 `9A877C66EBBBE70BFD634F7434B41269BD73035F066FC1F1951C9513366995FC`.
-
-Measured gate details and scope belong to [CURRENT_CHECKPOINT.md](CURRENT_CHECKPOINT.md) and [LIVE_ACCEPTANCE.md](LIVE_ACCEPTANCE.md). Publication is separate from technical acceptance.

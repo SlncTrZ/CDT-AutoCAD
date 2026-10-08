@@ -275,7 +275,7 @@ The runtime is intentionally hybrid rather than being in a mandatory COM-to-nati
 - COM timeout or any unknown completion remains integrity-uncertain and requires reconciliation/read-back before retry;
 - never upgrade a weaker route's guarantee merely because another family has stronger native acceptance.
 
-The authoritative availability/boundary for current routes is `docs/CURRENT_CHECKPOINT.md`; architecture intent is `docs/ARCHITECTURE.md`.
+Discover current route availability from runtime help/capabilities; assurance limits are in `docs/COMPATIBILITY.md` and measured native scopes in `docs/LIVE_ACCEPTANCE.md`. Architecture intent is `docs/ARCHITECTURE.md`.
 
 ## 16. Strong-integrity native step runner
 
