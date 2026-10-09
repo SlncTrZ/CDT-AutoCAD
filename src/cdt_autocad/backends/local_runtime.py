@@ -91,6 +91,10 @@ class LocalAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
     def status(self) -> dict[str, Any]:
         return self._backend.status()
 
+    def runtime_identity_status(self) -> dict[str, Any]:
+        from ..runtime_identity import RuntimeIdentity
+        return RuntimeIdentity.from_env().status(backend_name=self.name)
+
     def runtime_status(self) -> dict[str, Any]:
         return self._backend.status()
 
@@ -108,6 +112,16 @@ class LocalAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
     # -- semantics: PID/fingerprint binding, recovery and read-back stay inside
     # -- the facade. Writer fencing for these ops stays at the caller layer
     # -- (server _run_native_mutation), exactly as on the direct provider path.
+
+    def native_bootstrap_document_identity(self) -> dict[str, Any]:
+        return self._native_facade.bootstrap_document_identity()
+
+    def native_batch_insert_blocks(
+        self, inserts: list[dict[str, Any]], document_pid: str, expected_parent_fp: str
+    ) -> dict[str, Any]:
+        return self._native_facade.batch_insert_blocks(
+            inserts, document_pid=document_pid, expected_parent_fp=expected_parent_fp
+        )
 
     def native_status(self) -> dict[str, Any]:
         return self._native_facade.status()
@@ -280,41 +294,41 @@ class LocalAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
     ) -> EntityInfo:
         return await self._backend.object_scale(object_id, base_x, base_y, factor)
 
-    async def entity_create_line(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.entity_create_line(**kwargs)
+    async def entity_create_line(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.entity_create_line(*args, **kwargs)
 
-    async def entity_create_circle(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.entity_create_circle(**kwargs)
+    async def entity_create_circle(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.entity_create_circle(*args, **kwargs)
 
-    async def entity_create_arc(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.entity_create_arc(**kwargs)
+    async def entity_create_arc(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.entity_create_arc(*args, **kwargs)
 
-    async def entity_create_polyline(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.entity_create_polyline(**kwargs)
+    async def entity_create_polyline(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.entity_create_polyline(*args, **kwargs)
 
-    async def entity_create_text(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.entity_create_text(**kwargs)
+    async def entity_create_text(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.entity_create_text(*args, **kwargs)
 
-    async def hatch_create(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.hatch_create(**kwargs)
+    async def hatch_create(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.hatch_create(*args, **kwargs)
 
-    async def dimension_linear(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.dimension_linear(**kwargs)
+    async def dimension_linear(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.dimension_linear(*args, **kwargs)
 
-    async def dimension_aligned(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.dimension_aligned(**kwargs)
+    async def dimension_aligned(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.dimension_aligned(*args, **kwargs)
 
-    async def dimension_angular(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.dimension_angular(**kwargs)
+    async def dimension_angular(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.dimension_angular(*args, **kwargs)
 
-    async def dimension_radial(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.dimension_radial(**kwargs)
+    async def dimension_radial(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.dimension_radial(*args, **kwargs)
 
-    async def dimension_diametric(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.dimension_diametric(**kwargs)
+    async def dimension_diametric(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.dimension_diametric(*args, **kwargs)
 
-    async def dimension_ordinate(self, **kwargs: Any) -> EntityInfo:
-        return await self._backend.dimension_ordinate(**kwargs)
+    async def dimension_ordinate(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.dimension_ordinate(*args, **kwargs)
 
     async def layer_list(self) -> list[LayerInfo]:
         return await self._backend.layer_list()
@@ -363,8 +377,8 @@ class LocalAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
     ) -> BlockInfo:
         return await self._backend.block_create(name, object_ids, base_x, base_y)
 
-    async def block_insert(self, name: str, x: float, y: float, **kwargs: Any) -> EntityInfo:
-        return await self._backend.block_insert(name, x, y, **kwargs)
+    async def block_insert(self, name: str, x: float, y: float, *args: Any, **kwargs: Any) -> EntityInfo:
+        return await self._backend.block_insert(name, x, y, *args, **kwargs)
 
     async def xref_list(self) -> list[dict[str, Any]]:
         return await self._backend.xref_list()
@@ -515,3 +529,14 @@ class LocalAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
 
     async def redo(self) -> dict[str, Any]:
         return await self._backend.redo()
+
+
+def create_workstation_runtime(settings: Any) -> LocalAutoCADRuntimeAdapter:
+    """Assemble the existing local native stack; the listener owns no writer authority."""
+    from .com_backend import ComBackend
+
+    coordinator = MutationCoordinator()
+    backend = ComBackend(settings, mutation_coordinator=coordinator)
+    return LocalAutoCADRuntimeAdapter(
+        backend, mutation_coordinator=coordinator, native_facade=NativePublicFacade(settings)
+    )

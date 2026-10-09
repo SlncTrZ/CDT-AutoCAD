@@ -171,3 +171,14 @@ Related documents have narrower roles:
 - maintainer planning/session notes — intentionally unpublished and never architecture authority.
 
 Historical evidence or roadmap text must never override this architecture definition. If architecture changes, update this file explicitly and then reconcile dependent docs.
+
+## 11. Optional remote runtime selection
+
+The split-host pilot places MCP control on a separate host and forwards the
+existing backend/native facade vocabulary to a workstation listener.
+The listener reuses the local COM/Managed implementation in the intended
+interactive session; it adds no CAD or engineering semantics.
+Control-side generation binding and a durable in-flight mutation marker
+preserve refusal and uncertainty across process replacement.
+Local/headless launch remains available. Native R3/R4 parity gates must pass
+before switching preferred production placement; see the operations runbook.

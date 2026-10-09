@@ -55,6 +55,7 @@ ALLOWED_OPS: frozenset[str] = frozenset(
         "capabilities",
         "status",
         "runtime_status",
+        "runtime_identity_status",
         "health",
         # documents / drawings
         "document_new",
@@ -150,6 +151,8 @@ ALLOWED_OPS: frozenset[str] = frozenset(
         # NativePublicFacade methods the provider calls directly, exposed by
         # name only. PID/fingerprint/recovery semantics stay inside the
         # reused facade implementation on the workstation agent host.
+        "native_bootstrap_document_identity",
+        "native_batch_insert_blocks",
         "native_status",
         "native_document_state",
         "native_snapshot_page",
@@ -237,6 +240,8 @@ MUTATION_OPS: frozenset[str] = frozenset(
         # native strong-integrity mutations enter the provider-side writer
         # lane + uncertainty quarantine like any other mutation op.
         "native_feature_execute",
+        "native_bootstrap_document_identity",
+        "native_batch_insert_blocks",
         "native_batch_create_entities",
         "native_batch_transform_entities",
         "native_metadata_set",
@@ -256,6 +261,10 @@ class RuntimeTransportError(AutoCADProviderError):
 
 class RuntimeUnavailableError(RuntimeTransportError):
     """Runtime endpoint unreachable before dispatch — safe to report, never a success."""
+
+
+class RuntimeStateConflictError(RuntimeTransportError, StateConflictError):
+    """Native precondition refusal transported without weakening its classification."""
 
 
 class RuntimeAuthError(RuntimeTransportError):
@@ -359,6 +368,18 @@ def raise_for_response(op: str, response: RuntimeResponse) -> Any:
     message = response.error_message or f"runtime op {op!r} failed: {code}"
     if code in {"unauthorized", "forbidden"}:
         raise RuntimeAuthError(message)
+    if code == "state_conflict":
+        raise RuntimeStateConflictError(message)
+    if code == "quarantined":
+        from .errors import BackendQuarantinedError
+        raise BackendQuarantinedError(message)
+    if code.startswith("unsupported_capability:"):
+        from .errors import UnsupportedCapabilityError
+        raise UnsupportedCapabilityError(code.partition(":")[2], message)
+    if code == "not_found":
+        raise FileNotFoundError(message)
+    if code == "validation_error":
+        raise RuntimeOpRefusedError(message)
     if code in {"generation_mismatch", "stale_generation"}:
         raise RuntimeGenerationMismatchError(message)
     if code in {"unknown_op", "op_refused", "oversized", "bad_request"}:

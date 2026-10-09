@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 from typing import Any
 
 from fastmcp import FastMCP
@@ -17,9 +18,7 @@ from pydantic import FiniteFloat
 
 from . import __version__
 from .backends.base import AutoCADBackend
-from .backends.com_backend import ComBackend
 from .backends.ezdxf_backend import EzdxfBackend
-from .backends.local_runtime import LocalAutoCADRuntimeAdapter
 from .config import Settings
 from .contract_identity import (
     COMMON_CONTRACT_VERSION as _COMMON_CONTRACT_VERSION,
@@ -61,7 +60,6 @@ from .errors import (
     UnsupportedCapabilityError,
 )
 from .mutation_coordinator import MutationCoordinator
-from .native_bridge.public_runtime import NativePublicFacade
 from .runtime_identity import RuntimeIdentity
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -419,7 +417,7 @@ _TOOL_DESCRIPTIONS = {
 }
 
 
-def _help_payload(backend: AutoCADBackend) -> dict[str, Any]:
+def _help_payload(backend: AutoCADBackend, capabilities: dict[str, Any] | None = None) -> dict[str, Any]:
     content, contract_hash = _contract_material()
     return {
         "provider_name": "autocad",
@@ -433,7 +431,7 @@ def _help_payload(backend: AutoCADBackend) -> dict[str, Any]:
         "execution_model": _EXECUTION_MODEL,
         "updated_at": _UPDATED_AT,
         "authentication": "Bearer token required for HTTP transport; credentials are never returned",
-        "capabilities": backend.capabilities(),
+        "capabilities": backend.capabilities() if capabilities is None else capabilities,
         "content": content,
     }
 
@@ -573,6 +571,9 @@ async def _run_native_mutation(
 ) -> Any:
     """Run one synchronous native writer behind the shared provider mutation authority."""
 
+    # Remote async facade enters the same coordinator via its adapter; do not double-lock.
+    if inspect.iscoroutinefunction(func):
+        return await func(*args, **kwargs)
     async with coordinator.writer("native"):
         task = asyncio.create_task(asyncio.to_thread(func, *args, **kwargs))
         try:
@@ -627,8 +628,25 @@ def create_mcp(
     runtime_identity = RuntimeIdentity.from_env()
     mutation_coordinator = MutationCoordinator()
     backend: AutoCADBackend
-    local_runtime: LocalAutoCADRuntimeAdapter | None = None
-    if settings.backend == "com":
+    local_runtime = None
+    if settings.runtime_endpoint:
+        from .backends.remote_facade import RemoteNativeFacade
+        from .backends.remote_runtime import RemoteAutoCADRuntimeAdapter
+        from .runtime_transport import RemoteRuntimeTransport
+
+        assert settings.runtime_token_file is not None
+        token = settings.runtime_token_file.read_text().strip()
+        local_runtime = RemoteAutoCADRuntimeAdapter(
+            RemoteRuntimeTransport(settings.runtime_endpoint, token),
+            mutation_coordinator=mutation_coordinator, settings=settings,
+            require_generation=True, state_file=settings.runtime_state_file,
+        )
+        backend = local_runtime
+        native_facade = RemoteNativeFacade(local_runtime)
+    elif settings.backend == "com":
+        from .backends.com_backend import ComBackend
+        from .backends.local_runtime import LocalAutoCADRuntimeAdapter
+        from .native_bridge.public_runtime import NativePublicFacade
         com_backend = ComBackend(settings, mutation_coordinator=mutation_coordinator)
         local_runtime = LocalAutoCADRuntimeAdapter(
             com_backend,
@@ -636,8 +654,9 @@ def create_mcp(
             native_facade=NativePublicFacade(settings),
         )
         backend = local_runtime
-        native_facade: NativePublicFacade = local_runtime.native_facade
+        native_facade = local_runtime.native_facade
     else:
+        from .native_bridge.public_runtime import NativePublicFacade
         backend = EzdxfBackend(settings)
         native_facade = NativePublicFacade(settings)
     auth = None
@@ -672,6 +691,33 @@ def create_mcp(
     )
     app.add_middleware(ProviderErrorMiddleware(backend))
 
+    async def identity_read(name: str) -> dict[str, Any]:
+        if not settings.runtime_endpoint:
+            return getattr(backend, name)()
+        from .runtime_transport import RuntimeTransportError
+        try:
+            result = await getattr(backend, name + "_async")()
+            if name == "status":
+                from .runtime_transport import RuntimeOpRefusedError
+                try:
+                    execution_identity = await backend._call("runtime_identity_status")
+                except RuntimeOpRefusedError:
+                    execution_identity = {"native_bridge": {"ready": False, "reason": "identity_unavailable"}}
+                result = {**result, "execution_identity": execution_identity,
+                          "runtime_generation": local_runtime.expected_generation}
+            return result
+        except RuntimeTransportError as exc:
+            if name == "capabilities":
+                return {}
+            return {"backend": backend.name, "runtime_available": False, "connected": False,
+                    "dependency_error": str(exc), "transport": "remote",
+                    "expected_runtime_generation": local_runtime.expected_generation}
+
+    async def native_read(func: Any, *args: Any, **kwargs: Any) -> Any:
+        if inspect.iscoroutinefunction(func):
+            return await func(*args, **kwargs)
+        return await asyncio.to_thread(func, *args, **kwargs)
+
     def provider_tool(*, tags: set[str]):
         def decorate(fn):
             name = fn.__name__
@@ -689,11 +735,11 @@ def create_mcp(
 
     @provider_tool(tags={"identity", "read"})
     async def help() -> dict[str, Any]:
-        return _help_payload(backend)
+        return _help_payload(backend, await identity_read("capabilities"))
 
     @provider_tool(tags={"identity", "read"})
     async def system_status() -> dict[str, Any]:
-        backend_status = backend.status()
+        backend_status = await identity_read("status")
         contract_hash = _contract_hash()
         return {
             "provider": "autocad",
@@ -703,7 +749,13 @@ def create_mcp(
             "contract_hash": contract_hash,
             **backend_status,
             **_status_contract(backend, backend_status),
-            **runtime_identity.status(backend_name=backend.name),
+            **(
+                {"supported_profile": "com-live-remote",
+                 "generation": runtime_identity.generation,
+                 "expected_runtime_generation": local_runtime.expected_generation,
+                 "execution_host": "workstation", "transport": "remote"}
+                if settings.runtime_endpoint else runtime_identity.status(backend_name=backend.name)
+            ),
         }
 
     @provider_tool(tags={"identity", "read"})
@@ -715,12 +767,12 @@ def create_mcp(
             "provider_extension_version": _CONTRACT_VERSION,
             "public_tool_count": _PUBLIC_TOOL_COUNT,
             "execution_model": _EXECUTION_MODEL,
-            "capabilities": backend.capabilities(),
+            "capabilities": await identity_read("capabilities"),
         }
 
     @provider_tool(tags={"native", "read"})
     async def native_integrity_status() -> dict[str, Any]:
-        status = await asyncio.to_thread(native_facade.status)
+        status = await native_read(native_facade.status)
         return {**status, "mutation_coordinator": mutation_coordinator.status()}
 
     @provider_tool(tags={"native", "document", "write"})
@@ -796,7 +848,7 @@ def create_mcp(
 
     @provider_tool(tags={"native", "metadata", "read"})
     async def metadata_get(semantic_pid: str, namespace: str) -> dict[str, Any]:
-        return await asyncio.to_thread(native_facade.metadata_get, semantic_pid, namespace)
+        return await native_read(native_facade.metadata_get, semantic_pid, namespace)
 
     @provider_tool(tags={"native", "metadata", "write"})
     async def metadata_set(
@@ -826,7 +878,7 @@ def create_mcp(
     ) -> dict[str, Any]:
         if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
             raise ValueError("offset must be an integer >= 0")
-        return await asyncio.to_thread(
+        return await native_read(
             native_facade.metadata_query,
             namespace,
             path=path,
@@ -995,7 +1047,7 @@ def create_mcp(
         visible: bool | None = None,
     ) -> dict[str, Any]:
         return (
-            await backend.object_set_properties(object_id, layer, color, linetype, visible)
+            await backend.object_set_properties(object_id, layer=layer, color=color, linetype=linetype, visible=visible)
         ).to_dict()
 
     @provider_tool(tags={"object", "write"})

@@ -167,3 +167,33 @@ Operational issues and security reports follow `SUPPORT.md` and `SECURITY.md`.
 For supervised operation, stop accepting new work, allow/fence in-flight work according to MP-2 semantics, then terminate the supervisor normally. Do not kill AutoCAD or provider processes during a mutation unless the recovery test explicitly requires process failure and the drawing is disposable.
 
 Before closing a production drawing, verify the last accepted save/seal and ensure pending recovery is zero.
+
+## 12. Split-host pilot
+
+The control process can select the existing workstation adapter without local
+COM imports. Keep both HTTP endpoints on loopback and carry the cross-host
+channel through authenticated, encrypted transport.
+
+On the native host, configure the normal COM/attach-only policy and approved
+working roots, then run `cdt-autocad-agent --port <port> --token-file <private-file>
+--session-id <interactive-session>`. Application startup remains a separate
+owner action; restarting the listener does not restart AutoCAD. An optional
+private `--stop-file` lets an interactive scheduler stop the agent gracefully
+before replacing its task.
+
+On the control host, set `CDT_AUTOCAD_BACKEND=com`,
+`CDT_AUTOCAD_RUNTIME_ENDPOINT`, `CDT_AUTOCAD_RUNTIME_TOKEN_FILE` and
+`CDT_AUTOCAD_RUNTIME_STATE_FILE`, then launch the normal MCP entrypoint.
+The first authenticated heartbeat pins the agent generation. A durable
+in-flight marker fences mutation across provider restart; agent replacement
+does not silently adopt a new generation. Identity tools remain reachable
+during dependency outages.
+
+Before rebinding or clearing an uncertain marker, retain its bytes and verify
+the intended document, native predecessor/post-state, recovery inventory and
+actual agent generation. Record the operator's reconciliation; never replay
+the original mutation as a recovery procedure. Historical disposable-fixture
+checkpoints follow the owner-disposition rule in section 6.
+
+This launch mode does not close native R3/R4, change preferred placement, or
+retire the local/legacy path without their separate live acceptance.

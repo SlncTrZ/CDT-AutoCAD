@@ -29,7 +29,7 @@ import json
 import os
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
@@ -102,7 +102,7 @@ def _adapter_health_summary(adapter: Any) -> dict[str, Any]:
 class WorkstationAgentConfig:
     host: str = "127.0.0.1"
     port: int = 0  # 0 = ephemeral; actual port read back after start
-    auth_token: str = ""
+    auth_token: str = field(default="", repr=False)
     allow_remote_bind: bool = False
     max_request_bytes: int = MAX_REQUEST_BYTES
 
@@ -207,7 +207,24 @@ class WorkstationRuntimeAgent:
                 )
             except Exception as exc:
                 uncertain = bool(getattr(exc, "completion_unknown", False))
-                code = "uncertain" if uncertain else "backend_error"
+                from .errors import (
+                    BackendQuarantinedError,
+                    StateConflictError,
+                    UnsupportedCapabilityError,
+                )
+                code = "backend_error"
+                if uncertain:
+                    code = "uncertain"
+                elif isinstance(exc, BackendQuarantinedError):
+                    code = "quarantined"
+                elif isinstance(exc, StateConflictError):
+                    code = "state_conflict"
+                elif isinstance(exc, UnsupportedCapabilityError):
+                    code = "unsupported_capability:" + exc.capability
+                elif isinstance(exc, (ValueError, TypeError)):
+                    code = "validation_error"
+                elif isinstance(exc, (FileNotFoundError, KeyError)):
+                    code = "not_found"
                 return self._envelope(False, None, code, str(exc), uncertain)
         try:
             return self._envelope(True, _to_jsonable(result), "ok", "", False)
@@ -401,3 +418,51 @@ class WorkstationRuntimeAgent:
             server.server_close()
         if thread is not None:
             thread.join(timeout=5.0)
+
+
+def main() -> None:
+    """Run the native adapter in the intended interactive Windows session."""
+    import argparse
+    import signal
+    import sys
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="CDT AutoCAD workstation runtime agent")
+    parser.add_argument("--port", type=int, default=8057)
+    parser.add_argument("--token-file", type=Path, required=True)
+    parser.add_argument("--session-id", type=int, required=True)
+    parser.add_argument("--stop-file", type=Path)
+    args = parser.parse_args()
+    if sys.platform != "win32":
+        parser.error("The native workstation agent requires Windows")
+    session = _current_process_session()
+    if session.get("windows_session") != args.session_id:
+        parser.error("Agent must run in the requested interactive Windows session")
+
+    from .backends.local_runtime import create_workstation_runtime
+    from .config import Settings
+
+    settings = Settings.from_env()
+    if settings.backend != "com" or settings.runtime_endpoint:
+        parser.error("Agent requires a local COM backend")
+    adapter = create_workstation_runtime(settings)
+    agent = WorkstationRuntimeAgent(
+        adapter, WorkstationAgentConfig(port=args.port, auth_token=args.token_file.read_text().strip())
+    )
+    stopped = threading.Event()
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, lambda *_: stopped.set())
+    agent.start()
+    print(json.dumps({"event": "agent_started", "generation": agent.generation,
+                      "session": session, "port": args.port}), flush=True)
+    try:
+        while not stopped.wait(0.25):
+            if args.stop_file is not None and args.stop_file.exists():
+                break
+    finally:
+        agent.stop()
+        adapter.shutdown()
+
+
+if __name__ == "__main__":
+    main()

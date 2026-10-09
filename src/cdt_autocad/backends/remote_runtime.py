@@ -32,10 +32,13 @@ Uncertainty still fences both sides independently.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
+from ..errors import StateConflictError, UnsupportedCapabilityError
 from ..models import BlockInfo, EntityInfo, LayerInfo
 from ..mutation_coordinator import MutationCoordinator
+from ..runtime_binding import RuntimeBinding
 from ..runtime_transport import (
     ALLOWED_OPS,
     DEFAULT_DEADLINE_MS,
@@ -147,6 +150,8 @@ class RemoteAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
         expected_generation: str | None = None,
         default_deadline_ms: int = DEFAULT_DEADLINE_MS,
         settings: Any = None,
+        require_generation: bool = False,
+        state_file: Path | None = None,
     ) -> None:
         from ..runtime_transport import RuntimeTransport as _Transport
 
@@ -163,6 +168,16 @@ class RemoteAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
         self._default_deadline_ms = check_deadline(default_deadline_ms)
         self._settings = settings
         self._last_available = False
+        self._require_generation = require_generation
+        self._generation_lock = asyncio.Lock()
+        self._binding = RuntimeBinding(state_file) if state_file else None
+        if self._binding:
+            if self._binding.generation:
+                self._expected_generation = self._binding.generation
+            if self._binding.pending:
+                self._mutation_coordinator.quarantine(
+                    "remote", "Previous mutation completion is unknown; reconciliation required"
+                )
 
     # -- port surface --
 
@@ -253,23 +268,70 @@ class RemoteAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
         base["mutation_coordinator"] = coordinator
         return base
 
+    async def _ensure_generation(self) -> None:
+        if not self._require_generation:
+            return
+        async with self._generation_lock:
+            if self._expected_generation is None:
+                health = await self._transport.health()
+                generation = health.get("generation")
+                if not isinstance(generation, str) or not generation.strip():
+                    raise RuntimeUnavailableError("Agent heartbeat has no verified generation")
+                if self._binding:
+                    self._binding.save(generation, pending=False)
+                self.pin_generation(generation)
+
+    async def _dispatch_mutation(self, op: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+        if self._binding:
+            self._binding.save(self._expected_generation or "", pending=True)
+        try:
+            result = await self._transport.call(
+                op, args, kwargs, deadline_ms=self._default_deadline_ms,
+                expected_generation=self._expected_generation,
+            )
+        except BaseException as exc:
+            clean = isinstance(exc, (
+                RuntimeUnavailableError, RuntimeOpRefusedError, StateConflictError,
+                ValueError, FileNotFoundError, UnsupportedCapabilityError,
+            )) and not bool(getattr(exc, "completion_unknown", False))
+            from ..runtime_transport import RuntimeAuthError
+            clean = clean or isinstance(exc, RuntimeAuthError)
+            if clean and self._binding:
+                self._binding.save(self._expected_generation or "", pending=False)
+            elif self._binding:
+                self._mutation_coordinator.quarantine(
+                    "remote", "Dispatched mutation has no authoritative completion"
+                )
+            raise
+        if isinstance(result, dict) and result.get("status") in {
+            "STATE_UNCERTAIN", "ROLLBACK_FAILED", "COMMIT_INTEGRITY_FAIL",
+        }:
+            raise RuntimeUncertainError("Native result requires reconciliation")
+        if self._binding:
+            try:
+                self._binding.save(self._expected_generation or "", pending=False)
+            except OSError as exc:
+                try:
+                    self._binding.save(self._expected_generation or "", pending=True)
+                except OSError:
+                    pass
+                raise RuntimeUncertainError(
+                    "Cannot persist mutation completion; reconciliation required"
+                ) from exc
+        return result
+
     # -- dispatch core: no CAD semantics, only fencing + uncertainty --
 
     async def _call(self, op: str, *args: Any, **kwargs: Any) -> Any:
         if op not in ALLOWED_OPS:
             raise RuntimeOpRefusedError(f"remote op refused (not in allowlist): {op!r}")
+        await self._ensure_generation()
         dispatched = False
         try:
             if op in MUTATION_OPS:
                 async with self._mutation_coordinator.writer("remote"):
                     dispatched = True
-                    result = await self._transport.call(
-                        op,
-                        args,
-                        kwargs,
-                        deadline_ms=self._default_deadline_ms,
-                        expected_generation=self._expected_generation,
-                    )
+                    result = await self._dispatch_mutation(op, args, kwargs)
             else:
                 result = await self._transport.call(
                     op,
@@ -400,47 +462,47 @@ class RemoteAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
             op="object_scale",
         )
 
-    async def entity_create_line(self, **kwargs: Any) -> EntityInfo:
-        return _entity(await self._call("entity_create_line", **kwargs), op="entity_create_line")
+    async def entity_create_line(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return _entity(await self._call("entity_create_line", *args, **kwargs), op="entity_create_line")
 
-    async def entity_create_circle(self, **kwargs: Any) -> EntityInfo:
+    async def entity_create_circle(self, *args: Any, **kwargs: Any) -> EntityInfo:
         return _entity(
-            await self._call("entity_create_circle", **kwargs), op="entity_create_circle"
+            await self._call("entity_create_circle", *args, **kwargs), op="entity_create_circle"
         )
 
-    async def entity_create_arc(self, **kwargs: Any) -> EntityInfo:
-        return _entity(await self._call("entity_create_arc", **kwargs), op="entity_create_arc")
+    async def entity_create_arc(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return _entity(await self._call("entity_create_arc", *args, **kwargs), op="entity_create_arc")
 
-    async def entity_create_polyline(self, **kwargs: Any) -> EntityInfo:
+    async def entity_create_polyline(self, *args: Any, **kwargs: Any) -> EntityInfo:
         return _entity(
-            await self._call("entity_create_polyline", **kwargs), op="entity_create_polyline"
+            await self._call("entity_create_polyline", *args, **kwargs), op="entity_create_polyline"
         )
 
-    async def entity_create_text(self, **kwargs: Any) -> EntityInfo:
-        return _entity(await self._call("entity_create_text", **kwargs), op="entity_create_text")
+    async def entity_create_text(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return _entity(await self._call("entity_create_text", *args, **kwargs), op="entity_create_text")
 
-    async def hatch_create(self, **kwargs: Any) -> EntityInfo:
-        return _entity(await self._call("hatch_create", **kwargs), op="hatch_create")
+    async def hatch_create(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return _entity(await self._call("hatch_create", *args, **kwargs), op="hatch_create")
 
-    async def dimension_linear(self, **kwargs: Any) -> EntityInfo:
-        return _entity(await self._call("dimension_linear", **kwargs), op="dimension_linear")
+    async def dimension_linear(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return _entity(await self._call("dimension_linear", *args, **kwargs), op="dimension_linear")
 
-    async def dimension_aligned(self, **kwargs: Any) -> EntityInfo:
-        return _entity(await self._call("dimension_aligned", **kwargs), op="dimension_aligned")
+    async def dimension_aligned(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return _entity(await self._call("dimension_aligned", *args, **kwargs), op="dimension_aligned")
 
-    async def dimension_angular(self, **kwargs: Any) -> EntityInfo:
-        return _entity(await self._call("dimension_angular", **kwargs), op="dimension_angular")
+    async def dimension_angular(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return _entity(await self._call("dimension_angular", *args, **kwargs), op="dimension_angular")
 
-    async def dimension_radial(self, **kwargs: Any) -> EntityInfo:
-        return _entity(await self._call("dimension_radial", **kwargs), op="dimension_radial")
+    async def dimension_radial(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return _entity(await self._call("dimension_radial", *args, **kwargs), op="dimension_radial")
 
-    async def dimension_diametric(self, **kwargs: Any) -> EntityInfo:
+    async def dimension_diametric(self, *args: Any, **kwargs: Any) -> EntityInfo:
         return _entity(
-            await self._call("dimension_diametric", **kwargs), op="dimension_diametric"
+            await self._call("dimension_diametric", *args, **kwargs), op="dimension_diametric"
         )
 
-    async def dimension_ordinate(self, **kwargs: Any) -> EntityInfo:
-        return _entity(await self._call("dimension_ordinate", **kwargs), op="dimension_ordinate")
+    async def dimension_ordinate(self, *args: Any, **kwargs: Any) -> EntityInfo:
+        return _entity(await self._call("dimension_ordinate", *args, **kwargs), op="dimension_ordinate")
 
     async def layer_list(self) -> list[LayerInfo]:
         raw = await self._call("layer_list")
@@ -502,8 +564,8 @@ class RemoteAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
             op="block_create",
         )
 
-    async def block_insert(self, name: str, x: float, y: float, **kwargs: Any) -> EntityInfo:
-        return _entity(await self._call("block_insert", name, x, y, **kwargs), op="block_insert")
+    async def block_insert(self, name: str, x: float, y: float, *args: Any, **kwargs: Any) -> EntityInfo:
+        return _entity(await self._call("block_insert", name, x, y, *args, **kwargs), op="block_insert")
 
     async def xref_list(self) -> list[dict[str, Any]]:
         return await self._call("xref_list")
@@ -668,6 +730,14 @@ class RemoteAutoCADRuntimeAdapter(AutoCADBackend, AutoCADRuntimePort):
     # -- provider coordinator via _call (MUTATION_OPS) so quarantine blocks  --
     # -- later mutation while reads stay available. Results are facade dicts --
     # -- (JSON-safe); they pass through without reinterpretation.            --
+
+    async def native_bootstrap_document_identity(self) -> dict[str, Any]:
+        return await self._call("native_bootstrap_document_identity")
+
+    async def native_batch_insert_blocks(
+        self, inserts: list[dict[str, Any]], document_pid: str, expected_parent_fp: str
+    ) -> dict[str, Any]:
+        return await self._call("native_batch_insert_blocks", inserts, document_pid, expected_parent_fp)
 
     async def native_status(self) -> dict[str, Any]:
         return await self._call("native_status")

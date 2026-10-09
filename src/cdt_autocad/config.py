@@ -26,8 +26,22 @@ class Settings:
     com_progid: str = "AutoCAD.Application"
     com_attach_policy: str = "attach_only"
     com_call_timeout_seconds: float = 60.0
+    runtime_endpoint: str = ""
+    runtime_token_file: Path | None = None
+    runtime_state_file: Path | None = None
 
     def __post_init__(self) -> None:
+        if self.runtime_endpoint:
+            from urllib.parse import urlparse
+            endpoint = urlparse(self.runtime_endpoint)
+            if (endpoint.scheme != "http" or endpoint.hostname not in {"127.0.0.1", "localhost"}
+                or not endpoint.port or endpoint.path not in {"", "/"}
+                or endpoint.username or endpoint.password or endpoint.query or endpoint.fragment):
+                raise ValueError("Remote runtime requires an HTTP loopback endpoint over a secure tunnel")
+            if self.backend != "com" or not self.runtime_token_file or not self.runtime_state_file:
+                raise ValueError("Remote COM runtime requires token-file and durable state-file")
+        elif self.runtime_token_file or self.runtime_state_file:
+            raise ValueError("Runtime files require runtime_endpoint")
         if not self.allowed_paths:
             raise ValueError("allowed_paths must not be empty")
         if self.max_dxf_bytes <= 0:
@@ -100,6 +114,15 @@ class Settings:
 
         return cls(
             allowed_paths=roots,
+            runtime_endpoint=os.environ.get("CDT_AUTOCAD_RUNTIME_ENDPOINT", "").strip(),
+            runtime_token_file=(
+                Path(os.environ["CDT_AUTOCAD_RUNTIME_TOKEN_FILE"]).expanduser().resolve()
+                if os.environ.get("CDT_AUTOCAD_RUNTIME_TOKEN_FILE") else None
+            ),
+            runtime_state_file=(
+                Path(os.environ["CDT_AUTOCAD_RUNTIME_STATE_FILE"]).expanduser().resolve()
+                if os.environ.get("CDT_AUTOCAD_RUNTIME_STATE_FILE") else None
+            ),
             max_dxf_bytes=max_bytes,
             call_timeout_seconds=timeout,
             render_timeout_seconds=render_timeout,

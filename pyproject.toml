@@ -33,6 +33,7 @@ render = ["matplotlib>=3.8,<4"]
 [project.scripts]
 cdt-autocad = "cdt_autocad.server:main"
 cdt-autocad-supervisor = "cdt_autocad.supervisor:main"
+cdt-autocad-agent = "cdt_autocad.workstation_agent:main"
 
 [project.urls]
 Repository = "https://github.com/SlncTrZ/CDT-AutoCAD"

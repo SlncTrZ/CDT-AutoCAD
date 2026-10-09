@@ -1,8 +1,16 @@
-"""AutoCAD backend implementations.
-Wing: code | Topic: autocad-a2 | Updated: 2026-09-09 14:06
-"""
+"""Backend exports are lazy so the remote control process never imports COM."""
+from __future__ import annotations
 
-from .com_backend import ComBackend
-from .ezdxf_backend import EzdxfBackend
+from importlib import import_module
+from typing import Any
 
 __all__ = ["ComBackend", "EzdxfBackend"]
+
+
+def __getattr__(name: str) -> Any:
+    modules = {"ComBackend": ".com_backend", "EzdxfBackend": ".ezdxf_backend"}
+    if name not in modules:
+        raise AttributeError(name)
+    value = getattr(import_module(modules[name], __name__), name)
+    globals()[name] = value
+    return value
