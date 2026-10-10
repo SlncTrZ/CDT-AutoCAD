@@ -2,6 +2,12 @@
 
 All notable product and operational changes to CDT-AutoCAD are recorded here. Historical evidence files remain authoritative for the exact test conditions of their original checkpoints.
 
+## [0.4.1] - 2026-10-10
+
+- Stable patch release with canonical CDT tag `v.0.4.1`.
+- No tool schema or native AutoCAD execution changes introduced solely by the version normalization.
+- Prior native acceptance remains scoped to its documented source/build; deployment is separate.
+
 ## [0.4.0] - 2026-10-07
 
 ### Added

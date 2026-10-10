@@ -1,6 +1,6 @@
 # Support
 
-CDT-AutoCAD is operated as a stable production release from version `0.4.0 / autocad-generic-v1`.
+CDT-AutoCAD is operated as a stable production release from version `0.4.1 / autocad-generic-v1`.
 
 ## Supported operational lane
 
