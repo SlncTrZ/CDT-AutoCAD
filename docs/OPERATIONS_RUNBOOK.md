@@ -1,16 +1,16 @@
 # Operations Runbook — CDT-AutoCAD
 
 > Operational start: 2026-09-12
-> Updated: 2026-10-07 +07:00
-> Current source product identity: `0.4.0 / autocad-generic-v1 / 87 tools`
-> Current native bridge candidate: `0.8.6-d18` · deployed DLL SHA-256 `13293B5E21F9E2B31A7B75D3EFFC107AB912F3C202AC70426CC65CBCB8C79070` · published release `v0.4.0` (2026-10-07)
+> Updated: 2026-10-10 +07:00
+> Current released source: `0.4.2 / autocad-generic-v1 / 87 tools`. Running provider identity must be queried separately.
+> Current native bridge candidate: `0.8.6-d18` · deployed DLL SHA-256 `13293B5E21F9E2B31A7B75D3EFFC107AB912F3C202AC70426CC65CBCB8C79070` · historical release `v0.4.0` (2026-10-07); current source release `v.0.4.2` (not evidence of native redeployment)
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
 > Live gates: certified-at `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64, extended by affected-scoped requal at `a3faa7b` + 2026-10-06 and AC-P02 requal at `a69289f` + 2026-10-07 (smoke, 320-scale, 10k-scale, U1, D15–D18, hot-reload — see LIVE_ACCEPTANCE) — pending is an operational stamp, not a use prohibition; deployment health checks still govern each host/session
 > Operational incident OP-01 CLOSED 2026-10-07: AutoCAD PID 37688 Session 1, pipe present, backend port 8000 listen, health gates clean (tx=0, uncertainty=false, pending=0), no recovery required
 
 ## 1. Operating boundary
 
-CDT-AutoCAD is operating as an **RC/preview Generic CAD Execution Engine**. Operational use does not convert the version into GA or expand capability claims beyond current evidence. Scoped technical recertification passed on 2026-09-30 for execution source `9c69430` (certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64); a deployment must still pass health checks for its actual host/session. Writes are allowed on disposable fixtures; production-document writes default-refuse.
+CDT-AutoCAD is released as a **stable product**. Its native execution scope remains restricted to measured builds; a stable tag does not prove an upgraded workstation or expand capability claims. Scoped technical recertification passed on 2026-09-30 for execution source `9c69430` (certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64); a deployment must still pass health checks for its actual host/session. Writes are allowed on disposable fixtures; production-document writes default-refuse.
 
 The provider owns generic CAD execution, persistent identity, semantic state, bounded mutation, recovery and artifact evidence. Domain standards, engineering calculations and design judgment remain outside the provider.
 

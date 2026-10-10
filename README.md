@@ -3,7 +3,7 @@
 Generic AutoCAD execution provider for MCP clients. It owns native CAD execution,
 state verification and recovery; engineering design rules belong to CDT_Engineer.
 
-Provider `0.4.1` · Contract `autocad-generic-v1` · 87 public tools.
+Provider `0.4.2` · Contract `autocad-generic-v1` · 87 public tools.
 Native acceptance is scoped to AutoCAD 2027 full on Windows x64. The headless DXF
 lane has separate capabilities; other AutoCAD versions need their own acceptance.
 
@@ -41,6 +41,7 @@ No arbitrary shell, AutoLISP, macro or caller-supplied C# execution is exposed.
 
 ## Reference
 
+- [Release, install and rollback](docs/RELEASE_AND_DEPLOYMENT.md).
 - [Tool contract](docs/TOOL_GUIDE.md) — callable surface and guarantees.
 - [Compatibility and assurance limits](docs/COMPATIBILITY.md).
 - [Operations](docs/OPERATIONS_RUNBOOK.md).

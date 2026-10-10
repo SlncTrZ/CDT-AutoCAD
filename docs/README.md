@@ -6,6 +6,7 @@ Start with the [product README](../README.md), then choose the reference for the
 | --- | --- |
 | Callable tools and contract | [Tool guide](TOOL_GUIDE.md) |
 | Runtime support and assurance limits | [Compatibility](COMPATIBILITY.md) |
+| Stable release, installation and rollback | [Release & deployment](RELEASE_AND_DEPLOYMENT.md) |
 | Install, operate and recover | [Operations](OPERATIONS_RUNBOOK.md) |
 | Provider architecture | [Architecture](ARCHITECTURE.md) |
 | Semantic identity and rollback | [State protocol](SEMANTIC_STATE_PROTOCOL.md) |

@@ -2,6 +2,11 @@
 
 All notable product and operational changes to CDT-AutoCAD are recorded here. Historical evidence files remain authoritative for the exact test conditions of their original checkpoints.
 
+## [0.4.2] - 2026-10-10
+
+- Documentation consolidation: stable package identity and accurate historical/native acceptance boundaries, release/deployment guide, rollback and credential preservation.
+- No MCP tool or native CAD capability change.
+
 ## [0.4.1] - 2026-10-10
 
 - Stable patch release with canonical CDT tag `v.0.4.1`.

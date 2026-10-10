@@ -1,9 +1,9 @@
 # AutoCAD Live Acceptance Runbook
 
-> Updated: 2026-10-09 +07:00
+> Updated: 2026-10-10 +07:00
 > Scope: COM/A3 live baseline + Managed .NET N0–N7/O1/G1/G2/G3 + 10k scale + Feature-based Chunks Streaming + bounded MP-G05 native 3DSOLID integrity loop + B0/B1/B4 + U1 core hardening + D8 stale-COM recovery + D15–D18 assurance closures + AC-P02 insert/transform affected-scoped verify
 > Primary certification target: **AutoCAD 2027 full, Windows x64**
-> Current source identity: `0.4.0 / autocad-generic-v1 / 87 tools` · bridge `0.8.6-d18` · deployed DLL SHA-256 `13293B5E…` (replaces `9A877C66…`) · published release `v0.4.0` (2026-10-07) · live gates certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64, extended by affected-scoped requal at HEAD `a3faa7b` + 2026-10-06, AC-P02 requal at HEAD `a69289f` + 2026-10-07, and R3/R4 remote parity at `9f51b8b` (below)
+> Current released source identity: `0.4.2 / autocad-generic-v1 / 87 tools` (`v.0.4.2`). The historical measured acceptance below keeps its original source, native DLL and SHA-256 identities. Earlier source identity: `0.4.0 / autocad-generic-v1 / 87 tools` · bridge `0.8.6-d18` · deployed DLL SHA-256 `13293B5E…` (replaces `9A877C66…`) · published release `v0.4.0` (2026-10-07) · live gates certified-at: `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64, extended by affected-scoped requal at HEAD `a3faa7b` + 2026-10-06, AC-P02 requal at HEAD `a69289f` + 2026-10-07, and R3/R4 remote parity at `9f51b8b` (below)
 
 ## Split-host placement acceptance — 2026-10-09
 
