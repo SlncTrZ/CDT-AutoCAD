@@ -681,6 +681,7 @@ def create_mcp(
             "previously accepted features remain intact."
         ),
     )
+    app._mcp_server.version = __version__
     app.add_middleware(
         ProviderDiagnosticMiddleware(
             backend_name=backend.name,
