@@ -11,6 +11,10 @@
 3. With AutoCAD already running in the intended interactive Windows session, verify `system_status`, `system_capabilities` and `native_integrity_status` before native writes. Compare runtime provider version, bridge DLL hash, document PID and fingerprint with the accepted [compatibility](COMPATIBILITY.md) and [live acceptance](LIVE_ACCEPTANCE.md) scope.
 4. For split-host SlncTrZ-MCP, retain localhost listeners and authenticated/private forwarding; inspect the provider registration **after** the owner activates the new immutable build. A GitHub tag does not switch the active Gateway process.
 
+## Managed `.227` deployment
+
+The current managed service is `cdt-autocad.service`, running an immutable wheel built from exact tag `v.0.4.2` and serving authenticated Streamable HTTP at `http://127.0.0.1:8811/mcp`. Direct Gateway-adapter acceptance discovers all 87 tools with zero normalized drift. Production Gateway registration is active over authenticated Streamable HTTP. Gateway runtime reports the provider catalog ready; a source tag alone is still not proof of native AutoCAD readiness.
+
 ## Auth-safe promotion / rollback
 
 Stage a fresh immutable release directory; retain the previous provider wheel, runtime binding, validated bridge DLL and encrypted auth source. Record source SHA, artifact hashes and generation *separately* from package version. Do not rotate or copy credentials during upgrade. Test read-only status/discovery, a safe scratch-document mutation and readback. If auth or native verification fails, restore the previous managed provider entry and executable, then verify session/document health. Never edit an active production DWG merely to test an upgrade.
