@@ -6,10 +6,10 @@ CDT-AutoCAD controls a live CAD application and can mutate engineering data. Sec
 
 | Version | Security support |
 | --- | --- |
-| `0.4.0` | Current published stable release; primary production lane |
-| `0.4.0rc3` source candidate | Operational RC candidate; superseded by 0.4.0 |
-| `0.4.0rc2` | Historical operational RC |
-| `0.4.0rc1` and older snapshots / historical checkpoints | Not supported unless reproduced on the current contract |
+| `0.4.2` | Current published stable release; primary production lane |
+| `0.4.1` | Prior patch release |
+| `0.4.0` | Baseline stable release |
+| `< 0.4.0` and older snapshots / historical checkpoints | Not supported unless reproduced on the current contract |
 
 The primary certified live lane is AutoCAD 2027 full on Windows x64. A behavior reproduced only on another AutoCAD release, backend, or unsupported capability should identify that environment explicitly.
 
