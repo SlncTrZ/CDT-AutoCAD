@@ -492,7 +492,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     import win32com.client
 
     pythoncom.CoInitialize()
-    created_document = None
+    created_document: Any = None
     disposable_path: Path | None = None
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

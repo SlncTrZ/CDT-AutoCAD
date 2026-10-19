@@ -253,7 +253,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     screenshot_path.unlink(missing_ok=True)
 
     application = None
-    created_document = None
+    created_document: Any = None
     success = False
     started = time.perf_counter()
     pythoncom.CoInitialize()

@@ -7,12 +7,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import inspect
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import StaticTokenVerifier
 from fastmcp.server.middleware import Middleware, MiddlewareContext
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools.tool import ToolResult  # type: ignore[import-not-found,import-untyped]
 from fastmcp.utilities.types import Image
 from pydantic import FiniteFloat
 
@@ -707,27 +708,38 @@ def create_mcp(
                 from .runtime_transport import RuntimeOpRefusedError
 
                 try:
-                    execution_identity = await backend._call("runtime_identity_status")
+                    call_fn = cast(
+                        Callable[[str], Awaitable[dict[str, Any]]] | None,
+                        getattr(backend, "_call", None),
+                    )
+                    if call_fn is not None:
+                        execution_identity = await call_fn("runtime_identity_status")
+                    else:
+                        execution_identity = {
+                            "native_bridge": {"ready": False, "reason": "identity_unavailable"}
+                        }
                 except RuntimeOpRefusedError:
                     execution_identity = {
                         "native_bridge": {"ready": False, "reason": "identity_unavailable"}
                     }
+                expected_gen = getattr(local_runtime, "expected_generation", None)
                 result = {
                     **result,
                     "execution_identity": execution_identity,
-                    "runtime_generation": local_runtime.expected_generation,
+                    "runtime_generation": expected_gen,
                 }
             return result
         except RuntimeTransportError as exc:
             if name == "capabilities":
                 return {}
+            expected_gen = getattr(local_runtime, "expected_generation", None)
             return {
                 "backend": backend.name,
                 "runtime_available": False,
                 "connected": False,
                 "dependency_error": str(exc),
                 "transport": "remote",
-                "expected_runtime_generation": local_runtime.expected_generation,
+                "expected_runtime_generation": expected_gen,
             }
 
     async def native_read(func: Any, *args: Any, **kwargs: Any) -> Any:
@@ -770,7 +782,9 @@ def create_mcp(
                 {
                     "supported_profile": "com-live-remote",
                     "generation": runtime_identity.generation,
-                    "expected_runtime_generation": local_runtime.expected_generation,
+                    "expected_runtime_generation": getattr(
+                        local_runtime, "expected_generation", None
+                    ),
                     "execution_host": "workstation",
                     "transport": "remote",
                 }
@@ -997,10 +1011,19 @@ def create_mcp(
             raise ValueError("offset must be >= 0")
         window_values = (min_x, min_y, max_x, max_y)
         has_window = any(value is not None for value in window_values)
-        if has_window and not all(value is not None for value in window_values):
-            raise ValueError("spatial query requires min_x, min_y, max_x and max_y together")
-        if has_window and (float(min_x) >= float(max_x) or float(min_y) >= float(max_y)):
-            raise ValueError("spatial query window must have positive width and height")
+        win_min_x: float = 0.0
+        win_min_y: float = 0.0
+        win_max_x: float = 0.0
+        win_max_y: float = 0.0
+        if has_window:
+            if min_x is None or min_y is None or max_x is None or max_y is None:
+                raise ValueError("spatial query requires min_x, min_y, max_x and max_y together")
+            win_min_x = float(min_x)
+            win_min_y = float(min_y)
+            win_max_x = float(max_x)
+            win_max_y = float(max_y)
+            if win_min_x >= win_max_x or win_min_y >= win_max_y:
+                raise ValueError("spatial query window must have positive width and height")
 
         total = await backend.object_count(type_filter, layer_filter)
         scan_limit = min(total, 5000)
@@ -1033,10 +1056,10 @@ def create_mcp(
                 ):
                     continue
                 intersects = not (
-                    float(high[0]) < float(min_x)
-                    or float(low[0]) > float(max_x)
-                    or float(high[1]) < float(min_y)
-                    or float(low[1]) > float(max_y)
+                    float(high[0]) < win_min_x
+                    or float(low[0]) > win_max_x
+                    or float(high[1]) < win_min_y
+                    or float(low[1]) > win_max_y
                 )
                 if not intersects:
                     continue

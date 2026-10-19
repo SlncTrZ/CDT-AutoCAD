@@ -150,18 +150,18 @@ Do not hold a write transaction open while waiting for an AI/network round-trip.
 
 Rollback is layered because not every side effect is a pure database mutation.
 
-**R0 — Native transaction abort (preferred)**
+#### R0 — Native transaction abort (preferred)
 
 - Used before commit when any deterministic invariant fails.
 - Must restore the predecessor semantic/identity state without requiring UI commands.
 - For D18 document-PID bootstrap, PID write/readback/semantic verification share one transaction; abort restores the predecessor PID/lineage and entity state. AutoCAD may still mark the document modified (`DBMOD`) after an aborted bootstrap transaction, so persisted-clean state is a separate D17 invariant rather than part of the D18 identity-rollback claim.
 
-**R1 — Verified inverse/undo compensation**
+#### R1 — Verified inverse/undo compensation
 
 - Used only for a post-commit integrity failure when the bridge can deterministically reverse the exact committed mutation.
 - Compensation itself is a semantic step and must be independently read back.
 
-**R2 — Checkpoint restore**
+#### R2 — Checkpoint restore
 
 - Required fallback for uncertain or non-invertible post-commit state.
 - Restore from the last immutable accepted native checkpoint, reopen/read back, and prove `restored_document_fp == expected_parent_fp`.
