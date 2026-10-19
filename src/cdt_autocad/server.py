@@ -417,7 +417,9 @@ _TOOL_DESCRIPTIONS = {
 }
 
 
-def _help_payload(backend: AutoCADBackend, capabilities: dict[str, Any] | None = None) -> dict[str, Any]:
+def _help_payload(
+    backend: AutoCADBackend, capabilities: dict[str, Any] | None = None
+) -> dict[str, Any]:
     content, contract_hash = _contract_material()
     return {
         "provider_name": "autocad",
@@ -444,9 +446,7 @@ def _status_contract(backend: AutoCADBackend, backend_status: dict[str, Any]) ->
     if backend.name == "com":
         application = backend_status.get("application") or None
         current_release_match = (
-            None
-            if application is None
-            else str(application.get("release") or "") == "2027"
+            None if application is None else str(application.get("release") or "") == "2027"
         )
         runtime = {
             "platform_supported": bool(backend_status.get("runtime_available")),
@@ -638,8 +638,10 @@ def create_mcp(
         token = settings.runtime_token_file.read_text().strip()
         local_runtime = RemoteAutoCADRuntimeAdapter(
             RemoteRuntimeTransport(settings.runtime_endpoint, token),
-            mutation_coordinator=mutation_coordinator, settings=settings,
-            require_generation=True, state_file=settings.runtime_state_file,
+            mutation_coordinator=mutation_coordinator,
+            settings=settings,
+            require_generation=True,
+            state_file=settings.runtime_state_file,
         )
         backend = local_runtime
         native_facade = RemoteNativeFacade(local_runtime)
@@ -647,6 +649,7 @@ def create_mcp(
         from .backends.com_backend import ComBackend
         from .backends.local_runtime import LocalAutoCADRuntimeAdapter
         from .native_bridge.public_runtime import NativePublicFacade
+
         com_backend = ComBackend(settings, mutation_coordinator=mutation_coordinator)
         local_runtime = LocalAutoCADRuntimeAdapter(
             com_backend,
@@ -657,6 +660,7 @@ def create_mcp(
         native_facade = local_runtime.native_facade
     else:
         from .native_bridge.public_runtime import NativePublicFacade
+
         backend = EzdxfBackend(settings)
         native_facade = NativePublicFacade(settings)
     auth = None
@@ -696,23 +700,35 @@ def create_mcp(
         if not settings.runtime_endpoint:
             return getattr(backend, name)()
         from .runtime_transport import RuntimeTransportError
+
         try:
             result = await getattr(backend, name + "_async")()
             if name == "status":
                 from .runtime_transport import RuntimeOpRefusedError
+
                 try:
                     execution_identity = await backend._call("runtime_identity_status")
                 except RuntimeOpRefusedError:
-                    execution_identity = {"native_bridge": {"ready": False, "reason": "identity_unavailable"}}
-                result = {**result, "execution_identity": execution_identity,
-                          "runtime_generation": local_runtime.expected_generation}
+                    execution_identity = {
+                        "native_bridge": {"ready": False, "reason": "identity_unavailable"}
+                    }
+                result = {
+                    **result,
+                    "execution_identity": execution_identity,
+                    "runtime_generation": local_runtime.expected_generation,
+                }
             return result
         except RuntimeTransportError as exc:
             if name == "capabilities":
                 return {}
-            return {"backend": backend.name, "runtime_available": False, "connected": False,
-                    "dependency_error": str(exc), "transport": "remote",
-                    "expected_runtime_generation": local_runtime.expected_generation}
+            return {
+                "backend": backend.name,
+                "runtime_available": False,
+                "connected": False,
+                "dependency_error": str(exc),
+                "transport": "remote",
+                "expected_runtime_generation": local_runtime.expected_generation,
+            }
 
     async def native_read(func: Any, *args: Any, **kwargs: Any) -> Any:
         if inspect.iscoroutinefunction(func):
@@ -751,11 +767,15 @@ def create_mcp(
             **backend_status,
             **_status_contract(backend, backend_status),
             **(
-                {"supported_profile": "com-live-remote",
-                 "generation": runtime_identity.generation,
-                 "expected_runtime_generation": local_runtime.expected_generation,
-                 "execution_host": "workstation", "transport": "remote"}
-                if settings.runtime_endpoint else runtime_identity.status(backend_name=backend.name)
+                {
+                    "supported_profile": "com-live-remote",
+                    "generation": runtime_identity.generation,
+                    "expected_runtime_generation": local_runtime.expected_generation,
+                    "execution_host": "workstation",
+                    "transport": "remote",
+                }
+                if settings.runtime_endpoint
+                else runtime_identity.status(backend_name=backend.name)
             ),
         }
 
@@ -1005,7 +1025,12 @@ def create_mcp(
                     continue
                 low = bbox.get("min")
                 high = bbox.get("max")
-                if not isinstance(low, list) or not isinstance(high, list) or len(low) < 2 or len(high) < 2:
+                if (
+                    not isinstance(low, list)
+                    or not isinstance(high, list)
+                    or len(low) < 2
+                    or len(high) < 2
+                ):
                     continue
                 intersects = not (
                     float(high[0]) < float(min_x)
@@ -1017,10 +1042,8 @@ def create_mcp(
                     continue
                 payload["measurement"] = measured
             matched.append(payload)
-        page = matched[int(offset): int(offset) + int(limit)]
-        next_offset = (
-            int(offset) + len(page) if int(offset) + len(page) < len(matched) else None
-        )
+        page = matched[int(offset) : int(offset) + int(limit)]
+        next_offset = int(offset) + len(page) if int(offset) + len(page) < len(matched) else None
         page_bytes = canonical_byte_size(page)
         return {
             "items": page,
@@ -1048,7 +1071,9 @@ def create_mcp(
         visible: bool | None = None,
     ) -> dict[str, Any]:
         return (
-            await backend.object_set_properties(object_id, layer=layer, color=color, linetype=linetype, visible=visible)
+            await backend.object_set_properties(
+                object_id, layer=layer, color=color, linetype=linetype, visible=visible
+            )
         ).to_dict()
 
     @provider_tool(tags={"object", "write"})
@@ -1090,9 +1115,7 @@ def create_mcp(
         layer: str | None = None,
         color: int | None = None,
     ) -> dict[str, Any]:
-        return (
-            await backend.entity_create_line(x1, y1, x2, y2, z1, z2, layer, color)
-        ).to_dict()
+        return (await backend.entity_create_line(x1, y1, x2, y2, z1, z2, layer, color)).to_dict()
 
     @provider_tool(tags={"entity", "write"})
     async def entity_create_circle(
@@ -1115,9 +1138,7 @@ def create_mcp(
         color: int | None = None,
     ) -> dict[str, Any]:
         return (
-            await backend.entity_create_arc(
-                cx, cy, radius, start_angle, end_angle, layer, color
-            )
+            await backend.entity_create_arc(cx, cy, radius, start_angle, end_angle, layer, color)
         ).to_dict()
 
     @provider_tool(tags={"entity", "write"})
@@ -1188,9 +1209,7 @@ def create_mcp(
         dim_y: FiniteFloat,
         layer: str | None = None,
     ) -> dict[str, Any]:
-        return (
-            await backend.dimension_aligned(x1, y1, x2, y2, dim_x, dim_y, layer)
-        ).to_dict()
+        return (await backend.dimension_aligned(x1, y1, x2, y2, dim_x, dim_y, layer)).to_dict()
 
     @provider_tool(tags={"dimension", "write"})
     async def dimension_angular(
@@ -1323,9 +1342,7 @@ def create_mcp(
         rotation: FiniteFloat = 0.0,
         layer: str | None = None,
     ) -> dict[str, Any]:
-        return (
-            await backend.block_insert(name, x, y, scale_x, scale_y, rotation, layer)
-        ).to_dict()
+        return (await backend.block_insert(name, x, y, scale_x, scale_y, rotation, layer)).to_dict()
 
     @provider_tool(tags={"xref", "read"})
     async def xref_list() -> list[dict[str, Any]]:
@@ -1439,7 +1456,9 @@ def create_mcp(
         return Image(data=await backend.view_screenshot(), format="png")
 
     @provider_tool(tags={"view", "write"})
-    async def view_set_direction(dx: FiniteFloat, dy: FiniteFloat, dz: FiniteFloat) -> dict[str, Any]:
+    async def view_set_direction(
+        dx: FiniteFloat, dy: FiniteFloat, dz: FiniteFloat
+    ) -> dict[str, Any]:
         return await backend.view_set_direction(dx, dy, dz)
 
     @provider_tool(tags={"view", "write"})
@@ -1483,14 +1502,14 @@ def create_mcp(
         }
         spec = specs.get(normalized)
         if spec is None:
-            raise ValueError("solid primitive kind must be one of: box, cylinder, sphere, cone, torus, wedge")
+            raise ValueError(
+                "solid primitive kind must be one of: box, cylinder, sphere, cone, torus, wedge"
+            )
         fields, method = spec
         supplied = set(parameters)
         required = set(fields)
         if supplied != required:
-            raise ValueError(
-                f"{normalized} parameters must contain exactly: " + ", ".join(fields)
-            )
+            raise ValueError(f"{normalized} parameters must contain exactly: " + ", ".join(fields))
         values = [float(parameters[field]) for field in fields]
         result = await method(*values, layer=layer)
         return {**result, "primitive": normalized}
@@ -1568,12 +1587,16 @@ def create_mcp(
         if normalized == "rotate":
             fields = ("axis_x1", "axis_y1", "axis_z1", "axis_x2", "axis_y2", "axis_z2", "angle_deg")
             if set(parameters) != set(fields):
-                raise ValueError("rotate parameters must contain exactly axis endpoints and angle_deg")
+                raise ValueError(
+                    "rotate parameters must contain exactly axis endpoints and angle_deg"
+                )
             return await backend.solid_rotate3d(handle, *(float(parameters[key]) for key in fields))
         if normalized == "scale":
             fields = ("base_x", "base_y", "base_z", "factor")
             if set(parameters) != set(fields):
-                raise ValueError("scale parameters must contain exactly base_x, base_y, base_z, factor")
+                raise ValueError(
+                    "scale parameters must contain exactly base_x, base_y, base_z, factor"
+                )
             return await backend.solid_scale3d(handle, *(float(parameters[key]) for key in fields))
         if normalized == "mirror":
             fields = ("x1", "y1", "z1", "x2", "y2", "z2", "x3", "y3", "z3")
