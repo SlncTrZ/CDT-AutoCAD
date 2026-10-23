@@ -16,8 +16,9 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, TypeVar
 
-import ezdxf
 import ezdxf.bbox as ezdxf_bbox
+from ezdxf.filemanagement import new as ezdxf_new
+from ezdxf.filemanagement import read as ezdxf_read
 from ezdxf.math import Matrix44, arc_angle_span_rad, bulge_to_arc
 
 from ..config import Settings
@@ -36,16 +37,42 @@ _T = TypeVar("_T")
 
 
 _INSERTION_UNIT_CODES = {
-    "unitless": 0, "inches": 1, "feet": 2, "miles": 3,
-    "millimeters": 4, "millimetres": 4, "mm": 4,
-    "centimeters": 5, "centimetres": 5, "cm": 5,
-    "meters": 6, "metres": 6, "m": 6,
-    "kilometers": 7, "kilometres": 7, "km": 7,
+    "unitless": 0,
+    "inches": 1,
+    "feet": 2,
+    "miles": 3,
+    "millimeters": 4,
+    "millimetres": 4,
+    "mm": 4,
+    "centimeters": 5,
+    "centimetres": 5,
+    "cm": 5,
+    "meters": 6,
+    "metres": 6,
+    "m": 6,
+    "kilometers": 7,
+    "kilometres": 7,
+    "km": 7,
 }
-_INSERTION_UNIT_NAMES = {0: "unitless", 1: "inches", 2: "feet", 3: "miles", 4: "millimeters", 5: "centimeters", 6: "meters", 7: "kilometers"}
+_INSERTION_UNIT_NAMES = {
+    0: "unitless",
+    1: "inches",
+    2: "feet",
+    3: "miles",
+    4: "millimeters",
+    5: "centimeters",
+    6: "meters",
+    7: "kilometers",
+}
 _MEASUREMENT_CODES = {"english": 0, "metric": 1}
 _MEASUREMENT_NAMES = {0: "english", 1: "metric"}
-_LINEAR_FORMAT_CODES = {"scientific": 1, "decimal": 2, "engineering": 3, "architectural": 4, "fractional": 5}
+_LINEAR_FORMAT_CODES = {
+    "scientific": 1,
+    "decimal": 2,
+    "engineering": 3,
+    "architectural": 4,
+    "fractional": 5,
+}
 _LINEAR_FORMAT_NAMES = {value: key for key, value in _LINEAR_FORMAT_CODES.items()}
 
 _UNIT_NAMES = {
@@ -247,7 +274,9 @@ class EzdxfBackend(AutoCADBackend):
             "autocad.dwg.read": Capability(False, reason="live_autocad_or_converter_required"),
             "autocad.dwg.write": Capability(False, reason="live_autocad_required"),
             "autocad.blocks": Capability(True, "native"),
-            "autocad.references.xref": Capability(False, reason="COM_backend_required_for_xref_lifecycle"),
+            "autocad.references.xref": Capability(
+                False, reason="COM_backend_required_for_xref_lifecycle"
+            ),
             "autocad.artifact.seal": Capability(False, reason="live_saved_artifact_required"),
             "autocad.layouts": Capability(True, "native"),
             "autocad.dimensions.linear": Capability(True, "native"),
@@ -360,7 +389,7 @@ class EzdxfBackend(AutoCADBackend):
 
     def _restore_snapshot(self, snapshot: bytes) -> None:
         raw = gzip.decompress(snapshot).decode("utf-8")
-        self._doc = ezdxf.read(io.StringIO(raw))
+        self._doc = ezdxf_read(io.StringIO(raw))
         self._generation += 1
         self._sync_document_context()
         self._dirty = True
@@ -448,7 +477,7 @@ class EzdxfBackend(AutoCADBackend):
                 ) from exc
 
     async def document_new(self) -> dict[str, Any]:
-        doc = await self._run(lambda: ezdxf.new(dxfversion="R2010"), quarantine_exit=True)
+        doc = await self._run(lambda: ezdxf_new(dxfversion="R2010"), quarantine_exit=True)
         self._doc = doc
         self._generation += 1
         self._doc_path = None
@@ -480,7 +509,7 @@ class EzdxfBackend(AutoCADBackend):
             ) as stream:
                 raw = stream.read()
             text = raw.decode("utf-8").replace("\r\n", "\n")
-            return ezdxf.read(io.StringIO(text))
+            return ezdxf_read(io.StringIO(text))
 
         doc = await self._run(_open_sync, quarantine_exit=True)
         self._doc = doc
@@ -555,10 +584,15 @@ class EzdxfBackend(AutoCADBackend):
         target = resolve_pdf_path(path, self.settings)
 
         def _sync() -> dict[str, Any]:
-            from ezdxf.addons.drawing import Frontend, RenderContext
+            from ezdxf.addons.drawing.frontend import Frontend
             from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
-            from matplotlib.backends.backend_agg import FigureCanvasAgg
-            from matplotlib.figure import Figure
+            from ezdxf.addons.drawing.properties import RenderContext
+            from matplotlib.backends.backend_agg import (  # type: ignore[import-not-found,reportMissingImports]
+                FigureCanvasAgg,
+            )
+            from matplotlib.figure import (  # type: ignore[import-not-found,reportMissingImports]
+                Figure,
+            )
 
             doc = self._require_doc()
             resolved_layout = self._find_layout(layout) if layout else None
@@ -689,13 +723,19 @@ class EzdxfBackend(AutoCADBackend):
             raise ValueError("polyline requires at least two [x, y] points")
         vertex_count = len(points)
         normalized_bulges = [0.0] * vertex_count if bulges is None else [float(v) for v in bulges]
-        if len(normalized_bulges) != vertex_count or not all(math.isfinite(v) for v in normalized_bulges):
+        if len(normalized_bulges) != vertex_count or not all(
+            math.isfinite(v) for v in normalized_bulges
+        ):
             raise ValueError("bulges must contain one finite value per polyline vertex")
-        normalized_widths = ([[0.0, 0.0] for _ in range(vertex_count)] if widths is None else widths)
-        if len(normalized_widths) != vertex_count or any(len(pair) != 2 for pair in normalized_widths):
+        normalized_widths = [[0.0, 0.0] for _ in range(vertex_count)] if widths is None else widths
+        if len(normalized_widths) != vertex_count or any(
+            len(pair) != 2 for pair in normalized_widths
+        ):
             raise ValueError("widths must contain [start_width, end_width] for every vertex")
         width_pairs = [(float(pair[0]), float(pair[1])) for pair in normalized_widths]
-        if any((not math.isfinite(a) or not math.isfinite(b) or a < 0 or b < 0) for a, b in width_pairs):
+        if any(
+            (not math.isfinite(a) or not math.isfinite(b) or a < 0 or b < 0) for a, b in width_pairs
+        ):
             raise ValueError("polyline widths must be finite values >= 0")
         if not math.isfinite(float(elevation)):
             raise ValueError("elevation must be finite")
@@ -981,7 +1021,10 @@ class EzdxfBackend(AutoCADBackend):
             for entity in self._space():
                 if type_filter and entity.dxftype().lower() != type_filter.lower():
                     continue
-                if layer_filter and str(entity.dxf.get("layer", "0")).lower() != layer_filter.lower():
+                if (
+                    layer_filter
+                    and str(entity.dxf.get("layer", "0")).lower() != layer_filter.lower()
+                ):
                     continue
                 if skipped < offset:
                     skipped += 1
@@ -1003,7 +1046,10 @@ class EzdxfBackend(AutoCADBackend):
             for entity in self._space():
                 if type_filter and entity.dxftype().lower() != type_filter.lower():
                     continue
-                if layer_filter and str(entity.dxf.get("layer", "0")).lower() != layer_filter.lower():
+                if (
+                    layer_filter
+                    and str(entity.dxf.get("layer", "0")).lower() != layer_filter.lower()
+                ):
                     continue
                 count += 1
             return count
@@ -1077,7 +1123,10 @@ class EzdxfBackend(AutoCADBackend):
             target_layer = self._validate_layer(layer) if layer is not None else None
             target_color = self._validate_color(color)
             if linetype is not None:
-                known = {str(item.dxf.name).lower(): str(item.dxf.name) for item in self._require_doc().linetypes}
+                known = {
+                    str(item.dxf.name).lower(): str(item.dxf.name)
+                    for item in self._require_doc().linetypes
+                }
                 canonical = known.get(linetype.lower())
                 if canonical is None:
                     raise ValueError(f"linetype does not exist: {linetype}")
@@ -1173,7 +1222,9 @@ class EzdxfBackend(AutoCADBackend):
 
     async def layer_list(self) -> list[LayerInfo]:
         return await self._run(
-            lambda: [_layer_info(layer, self._current_layer) for layer in self._require_doc().layers]
+            lambda: [
+                _layer_info(layer, self._current_layer) for layer in self._require_doc().layers
+            ]
         )
 
     async def layer_create(self, name: str, color: int = 7) -> LayerInfo:
@@ -1287,7 +1338,7 @@ class EzdxfBackend(AutoCADBackend):
                         is_xref=is_xref,
                     )
                 )
-            return result[int(offset): int(offset) + int(limit)]
+            return result[int(offset) : int(offset) + int(limit)]
 
         return await self._run(_sync)
 
@@ -1440,8 +1491,12 @@ class EzdxfBackend(AutoCADBackend):
                 "LUPREC": int(doc.header.get("$LUPREC", 4)),
             }
             return {
-                "insertion_units": _INSERTION_UNIT_NAMES.get(raw["INSUNITS"], f"code_{raw['INSUNITS']}"),
-                "measurement": _MEASUREMENT_NAMES.get(raw["MEASUREMENT"], f"code_{raw['MEASUREMENT']}"),
+                "insertion_units": _INSERTION_UNIT_NAMES.get(
+                    raw["INSUNITS"], f"code_{raw['INSUNITS']}"
+                ),
+                "measurement": _MEASUREMENT_NAMES.get(
+                    raw["MEASUREMENT"], f"code_{raw['MEASUREMENT']}"
+                ),
                 "linear_format": _LINEAR_FORMAT_NAMES.get(raw["LUNITS"], f"code_{raw['LUNITS']}"),
                 "linear_precision": raw["LUPREC"],
                 "raw": raw,

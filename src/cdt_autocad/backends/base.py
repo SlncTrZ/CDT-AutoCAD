@@ -92,7 +92,14 @@ class ObjectQueryContract(ABC):
 
 class ObjectMutationContract(ABC):
     @abstractmethod
-    async def object_set_properties(self, object_id: str, **kwargs: Any) -> EntityInfo: ...
+    async def object_set_properties(
+        self,
+        object_id: str,
+        layer: str | None = None,
+        color: int | None = None,
+        linetype: str | None = None,
+        visible: bool | None = None,
+    ) -> EntityInfo: ...
 
     @abstractmethod
     async def object_delete(self, object_id: str) -> dict[str, Any]: ...
@@ -116,40 +123,146 @@ class ObjectMutationContract(ABC):
 
 class EntityCreationContract(ABC):
     @abstractmethod
-    async def entity_create_line(self, **kwargs: Any) -> EntityInfo: ...
+    async def entity_create_line(
+        self,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        z1: float = 0.0,
+        z2: float = 0.0,
+        layer: str | None = None,
+        color: int | None = None,
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def entity_create_circle(self, **kwargs: Any) -> EntityInfo: ...
+    async def entity_create_circle(
+        self,
+        cx: float,
+        cy: float,
+        radius: float,
+        layer: str | None = None,
+        color: int | None = None,
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def entity_create_arc(self, **kwargs: Any) -> EntityInfo: ...
+    async def entity_create_arc(
+        self,
+        cx: float,
+        cy: float,
+        radius: float,
+        start_angle: float,
+        end_angle: float,
+        layer: str | None = None,
+        color: int | None = None,
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def entity_create_polyline(self, **kwargs: Any) -> EntityInfo: ...
+    async def entity_create_polyline(
+        self,
+        points: list[list[float]],
+        closed: bool = False,
+        layer: str | None = None,
+        color: int | None = None,
+        bulges: list[float] | None = None,
+        widths: list[list[float]] | None = None,
+        elevation: float = 0.0,
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def entity_create_text(self, **kwargs: Any) -> EntityInfo: ...
+    async def entity_create_text(
+        self,
+        text: str,
+        x: float,
+        y: float,
+        height: float = 2.5,
+        rotation: float = 0.0,
+        layer: str | None = None,
+        color: int | None = None,
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def hatch_create(self, **kwargs: Any) -> EntityInfo: ...
+    async def hatch_create(
+        self,
+        boundary_points: list[list[float]],
+        pattern: str = "SOLID",
+        scale: float = 1.0,
+        angle: float = 0.0,
+        layer: str | None = None,
+        color: int | None = None,
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def dimension_linear(self, **kwargs: Any) -> EntityInfo: ...
+    async def dimension_linear(
+        self,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        dim_x: float,
+        dim_y: float,
+        rotation: float = 0.0,
+        layer: str | None = None,
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def dimension_aligned(self, **kwargs: Any) -> EntityInfo: ...
+    async def dimension_aligned(
+        self,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        dim_x: float,
+        dim_y: float,
+        layer: str | None = None,
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def dimension_angular(self, **kwargs: Any) -> EntityInfo: ...
+    async def dimension_angular(
+        self,
+        vertex_x: float,
+        vertex_y: float,
+        first_x: float,
+        first_y: float,
+        second_x: float,
+        second_y: float,
+        text_x: float,
+        text_y: float,
+        layer: str | None = None,
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def dimension_radial(self, **kwargs: Any) -> EntityInfo: ...
+    async def dimension_radial(
+        self,
+        center_x: float,
+        center_y: float,
+        chord_x: float,
+        chord_y: float,
+        leader_length: float,
+        layer: str | None = None,
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def dimension_diametric(self, **kwargs: Any) -> EntityInfo: ...
+    async def dimension_diametric(
+        self,
+        center_x: float,
+        center_y: float,
+        chord_x: float,
+        chord_y: float,
+        leader_length: float,
+        layer: str | None = None,
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def dimension_ordinate(self, **kwargs: Any) -> EntityInfo: ...
+    async def dimension_ordinate(
+        self,
+        definition_x: float,
+        definition_y: float,
+        leader_x: float,
+        leader_y: float,
+        axis: str = "x",
+        layer: str | None = None,
+    ) -> EntityInfo: ...
 
 
 class LayerContract(ABC):
@@ -193,7 +306,16 @@ class BlockContract(ABC):
     ) -> BlockInfo: ...
 
     @abstractmethod
-    async def block_insert(self, name: str, x: float, y: float, **kwargs: Any) -> EntityInfo: ...
+    async def block_insert(
+        self,
+        name: str,
+        x: float,
+        y: float,
+        scale_x: float = 1.0,
+        scale_y: float = 1.0,
+        rotation: float = 0.0,
+        layer: str | None = None,
+    ) -> EntityInfo: ...
 
 
 class ReferenceContract(ABC):

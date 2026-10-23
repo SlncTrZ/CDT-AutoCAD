@@ -44,7 +44,7 @@ def _working_set_bytes(process_id: int) -> int | None:
         try:
             return int(win32process.GetProcessMemoryInfo(handle).get("WorkingSetSize", 0))
         finally:
-            handle.Close()
+            win32api.CloseHandle(handle)
     except Exception:
         return None
 
