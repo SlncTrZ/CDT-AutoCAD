@@ -18,6 +18,7 @@ lane has separate capabilities; other AutoCAD versions need their own acceptance
 ## Quickstart / MCP Client Configuration
 
 ### Claude Desktop (`claude_desktop_config.json`)
+
 ```json
 {
   "mcpServers": {
@@ -35,6 +36,7 @@ lane has separate capabilities; other AutoCAD versions need their own acceptance
 ```
 
 ### Cursor (`~/.cursor/mcp.json`)
+
 ```json
 {
   "mcpServers": {
