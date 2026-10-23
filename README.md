@@ -1,11 +1,52 @@
 # CDT-AutoCAD
 
-Generic AutoCAD execution provider for MCP clients. It owns native CAD execution,
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](pyproject.toml)
+[![MCP Protocol](https://img.shields.io/badge/MCP-Standard-orange.svg)](https://modelcontextprotocol.io)
+[![Platform: Windows](https://img.shields.io/badge/platform-Windows%20x64%20%7C%20Linux%20(ezdxf)-lightgrey.svg)](docs/COMPATIBILITY.md)
+[![Tools](https://img.shields.io/badge/tools-87%20callable-green.svg)](docs/TOOL_GUIDE.md)
+
+Generic AutoCAD execution provider for Model Context Protocol (MCP) clients. It owns native CAD execution,
 state verification and recovery; engineering design rules belong to CDT_Engineer.
 
 Provider `0.4.2` · Contract `autocad-generic-v1` · 87 public tools.
 Native acceptance is scoped to AutoCAD 2027 full on Windows x64. The headless DXF
 lane has separate capabilities; other AutoCAD versions need their own acceptance.
+
+---
+
+## Quickstart / MCP Client Configuration
+
+### Claude Desktop (`claude_desktop_config.json`)
+```json
+{
+  "mcpServers": {
+    "cdt-autocad": {
+      "command": "uvx",
+      "args": ["cdt-autocad-provider"],
+      "env": {
+        "CDT_AUTOCAD_BACKEND": "com",
+        "CDT_AUTOCAD_COM_PROGID": "AutoCAD.Application.26",
+        "CDT_AUTOCAD_COM_ATTACH_POLICY": "attach_only"
+      }
+    }
+  }
+}
+```
+
+### Cursor (`~/.cursor/mcp.json`)
+```json
+{
+  "mcpServers": {
+    "cdt-autocad": {
+      "command": "uvx",
+      "args": ["cdt-autocad-provider"]
+    }
+  }
+}
+```
+
+---
 
 ## Install and run
 
@@ -49,6 +90,5 @@ No arbitrary shell, AutoLISP, macro or caller-supplied C# execution is exposed.
 
 ## License
 
-Proprietary source-available software; public visibility grants no open-source
-license. See [LICENSE](LICENSE), [copyright](COPYRIGHT.md),
+Distributed under the open-source MIT License. See [LICENSE](LICENSE), [copyright](COPYRIGHT.md),
 [third-party notices](THIRD_PARTY_NOTICES.md) and [source provenance](SOURCE_PROVENANCE.md).

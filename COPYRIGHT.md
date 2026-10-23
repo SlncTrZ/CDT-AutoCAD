@@ -36,7 +36,6 @@ opinion that may be required in a particular jurisdiction.
 
 ## Licensing
 
-CDT-AutoCAD is currently distributed under the proprietary terms in `LICENSE`.
-Public repository visibility does not by itself grant an open-source license.
+CDT-AutoCAD is distributed under the open-source MIT License in `LICENSE`.
 Third-party dependency boundaries and source-provenance controls are documented
 in `THIRD_PARTY_NOTICES.md` and `SOURCE_PROVENANCE.md`.
