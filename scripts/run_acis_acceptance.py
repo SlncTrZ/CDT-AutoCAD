@@ -112,7 +112,9 @@ async def _run_tier(
     try:
         baseline_count, names, active = await _document_counts(backend)
         if names or active != 0:
-            raise AssertionError(f"AutoCAD was not idle before tier {count}: CMDNAMES={names!r} CMDACTIVE={active}")
+            raise AssertionError(
+                f"AutoCAD was not idle before tier {count}: CMDNAMES={names!r} CMDACTIVE={active}"
+            )
         for index in range(count):
             x = float(index % 20) * 3.0
             y = float(index // 20) * 3.0
@@ -130,7 +132,9 @@ async def _run_tier(
                 f"tier {count} model-space count mismatch: baseline={baseline_count} final={final_count}"
             )
         if names or active != 0:
-            raise AssertionError(f"AutoCAD was not idle after tier {count}: CMDNAMES={names!r} CMDACTIVE={active}")
+            raise AssertionError(
+                f"AutoCAD was not idle after tier {count}: CMDNAMES={names!r} CMDACTIVE={active}"
+            )
         max_latency = max(latencies, default=0.0)
         if max_latency > max_call_ms:
             raise AssertionError(
@@ -188,7 +192,9 @@ async def _run_boolean_stress(backend: ComBackend, *, hwnd: int) -> dict[str, An
             latencies.append((time.perf_counter() - started) * 1000.0)
             volume = float(result["volume"])
             if not 0.0 < volume < float(box["volume"]):
-                raise AssertionError(f"boolean stress volume invalid at iteration {index}: {volume}")
+                raise AssertionError(
+                    f"boolean stress volume invalid at iteration {index}: {volume}"
+                )
             volumes.append(volume)
             if result["tool_exists_after"] is not False:
                 raise AssertionError("successful subtract did not consume Boolean tool solid")

@@ -105,10 +105,14 @@ class ObjectMutationContract(ABC):
     async def object_delete(self, object_id: str) -> dict[str, Any]: ...
 
     @abstractmethod
-    async def object_move(self, object_id: str, dx: float, dy: float, dz: float = 0.0) -> EntityInfo: ...
+    async def object_move(
+        self, object_id: str, dx: float, dy: float, dz: float = 0.0
+    ) -> EntityInfo: ...
 
     @abstractmethod
-    async def object_copy(self, object_id: str, dx: float, dy: float, dz: float = 0.0) -> EntityInfo: ...
+    async def object_copy(
+        self, object_id: str, dx: float, dy: float, dz: float = 0.0
+    ) -> EntityInfo: ...
 
     @abstractmethod
     async def object_rotate(
@@ -321,27 +325,32 @@ class BlockContract(ABC):
 class ReferenceContract(ABC):
     async def xref_list(self) -> list[dict[str, Any]]:
         raise UnsupportedCapabilityError(
-            "autocad.references.xref", "External-reference management requires the live COM backend."
+            "autocad.references.xref",
+            "External-reference management requires the live COM backend.",
         )
 
     async def xref_attach(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         raise UnsupportedCapabilityError(
-            "autocad.references.xref", "External-reference management requires the live COM backend."
+            "autocad.references.xref",
+            "External-reference management requires the live COM backend.",
         )
 
     async def xref_reload(self, name: str) -> dict[str, Any]:
         raise UnsupportedCapabilityError(
-            "autocad.references.xref", "External-reference management requires the live COM backend."
+            "autocad.references.xref",
+            "External-reference management requires the live COM backend.",
         )
 
     async def xref_unload(self, name: str) -> dict[str, Any]:
         raise UnsupportedCapabilityError(
-            "autocad.references.xref", "External-reference management requires the live COM backend."
+            "autocad.references.xref",
+            "External-reference management requires the live COM backend.",
         )
 
     async def xref_detach(self, name: str) -> dict[str, Any]:
         raise UnsupportedCapabilityError(
-            "autocad.references.xref", "External-reference management requires the live COM backend."
+            "autocad.references.xref",
+            "External-reference management requires the live COM backend.",
         )
 
 
@@ -399,9 +408,7 @@ class ViewContract(ABC):
             "autocad.view.zoom", "Live view control requires the COM backend."
         )
 
-    async def view_zoom_window(
-        self, x1: float, y1: float, x2: float, y2: float
-    ) -> dict[str, Any]:
+    async def view_zoom_window(self, x1: float, y1: float, x2: float, y2: float) -> dict[str, Any]:
         raise UnsupportedCapabilityError(
             "autocad.view.zoom", "Live view control requires the COM backend."
         )
@@ -628,6 +635,9 @@ class AutoCADBackend(
         normalized = str(axis).strip().lower()
         if normalized not in {"x", "y"}:
             raise ValueError("ordinate dimension axis must be 'x' or 'y'")
-        if math.hypot(float(leader_x) - float(definition_x), float(leader_y) - float(definition_y)) <= 0:
+        if (
+            math.hypot(float(leader_x) - float(definition_x), float(leader_y) - float(definition_y))
+            <= 0
+        ):
             raise ValueError("ordinate dimension leader endpoint must differ from definition point")
         return normalized
