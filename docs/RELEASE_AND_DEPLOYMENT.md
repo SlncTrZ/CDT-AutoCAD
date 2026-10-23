@@ -1,6 +1,6 @@
 # CDT-AutoCAD — Release and deployment
 
-**Release:** `0.4.2` · tag `v.0.4.2` · MCP contract `autocad-generic-v1` · 87 tools.
+**Release:** `0.4.3` · tag `v.0.4.3` · MCP contract `autocad-generic-v1` · 87 tools.
 
 [GitHub releases](https://github.com/SlncTrZ/CDT-AutoCAD/releases) publish source references. Do **not** infer that an installable Windows package, native DLL, workstation update or Gateway activation has been produced merely because a release exists.
 

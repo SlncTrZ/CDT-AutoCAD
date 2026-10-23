@@ -2,7 +2,7 @@
 
 > Operational start: 2026-09-12
 > Updated: 2026-10-10 +07:00
-> Current released source: `0.4.2 / autocad-generic-v1 / 87 tools`. Running provider identity must be queried separately.
+> Current released source: `0.4.3 / autocad-generic-v1 / 87 tools`. Running provider identity must be queried separately.
 > Current native bridge candidate: `0.8.6-d18` · deployed DLL SHA-256 `13293B5E21F9E2B31A7B75D3EFFC107AB912F3C202AC70426CC65CBCB8C79070` · historical release `v0.4.0` (2026-10-07); current source release `v.0.4.2` (not evidence of native redeployment)
 > Primary live lane: AutoCAD 2027 full / Windows x64 / Managed .NET `net10.0-windows`
 > Live gates: certified-at `9c69430` + 2026-09-30 + AutoCAD 2027/Windows x64, extended by affected-scoped requal at `a3faa7b` + 2026-10-06 and AC-P02 requal at `a69289f` + 2026-10-07 (smoke, 320-scale, 10k-scale, U1, D15–D18, hot-reload — see LIVE_ACCEPTANCE) — pending is an operational stamp, not a use prohibition; deployment health checks still govern each host/session
