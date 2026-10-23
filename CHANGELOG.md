@@ -2,6 +2,13 @@
 
 All notable product and operational changes to CDT-AutoCAD are recorded here. Historical evidence files remain authoritative for the exact test conditions of their original checkpoints.
 
+## [0.4.3] - 2026-10-23
+
+- Adopt OSI-approved MIT License and update licensing notices.
+- Enrich all 87 tool descriptions with explicit side-effects and disambiguation guidance.
+- Annotate 256/256 tool parameters with detailed typed Field descriptions for Glama TDQS Grade A.
+- Add ready-to-install MCP client quickstart configurations (Claude Desktop & Cursor) in README.
+
 ## [0.4.2] - 2026-10-10
 
 - Documentation consolidation: stable package identity and accurate historical/native acceptance boundaries, release/deployment guide, rollback and credential preservation.
